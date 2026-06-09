@@ -1,0 +1,65 @@
+P[0]: 
+
+--- TABLE[1] START ---
+ROW[0]:  | Control semanal |  | 
+--- TABLE[1] END ---
+
+P[2]: Complejo 2004 - Abasto
+P[3]: Fecha de actualización 15 de mayo de 2026   Semana 20
+P[4]: Subgerente responsable del Área:  VICTOR DIAZ
+P[5]: Responsable del control semanal: MILENA SUCOVSKY 
+P[6]: Sección T.O.P Center
+
+--- TABLE[7] START ---
+ROW[0]: Fecha de apertura | # de Incidente | # de RMA | Comentario
+ROW[1]: 27/02/2026 | INC1305632 | RMA0176548 | ACTUADOR DBOX
+ROW[2]: 21/04/2026 | INC1318829 | RMA0178088 | ACTUADOR DBOX
+ROW[3]: 11/05/2026 | INC1319854 | RMA0178677 | ACTUADOR DBOX
+ROW[4]: 26/05/2026 | INC1328530 | RMA0179111 | ACTUADOR DBOX
+--- TABLE[7] END ---
+
+P[8]: 
+P[9]: 
+P[10]: 
+P[11]: Horas de lámparas
+
+--- TABLE[12] START ---
+ROW[0]: Sala | Potencia | Medición FL | Calibrado | Horas actuales | Horas Restante
+ROW[1]:  |  |  2D  |  3D  |  |  | 
+ROW[2]: 1 | 3000W Digital | 16.1 |  | 2411 | 613
+ROW[3]: 2 | 2200W Digital | 16.26 |  | 364 | 2156
+ROW[4]: 3 | 15.22 |  | 592 | 1928
+ROW[5]: 4 | 16.3 |  | 708 | 1812
+ROW[6]: 5 | 19.4 |  | 2221 | 803
+ROW[7]: 6 | 18.23 |  | 89 | 2431
+ROW[8]: 7 | 16.3 |  | 885 | 1635
+ROW[9]: 8 | 20.3 |  | 371 | 2653
+ROW[10]: 9 | 18.1 |  | 2858 | 166
+ROW[11]: 10 | 21.2 |  | 450 | 2574
+ROW[12]: 11 | 20.3 | 5.7 | 2176 | 848
+ROW[13]: 12 | 17.2 |  | 2863 | 161
+--- TABLE[12] END ---
+
+P[13]: 
+P[14]: 
+P[15]: 
+P[16]: 
+P[17]: 
+P[18]: 
+P[19]: Tablero de control
+P[20]: Control de temperatura
+P[21]: 
+P[22]: Promedio 24° C    55 a 60 %
+P[23]:  
+P[24]: 
+P[25]: Mantenimiento Preventivo (Ingresar los días que se realizan especificas)
+P[26]: 
+P[27]: 
+P[28]: 
+P[29]: 
+P[30]: Calidad de presentación
+P[31]: 
+P[32]: 
+P[33]: 
+P[34]: 
+P[35]: 

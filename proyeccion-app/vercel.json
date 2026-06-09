@@ -1,0 +1,13 @@
+{
+    "buildCommand": "expo export -p web && node vercel-postbuild.js",
+    "outputDirectory": "dist",
+    "devCommand": "expo",
+    "framework": null,
+    "cleanUrls": true,
+    "rewrites": [
+      {
+        "source": "/:path*",
+        "destination": "/"
+      }
+    ]
+  }

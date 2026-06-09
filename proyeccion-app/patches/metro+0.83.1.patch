@@ -1,0 +1,21 @@
+diff --git a/node_modules/metro/src/Server.js b/node_modules/metro/src/Server.js
+index bc45d10..d3b9940 100644
+--- a/node_modules/metro/src/Server.js
++++ b/node_modules/metro/src/Server.js
+@@ -990,7 +990,15 @@ class Server {
+         ) {
+           continue;
+         }
+-        const fileAbsolute = path.resolve(this._config.projectRoot, file ?? "");
++        const fileStr = file ?? "";
++        if (
++          !fileStr ||
++          fileStr === "<anonymous>" ||
++          (typeof fileStr === "string" && fileStr.trim() === "")
++        ) {
++          continue;
++        }
++        const fileAbsolute = path.resolve(this._config.projectRoot, fileStr);
+         try {
+           return {
+             content: codeFrameColumns(

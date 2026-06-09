@@ -1,0 +1,59 @@
+{
+  "expo": {
+    "name": "Cine",
+    "slug": "proyeccion-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "web": {
+      "favicon": "./assets/icon.png",
+      "name": "Cines",
+      "shortName": "Cines",
+      "output": "static"
+    },
+    "newArchEnabled": false,
+    "android": {
+      "package": "com.julyrodriguez18.proyeccionapp",
+      "jsEngine": "hermes",
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "permissions": []
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableProguardInReleaseBuilds": true,
+            "enableMinifyInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true,
+            "resConfigs": [
+              "es"
+            ],
+            "abiFilters": [
+              "arm64-v8a"
+            ]
+          }
+        }
+      ],
+      "expo-asset"
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "04d63797-68bb-4022-8d3b-d248c139bcfa"
+      }
+    }
+  }
+}

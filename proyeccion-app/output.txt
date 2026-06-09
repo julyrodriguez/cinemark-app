@@ -1,0 +1,4 @@
+Headers: ["PELICULA",null,null,null,null,null,null,"FECHA",null,null,"COPIA N°",null,"PROYECTOR ",null,null,"RECIBIDO POR "]
+Row 1: []
+Row 2: ["LUPINO TWICE ",null,null,null,null,null,null,45988,null,null,9,null,"TMS",null,null,"FRANCO"]
+Row 3: ["FIVE NIGHTS AT FREDDY'S 2",null,null,null,null,null,null,45988,null,null,"SATELITE",null,"TMS",null,null,"FRANCO"]

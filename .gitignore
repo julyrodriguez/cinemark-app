@@ -1,0 +1,74 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Local env files
+.env
+.env*.local
+.env.local
+.env.production.local
+.env.development.local
+.env.test.local
+
+# Vercel
+.vercel
+.vercel/
+
+# Firebase
+.firebase/
+.firebaserc.user
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# Firebase functions build
+functions/lib/
+
+# Expo
+.expo/
+**/dist/
+**/web-build/
+**/expo-env.d.ts
+**/*.tsbuildinfo
+
+# Native android/ios files (just in case they are generated later)
+**/*.jks
+**/*.p8
+**/*.p12
+**/*.key
+**/*.mobileprovision
+**/.kotlin/
+**/ios
+**/android
+
+# Debug logs
+*.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+pnpm-debug.*
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Office / Excel temporary files
+~$*.xlsx
+~$*.xlsm
+~$*.docx
+~$*.doc
+
+# Python cache (if any)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.ipynb_checkpoints/
+venv/
+.venv/
+env/
