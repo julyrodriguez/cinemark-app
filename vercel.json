@@ -1,0 +1,11 @@
+{
+  "buildCommand": "cd proyeccion-app && expo export -p web && node vercel-postbuild.js",
+  "outputDirectory": "proyeccion-app/dist",
+  "cleanUrls": true,
+  "rewrites": [
+    {
+      "source": "/((?!_expo/|assets/|.*\\.[a-zA-Z0-9]+$).*)",
+      "destination": "/index.html"
+    }
+  ]
+}
