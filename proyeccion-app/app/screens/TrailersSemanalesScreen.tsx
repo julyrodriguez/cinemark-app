@@ -646,7 +646,12 @@ export default function TrailersSemanalesScreen({ readOnly = false }: { readOnly
         <html>
         <head>
           <meta charset="utf-8">
+          <title>Planilla de Trailers</title>
           <style>
+            @page {
+              size: auto;
+              margin: 0;
+            }
             @media print {
               body { margin: 0.8cm; -webkit-print-color-adjust: exact; }
               .page-break { page-break-after: always; }
@@ -864,9 +869,6 @@ export default function TrailersSemanalesScreen({ readOnly = false }: { readOnly
       });
 
       html += `
-          <div class="footer">
-            Planilla generada automáticamente con el mismo formato y estilo oficial.
-          </div>
         </body>
         </html>
       `;
