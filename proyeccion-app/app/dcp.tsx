@@ -75,7 +75,7 @@ const formatDiscoLabel = (disco: string) => {
 
 /* ── component ── */
 
-export default function DcpScreen() {
+export default function DcpScreen({ readOnly = false }: { readOnly?: boolean }) {
   const { user, cineId, loading: sessionLoading, displayName } = useAuthUser();
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
@@ -579,9 +579,11 @@ export default function DcpScreen() {
             <Text style={styles.dcpTitle} numberOfLines={2}>
               {item.nombre}
             </Text>
-            <Pressable onPress={(e) => openMenuForDcp(e, item)} style={styles.moreBtn}>
-              <Text style={styles.moreBtnText}>⋮</Text>
-            </Pressable>
+            {!readOnly && (
+              <Pressable onPress={(e) => openMenuForDcp(e, item)} style={styles.moreBtn}>
+                <Text style={styles.moreBtnText}>⋮</Text>
+              </Pressable>
+            )}
           </View>
 
           <View style={styles.metaRowCenter}>
@@ -609,14 +611,16 @@ export default function DcpScreen() {
             <Text style={styles.dcpMetaCenter}>Cargado por: {item.createdName}</Text>
           ) : null}
 
-          <TouchableOpacity
-            style={styles.retireBtn}
-            onPress={() => retirarDcp(item)}
-            activeOpacity={0.8}
-          >
-            <MaterialCommunityIcons name="package-down" size={16} color="#fff" style={{ marginRight: 6 }} />
-            <Text style={styles.retireBtnText}>Marcar como retirado</Text>
-          </TouchableOpacity>
+          {!readOnly && (
+            <TouchableOpacity
+              style={styles.retireBtn}
+              onPress={() => retirarDcp(item)}
+              activeOpacity={0.8}
+            >
+              <MaterialCommunityIcons name="package-down" size={16} color="#fff" style={{ marginRight: 6 }} />
+              <Text style={styles.retireBtnText}>Marcar como retirado</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     </View>
@@ -631,9 +635,11 @@ export default function DcpScreen() {
             <Text style={[styles.dcpTitle2, { color: COLORS.muted }]} numberOfLines={2}>
               {item.nombre}
             </Text>
-            <Pressable onPress={(e) => openMenuForDcp(e, item)} style={styles.moreBtn}>
-              <Text style={styles.moreBtnText}>⋮</Text>
-            </Pressable>
+            {!readOnly && (
+              <Pressable onPress={(e) => openMenuForDcp(e, item)} style={styles.moreBtn}>
+                <Text style={styles.moreBtnText}>⋮</Text>
+              </Pressable>
+            )}
           </View>
 
           <View style={styles.metaRowCenter}>
@@ -798,9 +804,11 @@ export default function DcpScreen() {
       </ScrollView>
 
       {/* FAB */}
-      <TouchableOpacity style={styles.fabBR} onPress={openNew} activeOpacity={0.9}>
-        <MaterialCommunityIcons name="plus" size={30} color="#fff" />
-      </TouchableOpacity>
+      {!readOnly && (
+        <TouchableOpacity style={styles.fabBR} onPress={openNew} activeOpacity={0.9}>
+          <MaterialCommunityIcons name="plus" size={24} color="#fff" />
+        </TouchableOpacity>
+      )}
 
       {/* ── Context menu ── */}
       <Modal visible={showMenu} transparent animationType="fade" onRequestClose={closeMenu}>

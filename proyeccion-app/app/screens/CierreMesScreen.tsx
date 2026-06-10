@@ -185,7 +185,7 @@ function ModelSelectCell({ value, onChange, style, placeholder }: ModelSelectCel
   );
 }
 
-export default function CierreMesScreen() {
+export default function CierreMesScreen({ readOnly = false }: { readOnly?: boolean }) {
   const { cineId } = useAuthUser();
   const { width } = useWindowDimensions();
   const isMobile = width < 768;
@@ -541,6 +541,7 @@ export default function CierreMesScreen() {
   // ─── Guardar en la Base de Datos ───────────────────────────────────────────
 
   const handleSave = async () => {
+    if (readOnly) return;
     if (!cineId) return;
     if (!(responsable || "").trim()) {
       Alert.alert("Error", "Por favor ingresá el nombre del responsable.");
@@ -622,6 +623,7 @@ export default function CierreMesScreen() {
   };
 
   const handleSaveCortes = async () => {
+    if (readOnly) return;
     if (!cineId) return;
     if (!(responsable || "").trim()) {
       Alert.alert("Error", "Por favor ingresá el nombre del responsable.");
@@ -1855,6 +1857,7 @@ export default function CierreMesScreen() {
                 placeholder="Ingresá tu nombre"
                 placeholderTextColor={COLORS.muted}
                 style={s.inputField}
+                editable={!readOnly}
               />
             </View>
 
@@ -1867,6 +1870,7 @@ export default function CierreMesScreen() {
                 placeholder="Ej: VICTOR DIAZ"
                 placeholderTextColor={COLORS.muted}
                 style={s.inputField}
+                editable={!readOnly}
               />
             </View>
 
@@ -1879,6 +1883,7 @@ export default function CierreMesScreen() {
                 placeholder="YYYY-MM-DD"
                 placeholderTextColor={COLORS.muted}
                 style={[s.inputField, { fontFamily: "monospace" }]}
+                editable={!readOnly}
               />
             </View>
           </View>
@@ -1896,6 +1901,7 @@ export default function CierreMesScreen() {
         {/* PESTAÑA A: CIERRE DE LÁMPARAS */}
         {activeTab === "CIERRE_LAMPARAS" && (
           <View style={{ gap: 20 }}>
+            <View pointerEvents={readOnly ? "none" : "auto"}>
 
             {/* Banner Informativo */}
             <View style={s.bannerInfo}>
@@ -2075,18 +2081,22 @@ export default function CierreMesScreen() {
               </View>
             </View>
 
+            </View>
+
             {/* BOTONES DE ACCIONES */}
             <View style={[s.actionRow, isMobile && { flexDirection: "column", gap: 12, width: "100%", alignSelf: "center" }]}>
-              <TouchableOpacity style={s.saveBtn} onPress={handleSave} disabled={saving}>
-                {saving ? (
-                  <ActivityIndicator size="small" color="#FFF" />
-                ) : (
-                  <>
-                    <MaterialCommunityIcons name="database-outline" size={20} color="#FFF" />
-                    <Text style={s.actionBtnText}>Guardar en BD</Text>
-                  </>
-                )}
-              </TouchableOpacity>
+              {!readOnly && (
+                <TouchableOpacity style={s.saveBtn} onPress={handleSave} disabled={saving}>
+                  {saving ? (
+                    <ActivityIndicator size="small" color="#FFF" />
+                  ) : (
+                    <>
+                      <MaterialCommunityIcons name="database-outline" size={20} color="#FFF" />
+                      <Text style={s.actionBtnText}>Guardar en BD</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
 
               <TouchableOpacity style={s.printBtn} onPress={handlePrint}>
                 <MaterialCommunityIcons name="printer-outline" size={20} color="#FFF" />
@@ -2100,6 +2110,7 @@ export default function CierreMesScreen() {
         {/* PESTAÑA B: REPORTE DE CORTE MENSUAL */}
         {activeTab === "CORTE_MENSUAL" && (
           <View style={{ gap: 20 }}>
+            <View pointerEvents={readOnly ? "none" : "auto"}>
             {/* Banner Informativo */}
             <View style={s.bannerInfo}>
               <MaterialCommunityIcons name="information" size={20} color="#1E40AF" style={{ marginRight: 8 }} />
@@ -2293,19 +2304,22 @@ export default function CierreMesScreen() {
                 <Text style={s.addIncidentBtnText}>Agregar Incidente / Corte</Text>
               </TouchableOpacity>
             </View>
+            </View>
 
-            {/* BOTONES DE ACCIONES */}
+            {/* BOTONES DE ACCIÓN */}
             <View style={[s.actionRow, isMobile && { flexDirection: "column", gap: 12, width: "100%", alignSelf: "center" }]}>
-              <TouchableOpacity style={s.saveBtn} onPress={handleSaveCortes} disabled={savingCortes}>
-                {savingCortes ? (
-                  <ActivityIndicator size="small" color="#FFF" />
-                ) : (
-                  <>
-                    <MaterialCommunityIcons name="database-outline" size={20} color="#FFF" />
-                    <Text style={s.actionBtnText}>Guardar en BD</Text>
-                  </>
-                )}
-              </TouchableOpacity>
+              {!readOnly && (
+                <TouchableOpacity style={s.saveBtn} onPress={handleSaveCortes} disabled={savingCortes}>
+                  {savingCortes ? (
+                    <ActivityIndicator size="small" color="#FFF" />
+                  ) : (
+                    <>
+                      <MaterialCommunityIcons name="database-outline" size={20} color="#FFF" />
+                      <Text style={s.actionBtnText}>Guardar en BD</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
 
               <TouchableOpacity style={s.printBtn} onPress={handlePrintCortes}>
                 <MaterialCommunityIcons name="printer-outline" size={20} color="#FFF" />

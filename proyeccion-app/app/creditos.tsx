@@ -80,7 +80,7 @@ function normalizeHHMMSS(input: string): string | null {
   return `${pad2(h)}:${pad2(m)}:${pad2(s)}`;
 }
 
-export default function CreditosScreen() {
+export default function CreditosScreen({ readOnly = false }: { readOnly?: boolean }) {
   const { user, cineId, loading: sessionLoading } = useAuthUser();
   const [items, setItems] = useState<Credito[]>([]);
   const [loading, setLoading] = useState(true);
@@ -479,19 +479,21 @@ export default function CreditosScreen() {
               {item.pelicula}
             </Text>
 
-            <Pressable
-              onPress={(e) => {
-                e.stopPropagation();
-                abrirMenuItem(item, e.nativeEvent);
-              }}
-              style={styles.moreBtn}
-            >
-              <MaterialCommunityIcons
-                name="dots-vertical"
-                size={18}
-                color={COLORS.text}
-              />
-            </Pressable>
+            {!readOnly && (
+              <Pressable
+                onPress={(e) => {
+                  e.stopPropagation();
+                  abrirMenuItem(item, e.nativeEvent);
+                }}
+                style={styles.moreBtn}
+              >
+                <MaterialCommunityIcons
+                  name="dots-vertical"
+                  size={18}
+                  color={COLORS.text}
+                />
+              </Pressable>
+            )}
           </View>
 
           <Row title="Final" items={line1} />
@@ -589,13 +591,15 @@ export default function CreditosScreen() {
         )}
       />
 
-      <TouchableOpacity
-        style={styles.fabBR}
-        onPress={openCreate}
-        activeOpacity={0.9}
-      >
-        <MaterialCommunityIcons name="plus" size={30} color="#fff" />
-      </TouchableOpacity>
+      {!readOnly && (
+        <TouchableOpacity
+          style={styles.fabBR}
+          onPress={openCreate}
+          activeOpacity={0.9}
+        >
+          <MaterialCommunityIcons name="plus" size={30} color="#fff" />
+        </TouchableOpacity>
+      )}
 
       <Modal
         visible={menuVisible}

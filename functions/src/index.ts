@@ -635,6 +635,61 @@ export const changeCinemaPassword = onCall(async (request) => {
   return { ok: true, message: "Contraseña actualizada." };
 });
 
+export const updateProyeccionPin = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "No autenticado.");
+  }
+
+  const email = String(request.auth.token.email || "").trim().toLowerCase();
+  if (!email) {
+    throw new HttpsError("failed-precondition", "Email no disponible.");
+  }
+
+  const pin = String((request.data as any)?.pin ?? "").trim();
+  const proyeccionPin = String((request.data as any)?.proyeccionPin ?? "").trim();
+
+  if (!pin) throw new HttpsError("invalid-argument", "PIN maestro requerido.");
+
+  const req = request.rawRequest as any;
+  const ip = getRequestIp(req);
+  if (!ip) {
+    throw new HttpsError("failed-precondition", "No se pudo obtener la IP.");
+  }
+
+  const cine = await getCineDocForAuthEmail(email);
+  const storedPin = String(cine.data?.accessPin ?? "").trim();
+
+  if (cine.data?.active === false) {
+    throw new HttpsError("permission-denied", "Cine inactivo.");
+  }
+
+  if (!storedPin) {
+    throw new HttpsError(
+      "failed-precondition",
+      "El cine no tiene accessPin configurado."
+    );
+  }
+
+  if (pin !== storedPin) {
+    await checkAndUpdateIpAttempt({ cineId: cine.cineId, ip, ok: false });
+    throw new HttpsError("permission-denied", "PIN incorrecto.");
+  }
+
+  await checkAndUpdateIpAttempt({ cineId: cine.cineId, ip, ok: true });
+
+  // Update proyeccionPin in /cines/{cineId}/info/config
+  const configRef = db.collection("cines").doc(cine.cineId).collection("info").doc("config");
+  await configRef.set(
+    {
+      proyeccionPin: proyeccionPin,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  return { ok: true, message: "PIN de proyección actualizado." };
+});
+
 export const adminChangeCinePassword = onCall(async (request) => {
   requireAdmin(request);
 

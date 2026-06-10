@@ -125,7 +125,7 @@ function PulsingDot() {
   );
 }
 
-export default function LamparasScreen() {
+export default function LamparasScreen({ readOnly = false }: { readOnly?: boolean }) {
   const { cineId, displayName } = useAuthUser();
   const { width, height } = useWindowDimensions();
   const isMobile = width < 768;
@@ -411,6 +411,7 @@ export default function LamparasScreen() {
   // ─── Agregar Lámpara a Backup ──────────────────────────────────────────────
 
   const handleAddBackup = async () => {
+    if (readOnly) return;
     setAddError("");
     const cleanId = bId.trim().toUpperCase();
 
@@ -476,6 +477,7 @@ export default function LamparasScreen() {
   // ─── Instalar Lámpara en Proyector ─────────────────────────────────────────
 
   const handleInstall = async () => {
+    if (readOnly) return;
     if (!installModal || !selectedBackupId || !cineId) return;
 
     setSavingInstall(true);
@@ -519,6 +521,7 @@ export default function LamparasScreen() {
   // ─── Retirar Lámpara a Historial Final ─────────────────────────────────────
 
   const handleRetire = async () => {
+    if (readOnly) return;
     setRetireError("");
     const horasUsadasNum = parseInt(rHorasUsadas.trim(), 10);
     const horasRestantesNum = parseInt(rHorasRestantes.trim(), 10);
@@ -587,6 +590,7 @@ export default function LamparasScreen() {
   // ─── Borrar Lámpara (Solo Backup) ─────────────────────────────────────────
 
   const handleDeleteLamp = async (lamp: Lampara) => {
+    if (readOnly) return;
     if (!cineId) return;
     try {
       await deleteDoc(doc(db, CINES_COLLECTION, cineId, "lamparas", lamp.id));
@@ -600,6 +604,7 @@ export default function LamparasScreen() {
   // ─── Revertir Movimiento ───────────────────────────────────────────────────
 
   const handleRevertMovement = async (mov: LamparaMovimiento) => {
+    if (readOnly) return;
     if (!cineId) return;
     setRevertingMovId(mov.id);
 
@@ -810,6 +815,7 @@ export default function LamparasScreen() {
         ]}
         keyboardShouldPersistTaps="handled"
       >
+        <View pointerEvents={readOnly ? "none" : "auto"}>
         {/* PESTAÑA 1: PROYECTORES */}
         {activeTab === "PROYECTORES" && (
           <View style={{ gap: 14, width: "100%" }}>
@@ -1211,6 +1217,7 @@ export default function LamparasScreen() {
             )}
           </View>
         )}
+        </View>
       </ScrollView>
 
       {/* ─── MODAL: NUEVA LÁMPARA A BACKUP ─── */}
@@ -1575,7 +1582,7 @@ export default function LamparasScreen() {
       </Modal>
 
       {/* Floating Action Button for Backup */}
-      {activeTab === "BACKUP" && (
+      {!readOnly && activeTab === "BACKUP" && (
         <TouchableOpacity
           style={s.fab}
           onPress={() => {

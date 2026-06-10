@@ -219,3 +219,67 @@ export async function changeCinemaPassword(params: {
     };
   }
 }
+
+export async function updateProyeccionPin(params: {
+  pin: string;
+  proyeccionPin: string;
+}): Promise<{ ok: true; message: string } | { ok: false; message: string }> {
+  try {
+    const fn = httpsCallable<
+      { pin: string; proyeccionPin: string },
+      any
+    >(functions, "updateProyeccionPin");
+
+    const pin = String(params.pin ?? "").trim();
+    const proyeccionPin = String(params.proyeccionPin ?? "").trim();
+
+    if (!pin) {
+      return { ok: false, message: "Ingresá el PIN maestro." };
+    }
+
+    const res = await withTimeout(
+      fn({ pin, proyeccionPin }),
+      IP_CHECK_TIMEOUT_MS,
+      "Timeout al actualizar el PIN de proyección."
+    );
+
+    const raw = res.data as any;
+    const data = raw?.result ?? raw;
+
+    if (!data?.ok) {
+      return {
+        ok: false,
+        message: data?.message || "No se pudo actualizar el PIN de proyección.",
+      };
+    }
+
+    return {
+      ok: true,
+      message: data?.message || "PIN de proyección actualizado.",
+    };
+  } catch (e: any) {
+    console.error("updateProyeccionPin error:", e);
+
+    const code = String(e?.code ?? "");
+
+    if (code.includes("permission-denied")) {
+      return { ok: false, message: "PIN maestro incorrecto." };
+    }
+
+    if (code.includes("unauthenticated")) {
+      return { ok: false, message: "La sesión expiró. Volvé a iniciar sesión." };
+    }
+
+    if (code.includes("invalid-argument")) {
+      return {
+        ok: false,
+        message: e?.message || "Datos inválidos para actualizar el PIN.",
+      };
+    }
+
+    return {
+      ok: false,
+      message: e?.message || "No se pudo actualizar el PIN de proyección.",
+    };
+  }
+}

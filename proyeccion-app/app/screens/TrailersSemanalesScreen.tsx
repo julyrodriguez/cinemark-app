@@ -42,7 +42,7 @@ type ScreenMovies = {
   movies: MatchedMovie[];
 };
 
-export default function TrailersSemanalesScreen() {
+export default function TrailersSemanalesScreen({ readOnly = false }: { readOnly?: boolean }) {
   const { cineId } = useAuthUser();
 
   const [pdfName, setPdfName] = useState<string | null>(null);
@@ -969,8 +969,8 @@ export default function TrailersSemanalesScreen() {
         <View style={s.section}>
           <Text style={s.sectionLabel}>1. Session by Screen (PDF)</Text>
           <Pressable
-            style={[s.filePicker, !!pdfText && s.filePickerActive]}
-            onPress={pickPdf}
+            style={[s.filePicker, !!pdfText && s.filePickerActive, readOnly && { opacity: 0.6 }]}
+            onPress={readOnly ? undefined : pickPdf}
           >
             <View style={s.filePickerIcon}>
               {loadingPdf ? (
@@ -996,8 +996,8 @@ export default function TrailersSemanalesScreen() {
         <View style={s.section}>
           <Text style={s.sectionLabel}>2. TRLS de la Semana (Excel)</Text>
           <Pressable
-            style={[s.filePicker, !!trlsData && s.filePickerActive]}
-            onPress={pickTrls}
+            style={[s.filePicker, !!trlsData && s.filePickerActive, readOnly && { opacity: 0.6 }]}
+            onPress={readOnly ? undefined : pickTrls}
           >
             <View style={s.filePickerIcon}>
               {loadingTrls ? (
@@ -1043,7 +1043,9 @@ export default function TrailersSemanalesScreen() {
         <View style={s.dashboardCard}>
           <View style={s.dashboardHeader}>
             <Text style={s.dashboardTitle}>Dashboard Editable de Trailers por Sala</Text>
-            <Text style={s.dashboardBadge}>EDITABLE</Text>
+            <Text style={[s.dashboardBadge, readOnly && { backgroundColor: COLORS.muted }]}>
+              {readOnly ? "SOLO LECTURA" : "EDITABLE"}
+            </Text>
           </View>
           <Text style={{ fontSize: 11, color: COLORS.muted, marginTop: 4 }}>
             ✍️ Podés editar los nombres de las películas y de los trailers directamente en los campos de texto. También podés agregar o quitar trailers sobre la marcha. Las modificaciones se aplicarán al PDF de impresión.
@@ -1071,6 +1073,7 @@ export default function TrailersSemanalesScreen() {
                         onChangeText={(txt) => handleUpdateMovieTitle(scr.screenNum, idx, txt)}
                         placeholder="Nombre de la película..."
                         placeholderTextColor={COLORS.muted}
+                        editable={!readOnly}
                       />
                       {movie.isMatched ? (
                         <View style={s.matchedBadge}>
@@ -1095,13 +1098,16 @@ export default function TrailersSemanalesScreen() {
                             onChangeText={(txt) => handleUpdateTrailerName(scr.screenNum, idx, tIdx, txt)}
                             placeholder="Nombre del trailer..."
                             placeholderTextColor={COLORS.muted}
+                            editable={!readOnly}
                           />
-                          <Pressable
-                            style={s.removeTrailerBtn}
-                            onPress={() => handleRemoveTrailer(scr.screenNum, idx, tIdx)}
-                          >
-                            <Text style={s.removeTrailerText}>🗑️</Text>
-                          </Pressable>
+                          {!readOnly && (
+                            <Pressable
+                              style={s.removeTrailerBtn}
+                              onPress={() => handleRemoveTrailer(scr.screenNum, idx, tIdx)}
+                            >
+                              <Text style={s.removeTrailerText}>🗑️</Text>
+                            </Pressable>
+                          )}
                         </View>
                       ))}
 
@@ -1110,29 +1116,31 @@ export default function TrailersSemanalesScreen() {
                           <Text style={s.warningText}>
                             ⚠️ Sin trailers cargados.
                           </Text>
-                          <View style={s.pasteContainer}>
-                            <Text style={s.pasteTitle}>Pegar lista de trailers (uno por línea):</Text>
-                            <TextInput
-                              style={s.pasteInput}
-                              multiline={true}
-                              numberOfLines={3}
-                              placeholder={`batman\ntoy story`}
-                              placeholderTextColor={COLORS.muted}
-                              value={pasteTexts[`${scr.screenNum}-${idx}`] || ""}
-                              onChangeText={(txt) => setPasteTexts(prev => ({ ...prev, [`${scr.screenNum}-${idx}`]: txt }))}
-                            />
-                            <Pressable
-                              style={s.pasteLoadBtn}
-                              onPress={() => handleImportPastedTrailers(scr.screenNum, idx)}
-                            >
-                              <Text style={s.pasteLoadBtnText}>⚡ Cargar Trailers</Text>
-                            </Pressable>
-                          </View>
+                          {!readOnly && (
+                            <View style={s.pasteContainer}>
+                              <Text style={s.pasteTitle}>Pegar lista de trailers (uno por línea):</Text>
+                              <TextInput
+                                style={s.pasteInput}
+                                multiline={true}
+                                numberOfLines={3}
+                                placeholder={`batman\ntoy story`}
+                                placeholderTextColor={COLORS.muted}
+                                value={pasteTexts[`${scr.screenNum}-${idx}`] || ""}
+                                onChangeText={(txt) => setPasteTexts(prev => ({ ...prev, [`${scr.screenNum}-${idx}`]: txt }))}
+                              />
+                              <Pressable
+                                style={s.pasteLoadBtn}
+                                onPress={() => handleImportPastedTrailers(scr.screenNum, idx)}
+                              >
+                                <Text style={s.pasteLoadBtnText}>⚡ Cargar Trailers</Text>
+                              </Pressable>
+                            </View>
+                          )}
                         </View>
                       )}
 
                       {/* Add Trailer Button */}
-                      {movie.trailers.length < 5 && (
+                      {!readOnly && movie.trailers.length < 5 && (
                         <Pressable
                           style={s.addTrailerBtn}
                           onPress={() => handleAddTrailer(scr.screenNum, idx)}
@@ -1142,19 +1150,21 @@ export default function TrailersSemanalesScreen() {
                       )}
 
                       {/* Delete Movie Button */}
-                      <Pressable
-                        style={s.deleteMovieBtn}
-                        onPress={() => handleDeleteMovie(scr.screenNum, idx)}
-                      >
-                        <Text style={s.deleteMovieText}>❌ Eliminar Película</Text>
-                      </Pressable>
+                      {!readOnly && (
+                        <Pressable
+                          style={s.deleteMovieBtn}
+                          onPress={() => handleDeleteMovie(scr.screenNum, idx)}
+                        >
+                          <Text style={s.deleteMovieText}>❌ Eliminar Película</Text>
+                        </Pressable>
+                      )}
                     </View>
                   </View>
                 ))}
               </View>
 
               {/* Add Movie to Sala Button */}
-              {scr.movies.length < 6 && (
+              {!readOnly && scr.movies.length < 6 && (
                 <Pressable
                   style={s.addMovieBtn}
                   onPress={() => handleAddMovie(scr.screenNum)}

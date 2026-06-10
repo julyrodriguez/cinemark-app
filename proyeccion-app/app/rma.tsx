@@ -34,7 +34,7 @@ import { useAuthUser } from "../lib/useAuthUser";
 import RmaItem from "../components/rmaItem";
 import { Rma } from "../lib/types";
 
-export default function RmaTab() {
+export default function RmaTab({ readOnly = false }: { readOnly?: boolean }) {
   const { user, cineId, loading: sessionLoading, displayName } = useAuthUser();
 
   const [loading, setLoading] = useState(true);
@@ -194,12 +194,14 @@ export default function RmaTab() {
                 />
               </View>
 
-              <Pressable
-                onPress={(e) => openMenuForRma(item, e)}
-                style={styles.moreBtn}
-              >
-                <Text style={styles.moreBtnText}>⋮</Text>
-              </Pressable>
+              {!readOnly && (
+                <Pressable
+                  onPress={(e) => openMenuForRma(item, e)}
+                  style={styles.moreBtn}
+                >
+                  <Text style={styles.moreBtnText}>⋮</Text>
+                </Pressable>
+              )}
             </View>
           )}
           ListEmptyComponent={
@@ -208,13 +210,15 @@ export default function RmaTab() {
         />
       )}
 
-      <TouchableOpacity
-        style={styles.fabBR}
-        onPress={openNew}
-        activeOpacity={0.9}
-      >
-        <MaterialCommunityIcons name="plus" size={30} color="#fff" />
-      </TouchableOpacity>
+      {!readOnly && (
+        <TouchableOpacity
+          style={styles.fabBR}
+          onPress={openNew}
+          activeOpacity={0.9}
+        >
+          <MaterialCommunityIcons name="plus" size={30} color="#fff" />
+        </TouchableOpacity>
+      )}
 
       <Modal
         visible={showMenu}

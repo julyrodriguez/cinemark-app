@@ -9,6 +9,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
   Platform,
@@ -18,7 +19,8 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import NavHeader from "@/components/NavHeader";
 import CineProfileModal from "@/components/cineProfileModal";
 import { IpAccessGate } from "@/components/IpAccessGate";
-import { auth } from "../lib/firebaseConfig";
+import { auth, db, CINES_COLLECTION } from "../lib/firebaseConfig";
+import { doc, onSnapshot } from "firebase/firestore";
 import { authorizeCurrentIp, checkIpAccess } from "../lib/ipAccess";
 import { COLORS, THEME } from "../lib/theme";
 import { useAppLayout } from "../lib/useAppLayout";
@@ -172,6 +174,12 @@ export default function Home() {
 
   const [themeMode, setThemeMode] = useState<"light" | "dark">("light");
 
+  const [proyeccionPin, setProyeccionPin] = useState<string | null>(null);
+  const [isProjectionUnlocked, setIsProjectionUnlocked] = useState(false);
+  const [showUnlockModal, setShowUnlockModal] = useState(false);
+  const [unlockPin, setUnlockPin] = useState("");
+  const [unlockError, setUnlockError] = useState<string | null>(null);
+
   const toggleTheme = () => {
     const nextMode = themeMode === "light" ? "dark" : "light";
     setThemeMode(nextMode);
@@ -296,6 +304,86 @@ export default function Home() {
       cancelled = true;
     };
   }, [user, sessionLoading, isOficinas, displayName, cineId]);
+
+  useEffect(() => {
+    if (!cineId) {
+      setProyeccionPin(null);
+      setIsProjectionUnlocked(false);
+      return;
+    }
+
+    const configRef = doc(db, CINES_COLLECTION, cineId, "info", "config");
+    const unsubscribe = onSnapshot(configRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        const pin = data?.proyeccionPin ? String(data.proyeccionPin).trim() : null;
+        setProyeccionPin(pin);
+      } else {
+        setProyeccionPin(null);
+      }
+    }, (error) => {
+      console.error("Error listening to cine config:", error);
+    });
+
+    return () => unsubscribe();
+  }, [cineId]);
+
+  function renderProjectionLockBanner() {
+    return (
+      <View
+        style={[
+          styles.lockBanner,
+          isProjectionUnlocked ? styles.lockBannerUnlocked : styles.lockBannerLocked,
+        ]}
+      >
+        <View style={styles.lockBannerTextWrap}>
+          <MaterialCommunityIcons
+            name={isProjectionUnlocked ? "lock-open-outline" : "lock-outline"}
+            size={20}
+            color={isProjectionUnlocked ? "#15803d" : "#b91c1c"}
+          />
+          <Text
+            style={[
+              styles.lockBannerText,
+              { color: isProjectionUnlocked ? "#15803d" : "#b91c1c" },
+            ]}
+          >
+            {isProjectionUnlocked
+              ? "Edición habilitada. Podés realizar modificaciones."
+              : "Modo lectura activo. Las modificaciones están deshabilitadas."}
+          </Text>
+        </View>
+        <TouchableOpacity
+          style={[
+            styles.lockBannerBtn,
+            { backgroundColor: isProjectionUnlocked ? "#dcfce7" : "#fee2e2" },
+          ]}
+          onPress={
+            isProjectionUnlocked
+              ? () => setIsProjectionUnlocked(false)
+              : () => {
+                  if (!proyeccionPin) {
+                    alert("Por favor, configurá el 'Pin proyeccion' en los Ajustes (icono de tuerca abajo a la izquierda) para poder habilitar la edición.");
+                    return;
+                  }
+                  setUnlockPin("");
+                  setUnlockError(null);
+                  setShowUnlockModal(true);
+                }
+          }
+        >
+          <Text
+            style={[
+              styles.lockBannerBtnText,
+              { color: isProjectionUnlocked ? "#15803d" : "#b91c1c" },
+            ]}
+          >
+            {isProjectionUnlocked ? "Bloquear" : "Desbloquear"}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   if (sessionLoading) {
     return (
@@ -654,15 +742,16 @@ export default function Home() {
     if (mainTab === "PROYECCIÓN") {
       return (
         <View style={styles.screenWrap}>
+          {renderProjectionLockBanner()}
           <View style={styles.subContent}>
-            {proyeccionTab === "DCP" && <DcpTab />}
-            {proyeccionTab === "CREDITOS" && <CreditosScreen />}
-            {proyeccionTab === "RMA" && <RmaTab />}
-            {proyeccionTab === "TRAILERS_SEMANALES" && <TrailersSemanalesScreen />}
-            {proyeccionTab === "CHEQUEO_COPIAS" && <ChequeoCopiasScreen />}
-            {proyeccionTab === "CONTROL_SEMANAL" && <ControlSemanalScreen />}
-            {proyeccionTab === "LAMPARAS" && <LamparasScreen />}
-            {proyeccionTab === "CIERRE_MES" && <CierreMesScreen />}
+            {proyeccionTab === "DCP" && <DcpTab readOnly={!isProjectionUnlocked} />}
+            {proyeccionTab === "CREDITOS" && <CreditosScreen readOnly={!isProjectionUnlocked} />}
+            {proyeccionTab === "RMA" && <RmaTab readOnly={!isProjectionUnlocked} />}
+            {proyeccionTab === "TRAILERS_SEMANALES" && <TrailersSemanalesScreen readOnly={!isProjectionUnlocked} />}
+            {proyeccionTab === "CHEQUEO_COPIAS" && <ChequeoCopiasScreen readOnly={!isProjectionUnlocked} />}
+            {proyeccionTab === "CONTROL_SEMANAL" && <ControlSemanalScreen readOnly={!isProjectionUnlocked} />}
+            {proyeccionTab === "LAMPARAS" && <LamparasScreen readOnly={!isProjectionUnlocked} />}
+            {proyeccionTab === "CIERRE_MES" && <CierreMesScreen readOnly={!isProjectionUnlocked} />}
           </View>
         </View>
       );
@@ -772,6 +861,83 @@ export default function Home() {
         fallbackTitle={cineLabel}
         onClose={() => setProfileVisible(false)}
       />
+
+      <Modal
+        visible={showUnlockModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowUnlockModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, isMobile && styles.modalCardMobile]}>
+            <Text style={styles.modalTitle}>Desbloquear Edición</Text>
+            <Text style={styles.modalMessage}>
+              Ingresá el PIN de proyección para habilitar las modificaciones.
+            </Text>
+
+            <TextInput
+              value={unlockPin}
+              onChangeText={setUnlockPin}
+              style={[
+                {
+                  backgroundColor: COLORS.card,
+                  borderWidth: 1,
+                  borderColor: COLORS.border,
+                  borderRadius: THEME.radius.md,
+                  paddingHorizontal: THEME.spacing.md,
+                  paddingVertical: THEME.spacing.md,
+                  color: COLORS.text,
+                  fontSize: THEME.fontSize.md,
+                  width: "100%",
+                  marginVertical: 12,
+                  textAlign: "center",
+                },
+              ]}
+              placeholder="Ingresá el PIN proyeccion"
+              placeholderTextColor={COLORS.muted}
+              secureTextEntry
+              keyboardType="number-pad"
+            />
+
+            {unlockError ? (
+              <Text style={{ color: COLORS.danger, fontWeight: "700", marginBottom: 12, textAlign: "center" }}>
+                {unlockError}
+              </Text>
+            ) : null}
+
+            <View style={[styles.modalActions, isMobile && styles.modalActionsMobile]}>
+              <TouchableOpacity
+                style={[
+                  styles.modalBtn,
+                  styles.modalBtnCancel,
+                  isMobile && styles.modalBtnMobile,
+                ]}
+                onPress={() => setShowUnlockModal(false)}
+              >
+                <Text style={styles.modalBtnCancelText}>Cancelar</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.modalBtn,
+                  styles.modalBtnPrimary,
+                  isMobile && styles.modalBtnMobile,
+                ]}
+                onPress={() => {
+                  if (unlockPin.trim() === proyeccionPin) {
+                    setIsProjectionUnlocked(true);
+                    setShowUnlockModal(false);
+                  } else {
+                    setUnlockError("PIN incorrecto.");
+                  }
+                }}
+              >
+                <Text style={styles.modalBtnPrimaryText}>Confirmar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         visible={showLogoutConfirm}
@@ -1327,5 +1493,47 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
     color: COLORS.text,
+  },
+  lockBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 12,
+    gap: 12,
+    flexWrap: "wrap",
+  },
+  lockBannerLocked: {
+    backgroundColor: "#fef2f2",
+    borderColor: "#fca5a5",
+  },
+  lockBannerUnlocked: {
+    backgroundColor: "#f0fdf4",
+    borderColor: "#86efac",
+  },
+  lockBannerTextWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flex: 1,
+    minWidth: 200,
+  },
+  lockBannerText: {
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  lockBannerBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "transparent",
+  },
+  lockBannerBtnText: {
+    fontSize: 13,
+    fontWeight: "700",
   },
 });

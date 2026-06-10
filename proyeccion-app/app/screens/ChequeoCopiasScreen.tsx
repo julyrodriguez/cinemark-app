@@ -172,7 +172,7 @@ interface EstrenoMovie {
   idioma: "Doblada" | "Subtitulada" | "Nativo";
 }
 
-export default function ChequeoCopiasScreen() {
+export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: boolean }) {
   const { displayName, cineId } = useAuthUser();
   const { isMobile } = useAppLayout();
 
@@ -334,6 +334,7 @@ export default function ChequeoCopiasScreen() {
 
   // Update a field in a specific estreno card
   const handleUpdateEstreno = (index: number, key: keyof EstrenoMovie, value: any) => {
+    if (readOnly) return;
     setEstrenos((prev) => {
       const copy = [...prev];
       copy[index] = {
@@ -346,6 +347,7 @@ export default function ChequeoCopiasScreen() {
 
   // Clear file selections
   const handleReset = () => {
+    if (readOnly) return;
     setOldUri(null);
     setOldName(null);
     setNewUri(null);
@@ -719,8 +721,8 @@ export default function ChequeoCopiasScreen() {
           <View style={s.uploadCol}>
             <Text style={s.pickerLabel}>Semana Vieja (Anterior)</Text>
             <Pressable
-              style={[s.filePickerBtn, !!oldUri && s.filePickerActive]}
-              onPress={pickOldFile}
+              style={[s.filePickerBtn, !!oldUri && s.filePickerActive, readOnly && { opacity: 0.6 }]}
+              onPress={readOnly ? undefined : pickOldFile}
             >
               <Text style={s.filePickerIcon}>{oldUri ? "📄" : "📥"}</Text>
               <Text style={s.filePickerText} numberOfLines={1}>
@@ -733,8 +735,8 @@ export default function ChequeoCopiasScreen() {
           <View style={s.uploadCol}>
             <Text style={s.pickerLabel}>Semana Nueva (Entrante)</Text>
             <Pressable
-              style={[s.filePickerBtn, !!newUri && s.filePickerActive]}
-              onPress={pickNewFile}
+              style={[s.filePickerBtn, !!newUri && s.filePickerActive, readOnly && { opacity: 0.6 }]}
+              onPress={readOnly ? undefined : pickNewFile}
             >
               <Text style={s.filePickerIcon}>{newUri ? "📄" : "📥"}</Text>
               <Text style={s.filePickerText} numberOfLines={1}>
@@ -746,16 +748,16 @@ export default function ChequeoCopiasScreen() {
 
         {/* Action Buttons */}
         <View style={s.actionRow}>
-          {(oldUri || newUri) && (
+          {(oldUri || newUri) && !readOnly && (
             <Pressable style={s.resetBtn} onPress={handleReset}>
               <Text style={s.resetBtnText}>Limpiar</Text>
             </Pressable>
           )}
 
           <Pressable
-            style={[s.compareBtn, (!oldUri || !newUri || loading) && s.compareBtnDisabled]}
-            onPress={handleCompare}
-            disabled={!oldUri || !newUri || loading}
+            style={[s.compareBtn, (!oldUri || !newUri || loading || readOnly) && s.compareBtnDisabled]}
+            onPress={readOnly ? undefined : handleCompare}
+            disabled={!oldUri || !newUri || loading || readOnly}
           >
             {loading ? (
               <ActivityIndicator color="#fff" size="small" />
@@ -823,6 +825,7 @@ export default function ChequeoCopiasScreen() {
                     placeholder="Ej: UIP, Warner, etc."
                     placeholderTextColor={COLORS.muted}
                     style={s.formInput}
+                    editable={!readOnly}
                   />
                   {/* Quick distributor pills */}
                   <View style={s.pillsRow}>
@@ -847,6 +850,7 @@ export default function ChequeoCopiasScreen() {
                     placeholder="Tu nombre"
                     placeholderTextColor={COLORS.muted}
                     style={s.formInput}
+                    editable={!readOnly}
                   />
                 </View>
 

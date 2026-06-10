@@ -83,7 +83,7 @@ interface LamparaData {
   horasRestantes: string;
 }
 
-export default function ControlSemanalScreen() {
+export default function ControlSemanalScreen({ readOnly = false }: { readOnly?: boolean }) {
   const { user, cineId, loading: sessionLoading, displayName } = useAuthUser();
   const { width } = useWindowDimensions();
   const isMobile = width < 768;
@@ -485,6 +485,7 @@ export default function ControlSemanalScreen() {
 
   // Función para guardar el reporte semanal en Firestore
   const handleSave = async () => {
+    if (readOnly) return;
     if (!cineId) return;
 
     if (!responsable.trim()) {
@@ -1164,9 +1165,9 @@ export default function ControlSemanalScreen() {
   return (
     <View style={s.root}>
       <ScrollView style={s.scroll} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
-
-        {/* Cabecera / Info de la Oficina Corporativa */}
-        <View style={s.corpCard}>
+        <View pointerEvents={readOnly ? "none" : "auto"}>
+          {/* Cabecera / Info de la Oficina Corporativa */}
+          <View style={s.corpCard}>
           <View style={s.corpHeader}>
             <Text style={s.corpTitle}>CINEMARK ARGENTINA</Text>
             <Text style={s.corpLabel}>Oficina Corporativa</Text>
@@ -1520,19 +1521,22 @@ export default function ControlSemanalScreen() {
             </View>
           </View>
         </View>
+        </View>
 
         {/* Botones de Acción */}
         <View style={[s.actionRow, isMobile && { flexDirection: "column", gap: 10 }]}>
-          <TouchableOpacity style={s.saveBtn} onPress={handleSave} disabled={saving}>
-            {saving ? (
-              <ActivityIndicator size="small" color="#FFF" />
-            ) : (
-              <>
-                <MaterialCommunityIcons name="database-outline" size={20} color="#FFF" />
-                <Text style={s.actionBtnText}>Guardar en BD</Text>
-              </>
-            )}
-          </TouchableOpacity>
+          {!readOnly && (
+            <TouchableOpacity style={s.saveBtn} onPress={handleSave} disabled={saving}>
+              {saving ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <>
+                  <MaterialCommunityIcons name="database-outline" size={20} color="#FFF" />
+                  <Text style={s.actionBtnText}>Guardar en BD</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity style={s.printBtn} onPress={handlePrint}>
             <MaterialCommunityIcons name="printer-outline" size={20} color="#FFF" />

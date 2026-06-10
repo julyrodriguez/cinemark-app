@@ -6,8 +6,8 @@
     "cleanUrls": true,
     "rewrites": [
       {
-        "source": "/:path*",
-        "destination": "/"
+        "source": "/((?!_expo/|assets/|.*\\.[a-zA-Z0-9]+$).*)",
+        "destination": "/index.html"
       }
     ]
   }

@@ -11,6 +11,7 @@ import {
     nombre: string;
     authEmail: string;
     salasCount: number;
+    proyeccionPin?: string;
     updatedAt?: any;
   };
   
@@ -30,6 +31,7 @@ import {
       nombre: String(data.nombre ?? ""),
       authEmail: String(data.authEmail ?? ""),
       salasCount: Number(data.salasCount ?? 0),
+      proyeccionPin: data.proyeccionPin ? String(data.proyeccionPin) : "",
       updatedAt: data.updatedAt,
     };
   }

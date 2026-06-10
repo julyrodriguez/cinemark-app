@@ -11,7 +11,7 @@ import {
 } from "react-native";
 
 import { getCineConfig, saveCineConfig } from "@/lib/cineConfig";
-import { changeCinemaPassword } from "@/lib/ipAccess";
+import { changeCinemaPassword, updateProyeccionPin } from "@/lib/ipAccess";
 import { COLORS, THEME } from "@/lib/theme";
 import { useAppLayout } from "@/lib/useAppLayout";
 
@@ -48,6 +48,13 @@ export default function CineProfileModal({
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [passwordOkMsg, setPasswordOkMsg] = useState<string | null>(null);
 
+  const [newProyeccionPin, setNewProyeccionPin] = useState("");
+  const [repeatProyeccionPin, setRepeatProyeccionPin] = useState("");
+  const [masterPin, setMasterPin] = useState("");
+  const [proyeccionPinError, setProyeccionPinError] = useState<string | null>(null);
+  const [proyeccionPinOkMsg, setProyeccionPinOkMsg] = useState<string | null>(null);
+  const [updatingProyeccionPin, setUpdatingProyeccionPin] = useState(false);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -62,6 +69,11 @@ export default function CineProfileModal({
       setPin("");
       setNewPassword("");
       setRepeatPassword("");
+      setNewProyeccionPin("");
+      setRepeatProyeccionPin("");
+      setMasterPin("");
+      setProyeccionPinError(null);
+      setProyeccionPinOkMsg(null);
 
       try {
         const cfg = await getCineConfig(cineId);
@@ -173,6 +185,54 @@ export default function CineProfileModal({
       setPasswordError("No se pudo cambiar la contraseña.");
     } finally {
       setChangingPassword(false);
+    }
+  };
+
+  const handleSaveProyeccionPin = async () => {
+    setProyeccionPinError(null);
+    setProyeccionPinOkMsg(null);
+
+    const cleanMasterPin = masterPin.trim();
+    const cleanProjPin = newProyeccionPin.trim();
+    const cleanRepeatProjPin = repeatProyeccionPin.trim();
+
+    if (!cleanProjPin) {
+      setProyeccionPinError("Ingresá el nuevo PIN proyeccion.");
+      return;
+    }
+
+    if (cleanProjPin !== cleanRepeatProjPin) {
+      setProyeccionPinError("Los PINs no coinciden.");
+      return;
+    }
+
+    if (!cleanMasterPin) {
+      setProyeccionPinError("Ingresá el PIN maestro.");
+      return;
+    }
+
+    try {
+      setUpdatingProyeccionPin(true);
+
+      const res = await updateProyeccionPin({
+        pin: cleanMasterPin,
+        proyeccionPin: cleanProjPin,
+      });
+
+      if (!res.ok) {
+        setProyeccionPinError(res.message);
+        return;
+      }
+
+      setProyeccionPinOkMsg(res.message);
+      setNewProyeccionPin("");
+      setRepeatProyeccionPin("");
+      setMasterPin("");
+    } catch (e) {
+      console.error(e);
+      setProyeccionPinError("No se pudo actualizar el PIN de proyección.");
+    } finally {
+      setUpdatingProyeccionPin(false);
     }
   };
 
@@ -299,6 +359,60 @@ export default function CineProfileModal({
               >
                 <Text style={s.btnPrimaryText}>
                   {changingPassword ? "Actualizando..." : "Cambiar contraseña"}
+                </Text>
+              </TouchableOpacity>
+
+              <View style={s.divider} />
+
+              <Text style={s.sectionTitle}>Pin proyeccion</Text>
+
+              <Text style={s.helpText}>
+                Para configurar o modificar el PIN de proyección, ingresá el nuevo PIN
+                y autorizalo con el PIN maestro.
+              </Text>
+
+              <Text style={s.label}>Nuevo PIN proyeccion</Text>
+              <TextInput
+                value={newProyeccionPin}
+                onChangeText={setNewProyeccionPin}
+                style={s.input}
+                placeholder="Ej: 1234"
+                placeholderTextColor={COLORS.muted}
+                secureTextEntry
+                keyboardType="number-pad"
+              />
+
+              <Text style={s.label}>Repetir PIN proyeccion</Text>
+              <TextInput
+                value={repeatProyeccionPin}
+                onChangeText={setRepeatProyeccionPin}
+                style={s.input}
+                placeholder="Repetir PIN proyeccion"
+                placeholderTextColor={COLORS.muted}
+                secureTextEntry
+                keyboardType="number-pad"
+              />
+
+              <Text style={s.label}>PIN maestro</Text>
+              <TextInput
+                value={masterPin}
+                onChangeText={setMasterPin}
+                style={s.input}
+                placeholder="PIN maestro"
+                placeholderTextColor={COLORS.muted}
+                secureTextEntry
+              />
+
+              {proyeccionPinError ? <Text style={s.errorText}>{proyeccionPinError}</Text> : null}
+              {proyeccionPinOkMsg ? <Text style={s.okText}>{proyeccionPinOkMsg}</Text> : null}
+
+              <TouchableOpacity
+                style={[s.btn, s.btnPrimary, s.sectionBtn]}
+                onPress={handleSaveProyeccionPin}
+                disabled={updatingProyeccionPin}
+              >
+                <Text style={s.btnPrimaryText}>
+                  {updatingProyeccionPin ? "Guardando..." : "Guardar Pin proyeccion"}
                 </Text>
               </TouchableOpacity>
 
