@@ -1507,22 +1507,22 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
                 </View>
 
                 <Text style={s.label}>Fecha Inicial *</Text>
-                <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+                <View style={{ flexDirection: width < 600 ? "column" : "row", gap: 8, alignItems: width < 600 ? "stretch" : "center" }}>
                   <TextInput
                     value={simManualStartDate}
                     onChangeText={setSimManualStartDate}
                     placeholder="YYYY-MM-DD"
                     placeholderTextColor={COLORS.muted}
-                    style={[s.input, { flex: 1 }]}
+                    style={[s.input, { flex: width < 600 ? undefined : 1 }]}
                   />
-                  <View style={{ flexDirection: "row", gap: 4 }}>
-                    <TouchableOpacity style={[s.adjustDateBtn, { minWidth: 60 }]} onPress={() => adjustManualDate(-1)}>
+                  <View style={{ flexDirection: "row", gap: 4, marginTop: width < 600 ? 4 : 0 }}>
+                    <TouchableOpacity style={[s.adjustDateBtn, { flex: 1, minWidth: 50 }]} onPress={() => adjustManualDate(-1)}>
                       <Text style={s.adjustDateBtnText}>-1 día</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={[s.adjustDateBtn, { minWidth: 50 }]} onPress={() => setSimManualStartDate(dayjs().format("YYYY-MM-DD"))}>
+                    <TouchableOpacity style={[s.adjustDateBtn, { flex: 1, minWidth: 50 }]} onPress={() => setSimManualStartDate(dayjs().format("YYYY-MM-DD"))}>
                       <Text style={s.adjustDateBtnText}>Hoy</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={[s.adjustDateBtn, { minWidth: 60 }]} onPress={() => adjustManualDate(1)}>
+                    <TouchableOpacity style={[s.adjustDateBtn, { flex: 1, minWidth: 50 }]} onPress={() => adjustManualDate(1)}>
                       <Text style={s.adjustDateBtnText}>+1 día</Text>
                     </TouchableOpacity>
                   </View>
