@@ -16,6 +16,14 @@ import * as DocumentPicker from "expo-document-picker";
 import * as Print from "expo-print";
 import dayjs from "dayjs";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import {
+  collection,
+  query,
+  onSnapshot,
+  addDoc,
+  serverTimestamp
+} from "firebase/firestore";
+import { db, CINES_COLLECTION } from "../../lib/firebaseConfig";
 
 import { useAuthUser } from "../../lib/useAuthUser";
 import { useAppLayout } from "../../lib/useAppLayout";
@@ -157,6 +165,25 @@ const cleanTitleForComparison = (title: string): string => {
     .trim();
 };
 
+const cleanMovieNameForCredits = (name: string): string => {
+  if (!name) return "";
+  let clean = name.toUpperCase();
+  
+  // Remove typical tags as whole words (like 2D, 3D, DBOX, SUB, CAS, DOB, etc.)
+  const tags = [
+    "2D", "3D", "DBOX", "SUB", "CAS", "DOB", "NAT", "LAT", "XD", "4D", "4DX", 
+    "ATMOS", "5\\.1", "7\\.1", "OV", "VF", "FTR", "TRL", "IMAX", "LASER"
+  ];
+  
+  const tagRegex = new RegExp(`\\b(${tags.join("|")})\\b`, "gi");
+  clean = clean.replace(tagRegex, "");
+  
+  // Replace underscores, dashes, multiple spaces with a single space
+  clean = clean.replace(/[_\-\s]+/g, " ");
+  
+  return clean.trim();
+};
+
 const COMMON_DISTRIBUTORS = ["UIP", "Warner", "Disney", "Sony", "Diamond", "BF + Paris", "Digicine"];
 
 interface EstrenoMovie {
@@ -174,8 +201,56 @@ interface EstrenoMovie {
 }
 
 export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: boolean }) {
-  const { displayName, cineId } = useAuthUser();
+  const { user, displayName, cineId } = useAuthUser();
   const { isMobile } = useAppLayout();
+
+  const [existingCredits, setExistingCredits] = useState<string[]>([]);
+  const [generatingCredits, setGeneratingCredits] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (!cineId) return;
+    const q = query(collection(db, CINES_COLLECTION, cineId, "creditos"));
+    const unsub = onSnapshot(q, (snap) => {
+      const titles = snap.docs.map(doc => (doc.data().pelicula ?? "").toUpperCase().trim());
+      setExistingCredits(titles);
+    }, (err) => {
+      console.error("Error listening to creditos:", err);
+    });
+    return unsub;
+  }, [cineId]);
+
+  const generarCreditoDesdeCopia = async (peliculaName: string) => {
+    if (!cineId || !user) return;
+    
+    const baseTitle = cleanMovieNameForCredits(peliculaName);
+    if (existingCredits.includes(baseTitle.toUpperCase().trim())) {
+      Alert.alert("Créditos", `Ya existe una tarjeta para "${baseTitle}" en créditos.`);
+      return;
+    }
+
+    setGeneratingCredits(prev => ({ ...prev, [peliculaName]: true }));
+
+    try {
+      await addDoc(collection(db, CINES_COLLECTION, cineId, "creditos"), {
+        pelicula: baseTitle,
+        peliculaLower: baseTitle.toLowerCase(),
+        horaCredito: "00:00:00",
+        horaApaga1: null,
+        horaPrende1: null,
+        horaApaga2: null,
+        horaPrende2: null,
+        horas: ["00:00:00"],
+        createdAt: serverTimestamp(),
+        createdBy: user.uid,
+      });
+      Alert.alert("Créditos", `Tarjeta de créditos para "${baseTitle}" generada con éxito.`);
+    } catch (e: any) {
+      console.error("Error al generar credito:", e);
+      Alert.alert("Error", "No se pudo generar la tarjeta en créditos.");
+    } finally {
+      setGeneratingCredits(prev => ({ ...prev, [peliculaName]: false }));
+    }
+  };
 
   // File picker states
   const [oldUri, setOldUri] = useState<string | null>(null);
@@ -1011,10 +1086,58 @@ export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: b
                       </View>
                     </View>
 
-                    {/* Print Button */}
-                    <Pressable style={s.printBtn} onPress={() => handlePrint(item)}>
-                      <Text style={s.printBtnText}>🖨️ IMPRIMIR PLANILLA DE COPIA</Text>
-                    </Pressable>
+                    {/* Print Button & Generate Credits Button */}
+                    <View style={{ gap: THEME.spacing.sm, marginTop: THEME.spacing.sm }}>
+                      {(() => {
+                        const baseTitle = cleanMovieNameForCredits(item.pelicula);
+                        const creditCardExists = existingCredits.includes(baseTitle.toUpperCase().trim());
+
+                        if (readOnly || creditCardExists) return null;
+
+                        return (
+                          <Pressable
+                            style={[
+                              s.printBtn,
+                              { backgroundColor: "#16A34A" },
+                              generatingCredits[item.pelicula] && { opacity: 0.6 }
+                            ]}
+                            onPress={() => {
+                              const title = "Generar Créditos";
+                              const msg = `¿Crear tarjeta en Créditos para "${baseTitle}"?`;
+
+                              if (Platform.OS === "web") {
+                                if (window.confirm(`${title}\n\n${msg}`)) {
+                                  generarCreditoDesdeCopia(item.pelicula);
+                                }
+                              } else {
+                                Alert.alert(
+                                  title,
+                                  msg,
+                                  [
+                                    { text: "Cancelar", style: "cancel" },
+                                    {
+                                      text: "Crear",
+                                      onPress: () => generarCreditoDesdeCopia(item.pelicula)
+                                    }
+                                  ]
+                                );
+                              }
+                            }}
+                            disabled={generatingCredits[item.pelicula]}
+                          >
+                            {generatingCredits[item.pelicula] ? (
+                              <ActivityIndicator size="small" color="#fff" />
+                            ) : (
+                              <Text style={s.printBtnText}>➕ CREAR TARJETA EN CRÉDITOS</Text>
+                            )}
+                          </Pressable>
+                        );
+                      })()}
+
+                      <Pressable style={s.printBtn} onPress={() => handlePrint(item)}>
+                        <Text style={s.printBtnText}>🖨️ IMPRIMIR PLANILLA DE COPIA</Text>
+                      </Pressable>
+                    </View>
                   </>
                 )}
               </View>
