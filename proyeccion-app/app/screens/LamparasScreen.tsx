@@ -1568,14 +1568,22 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
                 {/* Day by Day Table */}
                 <View style={s.tableContainer}>
                   {/* Table Header */}
-                  <View style={s.tableHeaderRow}>
-                    <Text style={[s.tableColHeader, { flex: 1.2 }]}>Jornada</Text>
-                    <Text style={[s.tableColHeader, { flex: 2 }]}>Fecha</Text>
-                    <Text style={[s.tableColHeader, { flex: 1.5, textAlign: "right" }]}>Inicio</Text>
-                    <Text style={[s.tableColHeader, { flex: 1.2, textAlign: "right" }]}>Uso</Text>
-                    <Text style={[s.tableColHeader, { flex: 1.5, textAlign: "right" }]}>Final</Text>
-                    <Text style={[s.tableColHeader, { flex: 2.3, textAlign: "center" }]}>Estado</Text>
-                  </View>
+                  {width < 600 ? (
+                    <View style={s.tableHeaderRow}>
+                      <Text style={[s.tableColHeader, { flex: 2.2 }]}>Jornada / Fecha</Text>
+                      <Text style={[s.tableColHeader, { flex: 1.3, textAlign: "right" }]}>Final</Text>
+                      <Text style={[s.tableColHeader, { flex: 2.5, textAlign: "center" }]}>Estado</Text>
+                    </View>
+                  ) : (
+                    <View style={s.tableHeaderRow}>
+                      <Text style={[s.tableColHeader, { flex: 1.2 }]}>Jornada</Text>
+                      <Text style={[s.tableColHeader, { flex: 2 }]}>Fecha</Text>
+                      <Text style={[s.tableColHeader, { flex: 1.5, textAlign: "right" }]}>Inicio</Text>
+                      <Text style={[s.tableColHeader, { flex: 1.2, textAlign: "right" }]}>Uso</Text>
+                      <Text style={[s.tableColHeader, { flex: 1.5, textAlign: "right" }]}>Final</Text>
+                      <Text style={[s.tableColHeader, { flex: 2.3, textAlign: "center" }]}>Estado</Text>
+                    </View>
+                  )}
                   
                   {/* Table Body */}
                   {simResult.simulationDays.map((item, index) => {
@@ -1587,12 +1595,12 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
                     if (item.status === "RECOMENDADO") {
                       badgeBg = "#FEF3C7";
                       badgeText = "#92400E";
-                      statusText = "Cambiar al cierre";
+                      statusText = width < 600 ? "Cambiar" : "Cambiar al cierre";
                       statusIcon = "wrench";
                     } else if (item.status === "INSUFICIENTE") {
                       badgeBg = "#FDE8E8";
                       badgeText = "#9B1C1C";
-                      statusText = "Horas insuficientes";
+                      statusText = width < 600 ? "Agotado" : "Horas insuficientes";
                       statusIcon = "close-circle";
                     }
                     
@@ -1600,22 +1608,41 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
 
                     return (
                       <View key={item.dayIndex} style={[s.tableRow, index % 2 === 1 && s.tableRowAlternating]}>
-                        <Text style={[s.tableCell, { flex: 1.2, fontWeight: "700" }]}>Día {item.dayIndex}</Text>
-                        <Text style={[s.tableCell, { flex: 2, fontSize: 12, textTransform: "capitalize" }]} numberOfLines={1}>
-                          {item.dateFormatted}
-                        </Text>
-                        <Text style={[s.tableCell, { flex: 1.5, textAlign: "right" }]}>{item.hoursAtStart} h</Text>
-                        <Text style={[s.tableCell, { flex: 1.2, textAlign: "right", color: COLORS.muted }]}>{dailyUsageVal} h</Text>
-                        <Text style={[s.tableCell, { flex: 1.5, textAlign: "right", fontWeight: "600" }]}>{item.hoursAtEnd} h</Text>
-                        
-                        <View style={{ flex: 2.3, alignItems: "center", justifyContent: "center" }}>
-                          <View style={[s.statusBadge, { backgroundColor: badgeBg }]}>
-                            <MaterialCommunityIcons name={statusIcon as any} size={11} color={badgeText} style={{ marginRight: 3 }} />
-                            <Text style={[s.statusBadgeText, { color: badgeText }]} numberOfLines={1}>
-                              {statusText}
+                        {width < 600 ? (
+                          <>
+                            <Text style={[s.tableCell, { flex: 2.2, fontSize: 11, textTransform: "capitalize" }]} numberOfLines={1}>
+                              D{item.dayIndex} - {dayjs(item.date).format("ddd DD/MM")}
                             </Text>
-                          </View>
-                        </View>
+                            <Text style={[s.tableCell, { flex: 1.3, textAlign: "right", fontWeight: "600" }]}>{item.hoursAtEnd} h</Text>
+                            <View style={{ flex: 2.5, alignItems: "center", justifyContent: "center" }}>
+                              <View style={[s.statusBadge, { backgroundColor: badgeBg }]}>
+                                <MaterialCommunityIcons name={statusIcon as any} size={11} color={badgeText} style={{ marginRight: 3 }} />
+                                <Text style={[s.statusBadgeText, { color: badgeText }]} numberOfLines={1}>
+                                  {statusText}
+                                </Text>
+                              </View>
+                            </View>
+                          </>
+                        ) : (
+                          <>
+                            <Text style={[s.tableCell, { flex: 1.2, fontWeight: "700" }]}>Día {item.dayIndex}</Text>
+                            <Text style={[s.tableCell, { flex: 2, fontSize: 12, textTransform: "capitalize" }]} numberOfLines={1}>
+                              {item.dateFormatted}
+                            </Text>
+                            <Text style={[s.tableCell, { flex: 1.5, textAlign: "right" }]}>{item.hoursAtStart} h</Text>
+                            <Text style={[s.tableCell, { flex: 1.2, textAlign: "right", color: COLORS.muted }]}>{dailyUsageVal} h</Text>
+                            <Text style={[s.tableCell, { flex: 1.5, textAlign: "right", fontWeight: "600" }]}>{item.hoursAtEnd} h</Text>
+                            
+                            <View style={{ flex: 2.3, alignItems: "center", justifyContent: "center" }}>
+                              <View style={[s.statusBadge, { backgroundColor: badgeBg }]}>
+                                <MaterialCommunityIcons name={statusIcon as any} size={11} color={badgeText} style={{ marginRight: 3 }} />
+                                <Text style={[s.statusBadgeText, { color: badgeText }]} numberOfLines={1}>
+                                  {statusText}
+                                </Text>
+                              </View>
+                            </View>
+                          </>
+                        )}
                       </View>
                     );
                   })}
