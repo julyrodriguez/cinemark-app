@@ -73,6 +73,25 @@ const formatDiscoLabel = (disco: string) => {
   return `Disco #${val}`;
 };
 
+const cleanDcpMovieName = (name: string): string => {
+  if (!name) return "";
+  let clean = name.toUpperCase();
+  
+  // Remove typical tags as whole words (like 2D, 3D, DBOX, SUB, CAS, DOB, etc.)
+  const tags = [
+    "2D", "3D", "DBOX", "SUB", "CAS", "DOB", "NAT", "LAT", "XD", "4D", "4DX", 
+    "ATMOS", "5\\.1", "7\\.1", "OV", "VF", "FTR", "TRL", "IMAX", "LASER"
+  ];
+  
+  const tagRegex = new RegExp(`\\b(${tags.join("|")})\\b`, "gi");
+  clean = clean.replace(tagRegex, "");
+  
+  // Replace underscores, dashes, multiple spaces with a single space
+  clean = clean.replace(/[_\-\s]+/g, " ");
+  
+  return clean.trim();
+};
+
 /* ── component ── */
 
 export default function DcpScreen({ readOnly = false }: { readOnly?: boolean }) {
@@ -91,6 +110,63 @@ export default function DcpScreen({ readOnly = false }: { readOnly?: boolean }) 
   const [historialSearch, setHistorialSearch] = useState("");
   const searchTimer = React.useRef<NodeJS.Timeout>(undefined);
   const HISTORIAL_PAGE = 10;
+
+  const [existingCredits, setExistingCredits] = useState<string[]>([]);
+  const [generatingCredits, setGeneratingCredits] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (!cineId) return;
+    const q = query(collection(db, CINES_COLLECTION, cineId, "creditos"));
+    const unsub = onSnapshot(q, (snap) => {
+      const titles = snap.docs.map(doc => (doc.data().pelicula ?? "").toUpperCase().trim());
+      setExistingCredits(titles);
+    }, (err) => {
+      console.error("Error listening to creditos:", err);
+    });
+    return unsub;
+  }, [cineId]);
+
+  const moviesToCreate = React.useMemo(() => {
+    const uniqueNames = Array.from(
+      new Set(
+        activos.map(item => cleanDcpMovieName(item.nombre))
+      )
+    ).filter(Boolean);
+    
+    return uniqueNames.filter(name => !existingCredits.includes(name.toUpperCase().trim()));
+  }, [activos, existingCredits]);
+
+  const generarCreditoDesdeDcp = async (peliculaName: string) => {
+    if (!cineId || !user) return;
+    
+    if (existingCredits.includes(peliculaName.toUpperCase().trim())) {
+      Alert.alert("DCP", `Ya existe una tarjeta para "${peliculaName}" en créditos.`);
+      return;
+    }
+
+    setGeneratingCredits(prev => ({ ...prev, [peliculaName]: true }));
+
+    try {
+      await addDoc(collection(db, CINES_COLLECTION, cineId, "creditos"), {
+        pelicula: peliculaName,
+        peliculaLower: peliculaName.toLowerCase(),
+        horaCredito: "00:00:00",
+        horaApaga1: null,
+        horaPrende1: null,
+        horaApaga2: null,
+        horaPrende2: null,
+        horas: ["00:00:00"],
+        createdAt: serverTimestamp(),
+        createdBy: user.uid,
+      });
+      Alert.alert("DCP", `Tarjeta de créditos para "${peliculaName}" generada con éxito.`);
+    } catch (e: any) {
+      console.error("Error al generar credito:", e);
+      Alert.alert("Error", "No se pudo generar la tarjeta en créditos.");
+    } finally {
+      setGeneratingCredits(prev => ({ ...prev, [peliculaName]: false }));
+    }
+  };
 
   const handleNumeroDiscoChange = (t: string) => {
     // Si contiene algo que no sea número
@@ -518,14 +594,23 @@ export default function DcpScreen({ readOnly = false }: { readOnly?: boolean }) 
     }
   };
   const revertirDcp = (d: Dcp) => {
-    Alert.alert(
-      "Revertir retiro",
-      `¿Volver "${d.nombre}" a activos?`,
-      [
-        { text: "Cancelar", style: "cancel" },
-        { text: "Confirmar", onPress: () => deshacerRetiro(d) },
-      ]
-    );
+    const title = "Revertir retiro";
+    const msg = `¿Volver "${d.nombre}" a activos?`;
+
+    if (Platform.OS === "web") {
+      if (window.confirm(`${title}\n\n${msg}`)) {
+        deshacerRetiro(d);
+      }
+    } else {
+      Alert.alert(
+        title,
+        msg,
+        [
+          { text: "Cancelar", style: "cancel" },
+          { text: "Confirmar", onPress: () => deshacerRetiro(d) },
+        ]
+      );
+    }
   };
   const removeDcp = (d: Dcp) => {
     setDcpToDelete(d);
@@ -717,6 +802,65 @@ export default function DcpScreen({ readOnly = false }: { readOnly?: boolean }) 
                 {renderActiveItem({ item })}
               </View>
             ))}
+          </View>
+        )}
+
+        {/* ── SECCION DE GENERAR CREDITOS DESDE DCP ── */}
+        {!readOnly && moviesToCreate.length > 0 && (
+          <View style={styles.estrenosCreditsSection}>
+            <Text style={styles.sectionHeaderTitle}>
+              🎥 Estrenos Detectados (Pendientes en Créditos)
+            </Text>
+            <Text style={styles.sectionSubtitle}>
+              Se detectaron nuevos DCPs activos. Crea su tarjeta en la sección de Créditos con un solo toque:
+            </Text>
+            <View style={styles.creditsGridContainer}>
+              {moviesToCreate.map((movieName) => (
+                <View key={movieName} style={styles.creditsGenerateCard}>
+                  <Text style={styles.creditsGenerateMovieName} numberOfLines={2}>
+                    {movieName}
+                  </Text>
+                  <TouchableOpacity
+                    style={[
+                      styles.creditsGenerateBtn,
+                      generatingCredits[movieName] && { opacity: 0.6 }
+                    ]}
+                    onPress={() => {
+                      const title = "Generar Créditos";
+                      const msg = `¿Crear tarjeta en Créditos para "${movieName}"?`;
+
+                      if (Platform.OS === "web") {
+                        if (window.confirm(`${title}\n\n${msg}`)) {
+                          generarCreditoDesdeDcp(movieName);
+                        }
+                      } else {
+                        Alert.alert(
+                          title,
+                          msg,
+                          [
+                            { text: "Cancelar", style: "cancel" },
+                            {
+                              text: "Crear",
+                              onPress: () => generarCreditoDesdeDcp(movieName)
+                            }
+                          ]
+                        );
+                      }
+                    }}
+                    disabled={generatingCredits[movieName]}
+                  >
+                    {generatingCredits[movieName] ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <>
+                        <MaterialCommunityIcons name="plus" size={16} color="#fff" style={{ marginRight: 4 }} />
+                        <Text style={styles.creditsGenerateBtnText}>Crear en Créditos</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
           </View>
         )}
 
@@ -1679,5 +1823,65 @@ const styles = StyleSheet.create({
     color: COLORS.muted,
     textAlign: "center",
     marginTop: 24,
+  },
+
+  estrenosCreditsSection: {
+    backgroundColor: COLORS.card,
+    borderRadius: THEME.radius.lg,
+    padding: THEME.spacing.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginTop: 15,
+    marginBottom: 10,
+    marginHorizontal: 8,
+    ...THEME.shadow.soft,
+  },
+  sectionHeaderTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: COLORS.text,
+    marginBottom: 4,
+  },
+  sectionSubtitle: {
+    fontSize: 12,
+    color: COLORS.muted,
+    lineHeight: 16,
+    marginBottom: 14,
+  },
+  creditsGridContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  creditsGenerateCard: {
+    flex: 1,
+    minWidth: 200,
+    backgroundColor: COLORS.bgMobile,
+    borderRadius: THEME.radius.md,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  creditsGenerateMovieName: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: COLORS.text,
+  },
+  creditsGenerateBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#16A34A",
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginTop: 4,
+  },
+  creditsGenerateBtnText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 12,
   },
 });
