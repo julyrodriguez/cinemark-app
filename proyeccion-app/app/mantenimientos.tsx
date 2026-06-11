@@ -33,14 +33,18 @@ import PageTitle from "@/components/PageTitle";
 import { auth, db, CINES_COLLECTION } from "../lib/firebaseConfig";
 import { COLORS, THEME } from "../lib/theme";
 import { useAuthUser } from "../lib/useAuthUser";
+import { useAppLayout } from "../lib/useAppLayout";
 
 export interface Mantenimiento {
   id: string;
   date: string; // YYYY-MM-DD
+  endDate?: string; // YYYY-MM-DD
+  duration?: number;
   type: "A" | "B" | "C" | "D";
   performedBy: "Nosotros" | "Ingeniero";
   notes?: string;
   calendarEventId?: string | null;
+  calendarEventIds?: string[];
   createdAt?: any;
   createdBy?: string;
   createdName?: string;
@@ -53,6 +57,13 @@ function getDaysBetween(dateStr1: string, dateStr2: string): number {
   const diffTime = Math.abs(d2.getTime() - d1.getTime());
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   return diffDays;
+}
+
+// Helper: Add days to YYYY-MM-DD string
+function addDaysToYmd(ymd: string, days: number): string {
+  const d = new Date(ymd + "T12:00:00");
+  d.setDate(d.getDate() + days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 // Helper: Format date string YYYY-MM-DD to DD/MM/YYYY
@@ -75,6 +86,25 @@ function formatDisplayDate(dateStr: string): string {
   const monthName = months[date.getMonth()];
   const year = date.getFullYear();
   return `${dayName}, ${day} de ${monthName} de ${year}`;
+}
+
+// Helper: Short date format for mobile (e.g. "12 Jun")
+function formatDisplayDateShort(dateStr: string): string {
+  const date = new Date(dateStr + "T12:00:00");
+  const day = date.getDate();
+  const monthsShort = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+  return `${day} ${monthsShort[date.getMonth()]}`;
+}
+
+// Helper: Format date range
+function formatRangeDate(start: string, end?: string): string {
+  if (!end || start === end) return formatDisplayDate(start);
+  return `Del ${formatDisplayDate(start)} al ${formatDisplayDate(end)}`;
+}
+
+function formatRangeDateShort(start: string, end?: string): string {
+  if (!end || start === end) return formatDisplayDateShort(start);
+  return `${formatDisplayDateShort(start)} al ${formatDisplayDateShort(end)}`;
 }
 
 // Helper: Relative time (e.g. "Hace 5 días", "Hoy", "Ayer")
@@ -110,6 +140,7 @@ function getRelativeTime(dateStr: string): string {
 
 export default function MantenimientosScreen({ readOnly = false }: { readOnly?: boolean }) {
   const { user, cineId, loading: sessionLoading, displayName } = useAuthUser();
+  const { isMobile } = useAppLayout();
 
   const [activeSubTab, setActiveSubTab] = useState<"fechas" | "barco_pc">("fechas");
   const [loading, setLoading] = useState(true);
@@ -118,6 +149,7 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
   // Form states
   const [showForm, setShowForm] = useState(false);
   const [type, setType] = useState<"A" | "B" | "C" | "D">("A");
+  const [duration, setDuration] = useState<number>(1);
   const [notes, setNotes] = useState("");
 
   // Date states
@@ -129,7 +161,7 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [mtmToDelete, setMtmToDelete] = useState<Mantenimiento | null>(null);
 
-  // Fetch maintenances
+  // Fetch mantenimientos
   useEffect(() => {
     let unsub: any;
 
@@ -171,7 +203,7 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
     return () => unsub && unsub();
   }, [user, cineId, sessionLoading]);
 
-  // Automatic migration: check calendar events of type MTM that are not yet in mantenimientos, and migrate them as type B.
+  // Automatic client-side migration: migrate older MTM calendar events to Type B mantenimientos
   useEffect(() => {
     if (sessionLoading || !user || !cineId || loading) return;
 
@@ -190,7 +222,6 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
           const eventData = docSnap.data();
           const eventId = docSnap.id;
           
-          // Check if this eventId is already linked or date matches
           const isLinked = mantenimientos.some(
             (m) => m.calendarEventId === eventId || (m.date === eventData.date && m.type === "B")
           );
@@ -230,8 +261,8 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
     };
   }, [user, cineId, sessionLoading, loading, mantenimientos]);
 
-  // Compute gaps and stats
-  const { chronologicalList, displayList, stats } = useMemo(() => {
+  // Compute gaps, stats and visual groups (difference of 1 day or less)
+  const { displayGroups, stats } = useMemo(() => {
     // 1. Sort ascending to calculate consecutive gaps correctly
     const sortedAsc = [...mantenimientos].sort((a, b) => {
       const dateComp = a.date.localeCompare(b.date);
@@ -257,8 +288,38 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
       return timeB - timeA;
     });
 
-    // 3. Compute stats
+    // 3. Group items: if the difference between a newer item's start date and an older item's end date is <= 1 day, group them
+    const groups: Mantenimiento[][] = [];
+    let currentGroup: Mantenimiento[] = [];
+
+    for (let i = 0; i < sortedDesc.length; i++) {
+      const item = sortedDesc[i];
+      if (currentGroup.length === 0) {
+        currentGroup.push(item);
+      } else {
+        const lastItemInGroup = currentGroup[currentGroup.length - 1];
+        // list is descending, so lastItemInGroup.date >= item.date.
+        // If lastItemInGroup has endDate, compare item.date with lastItemInGroup.date (start date) or compare start/end.
+        // To be safe, calculate diff between start date of the newer item (lastItemInGroup) and end date of the older item (item.endDate || item.date)
+        const date1 = lastItemInGroup.date;
+        const date2 = item.endDate || item.date;
+        const diff = getDaysBetween(date1, date2);
+
+        if (diff <= 1) {
+          currentGroup.push(item);
+        } else {
+          groups.push(currentGroup);
+          currentGroup = [item];
+        }
+      }
+    }
+    if (currentGroup.length > 0) {
+      groups.push(currentGroup);
+    }
+
+    // 4. Compute stats
     const total = mantenimientos.length;
+    const totalDays = mantenimientos.reduce((acc, m) => acc + (m.duration || 1), 0);
     const ultimo = sortedDesc[0] || null;
 
     let avgGap: number | null = null;
@@ -274,14 +335,29 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
       }
     }
 
+    // Associate gaps to groups
+    // The gap will be between consecutive groups.
+    // Group G[j] is newer than G[j+1].
+    // G[j] oldest item date vs G[j+1] newest item date.
+    const displayGroupsWithGaps = groups.map((g, idx) => {
+      let groupGap: number | null = null;
+      if (idx < groups.length - 1) {
+        const currentOldest = g[g.length - 1];
+        const nextNewest = groups[idx + 1][0];
+        groupGap = getDaysBetween(nextNewest.date, currentOldest.date);
+      }
+      return {
+        id: g[0].id,
+        items: g,
+        gapDays: groupGap,
+      };
+    });
+
     return {
-      chronologicalList: sortedAsc,
-      displayList: sortedDesc.map((item) => ({
-        ...item,
-        gapDays: gapsMap[item.id] || null,
-      })),
+      displayGroups: displayGroupsWithGaps,
       stats: {
         total,
+        totalDays,
         ultimo,
         avgGap,
       },
@@ -294,6 +370,7 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
     setCustomDateText(formattedWeb);
     setCustomDateValue(today);
     setType("A");
+    setDuration(1);
     setNotes("");
     setShowForm(true);
   };
@@ -334,26 +411,35 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
 
       const performedBy = (type === "A" || type === "B") ? "Nosotros" : "Ingeniero";
 
-      // 1. Add Event to general calendarEvents collection (as type MTM)
+      // 1. Create multiple calendar events (one for each day)
+      const calendarEventIds: string[] = [];
       const calColRef = collection(db, CINES_COLLECTION, cineId, "calendarEvents");
-      const calDocRef = await addDoc(calColRef, {
-        date: dateStr,
-        type: "MTM",
-        title: "MTM",
-        description: `Mantenimiento Tipo ${type} (${performedBy === "Nosotros" ? "Nosotros" : "Ingeniero"})${notes.trim() ? " - " + notes.trim() : ""}`,
-        createdBy: user.uid,
-        createdName: storedDisplayName,
-        createdAt: serverTimestamp(),
-        cineId: cineId,
-      });
+      
+      for (let i = 0; i < duration; i++) {
+        const eventDate = addDaysToYmd(dateStr, i);
+        const calDocRef = await addDoc(calColRef, {
+          date: eventDate,
+          type: "MTM",
+          title: "MTM",
+          description: `Mantenimiento Tipo ${type} (${performedBy === "Nosotros" ? "Nosotros" : "Ingeniero"})${notes.trim() ? " - " + notes.trim() : ""}`,
+          createdBy: user.uid,
+          createdName: storedDisplayName,
+          createdAt: serverTimestamp(),
+          cineId: cineId,
+        });
+        calendarEventIds.push(calDocRef.id);
+      }
 
-      // 2. Add maintenance record with linked calendarEventId
+      // 2. Add maintenance record with linked calendarEventIds
       await addDoc(collection(db, CINES_COLLECTION, cineId, "mantenimientos"), {
         date: dateStr,
+        endDate: addDaysToYmd(dateStr, duration - 1),
+        duration,
         type,
         performedBy,
         notes: notes.trim() || null,
-        calendarEventId: calDocRef.id,
+        calendarEventIds,
+        calendarEventId: calendarEventIds[0], // legacy fallback
         createdAt: serverTimestamp(),
         createdBy: user.uid,
         createdName: storedDisplayName,
@@ -376,10 +462,15 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
     if (!mtmToDelete || !cineId) return;
 
     try {
-      // 1. Delete associated calendar event
-      if (mtmToDelete.calendarEventId) {
+      // 1. Delete associated calendar events
+      if (mtmToDelete.calendarEventIds && mtmToDelete.calendarEventIds.length > 0) {
+        for (const eventId of mtmToDelete.calendarEventIds) {
+          await deleteDoc(doc(db, CINES_COLLECTION, cineId, "calendarEvents", eventId));
+        }
+      } else if (mtmToDelete.calendarEventId) {
         await deleteDoc(doc(db, CINES_COLLECTION, cineId, "calendarEvents", mtmToDelete.calendarEventId));
       }
+      
       // 2. Delete maintenance
       await deleteDoc(doc(db, CINES_COLLECTION, cineId, "mantenimientos", mtmToDelete.id));
 
@@ -410,43 +501,177 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
       : "Ninguno";
 
     return (
-      <View style={styles.statsRow}>
-        <View style={styles.statsCard}>
-          <MaterialCommunityIcons name="clipboard-list-outline" size={22} color={COLORS.primary} style={{ marginBottom: 6 }} />
-          <Text style={styles.statsVal}>{stats.total}</Text>
-          <Text style={styles.statsLbl}>Total Mtm</Text>
+      <View style={[styles.statsRow, isMobile && styles.statsRowMobile]}>
+        <View style={[styles.statsCard, isMobile && styles.statsCardMobile]}>
+          <MaterialCommunityIcons name="clipboard-list-outline" size={isMobile ? 16 : 22} color={COLORS.primary} style={{ marginBottom: isMobile ? 3 : 6 }} />
+          <Text style={[styles.statsVal, isMobile && styles.statsValMobile]}>{stats.totalDays}</Text>
+          <Text style={[styles.statsLbl, isMobile && styles.statsLblMobile]}>Total Días</Text>
         </View>
 
-        <View style={[styles.statsCard, { flex: 1.5 }]}>
-          <MaterialCommunityIcons name="clock-outline" size={22} color={COLORS.primary} style={{ marginBottom: 6 }} />
-          <Text style={styles.statsVal} numberOfLines={1}>{ultimoText}</Text>
-          <Text style={styles.statsLbl}>Último Realizado</Text>
+        <View style={[styles.statsCard, isMobile && styles.statsCardMobile, { flex: isMobile ? 1.4 : 1.5 }]}>
+          <MaterialCommunityIcons name="clock-outline" size={isMobile ? 16 : 22} color={COLORS.primary} style={{ marginBottom: isMobile ? 3 : 6 }} />
+          <Text style={[styles.statsVal, isMobile && styles.statsValMobile]} numberOfLines={1}>{ultimoText}</Text>
+          <Text style={[styles.statsLbl, isMobile && styles.statsLblMobile]}>Último Mtm</Text>
         </View>
 
-        <View style={styles.statsCard}>
-          <MaterialCommunityIcons name="calendar-range" size={22} color={COLORS.primary} style={{ marginBottom: 6 }} />
-          <Text style={styles.statsVal}>
+        <View style={[styles.statsCard, isMobile && styles.statsCardMobile]}>
+          <MaterialCommunityIcons name="calendar-range" size={isMobile ? 16 : 22} color={COLORS.primary} style={{ marginBottom: isMobile ? 3 : 6 }} />
+          <Text style={[styles.statsVal, isMobile && styles.statsValMobile]}>
             {stats.avgGap !== null ? `${stats.avgGap}d` : "N/A"}
           </Text>
-          <Text style={styles.statsLbl}>Frecuencia Promedio</Text>
+          <Text style={[styles.statsLbl, isMobile && styles.statsLblMobile]}>Frecuencia</Text>
         </View>
       </View>
     );
   };
 
-  const renderMtmItem = ({ item }: { item: Mantenimiento & { gapDays?: number | null } }) => {
+  const renderSingleCardContent = (item: Mantenimiento, hideHeader = false) => {
     const styleMeta = getTypeStyle(item.type);
     const isEngineer = item.type === "C" || item.type === "D";
+    const dateText = item.duration && item.duration > 1 
+      ? (isMobile ? formatRangeDateShort(item.date, item.endDate) : formatRangeDate(item.date, item.endDate))
+      : (isMobile ? formatDisplayDateShort(item.date) : formatDisplayDate(item.date));
 
     return (
+      <View style={styles.cardContent}>
+        {!hideHeader && (
+          <View style={styles.cardHeader}>
+            <View style={[styles.typeBadge, { backgroundColor: styleMeta.bg, borderColor: styleMeta.border }]}>
+              <Text style={[styles.typeBadgeText, { color: styleMeta.text, fontSize: isMobile ? 10 : 12 }]}>
+                Tipo {item.type} {item.duration && item.duration > 1 ? `(${item.duration}d)` : ""}
+              </Text>
+            </View>
+
+            <View style={styles.performedBadge}>
+              <MaterialCommunityIcons
+                name={isEngineer ? "account-hard-hat-outline" : "account-supervisor-outline"}
+                size={isMobile ? 12 : 14}
+                color={isEngineer ? "#7C3AED" : COLORS.muted}
+                style={{ marginRight: 4 }}
+              />
+              <Text style={[styles.performedText, { fontSize: isMobile ? 10 : 11 }, isEngineer && { color: "#7C3AED", fontWeight: "700" }]}>
+                {isEngineer ? "Ingeniero" : "Nosotros"}
+              </Text>
+            </View>
+
+            {!readOnly && (
+              <TouchableOpacity style={styles.deleteCardBtn} onPress={() => askDeleteMtm(item)}>
+                <MaterialCommunityIcons name="trash-can-outline" size={isMobile ? 16 : 18} color="#EF4444" />
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
+        <View style={styles.cardBody}>
+          <Text style={[styles.cardDate, { fontSize: isMobile ? 14 : 16 }]}>
+            {dateText}
+          </Text>
+          <Text style={[styles.cardRelativeDate, { fontSize: isMobile ? 12 : 13 }]}>
+            {getRelativeTime(item.date)}
+          </Text>
+
+          {!!item.notes && (
+            <View style={styles.notesContainer}>
+              <Text style={[styles.notesText, { fontSize: isMobile ? 13 : 14 }]}>{item.notes}</Text>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.cardFooter}>
+          <Text style={[styles.createdByText, { fontSize: isMobile ? 10 : 11 }]}>
+            Registrado por {item.createdName || "Usuario"}
+          </Text>
+        </View>
+      </View>
+    );
+  };
+
+  const renderGroupedCard = (items: Mantenimiento[]) => {
+    const minDate = items[items.length - 1].date;
+    const maxDate = items[0].date;
+    const dateRangeStr = isMobile ? formatRangeDateShort(minDate, maxDate) : formatRangeDate(minDate, maxDate);
+
+    return (
+      <View style={styles.groupedMtmCard}>
+        {/* Group Header */}
+        <View style={styles.groupedHeader}>
+          <MaterialCommunityIcons name="layers-outline" size={18} color={COLORS.primary} style={{ marginRight: 8 }} />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.groupedTitle, { fontSize: isMobile ? 13 : 14 }]}>Mantenimientos Agrupados</Text>
+            <Text style={[styles.groupedSubtitle, { fontSize: isMobile ? 11 : 12 }]}>{dateRangeStr} ({items.length} registros)</Text>
+          </View>
+        </View>
+
+        {/* Group Items */}
+        <View style={styles.groupedBody}>
+          {items.map((item, idx) => {
+            const styleMeta = getTypeStyle(item.type);
+            const isEngineer = item.type === "C" || item.type === "D";
+            const itemDateStr = isMobile ? formatDisplayDateShort(item.date) : formatDisplayDate(item.date);
+
+            return (
+              <View key={item.id} style={[styles.groupedItemRow, idx > 0 && styles.groupedItemRowBorder]}>
+                <View style={styles.cardHeader}>
+                  <View style={[styles.typeBadge, { backgroundColor: styleMeta.bg, borderColor: styleMeta.border }]}>
+                    <Text style={[styles.typeBadgeText, { color: styleMeta.text, fontSize: isMobile ? 10 : 12 }]}>
+                      Tipo {item.type} {item.duration && item.duration > 1 ? `(${item.duration}d)` : ""}
+                    </Text>
+                  </View>
+
+                  <View style={styles.performedBadge}>
+                    <MaterialCommunityIcons
+                      name={isEngineer ? "account-hard-hat-outline" : "account-supervisor-outline"}
+                      size={isMobile ? 12 : 14}
+                      color={isEngineer ? "#7C3AED" : COLORS.muted}
+                      style={{ marginRight: 4 }}
+                    />
+                    <Text style={[styles.performedText, { fontSize: isMobile ? 10 : 11 }, isEngineer && { color: "#7C3AED", fontWeight: "700" }]}>
+                      {isEngineer ? "Ingeniero" : "Nosotros"}
+                    </Text>
+                  </View>
+
+                  {!readOnly && (
+                    <TouchableOpacity style={styles.deleteCardBtn} onPress={() => askDeleteMtm(item)}>
+                      <MaterialCommunityIcons name="trash-can-outline" size={isMobile ? 15 : 17} color="#EF4444" />
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                <View style={styles.cardBody}>
+                  <Text style={[styles.cardDate, { fontSize: isMobile ? 13 : 15, marginTop: 4 }]}>
+                    {itemDateStr} <Text style={{ fontSize: isMobile ? 11 : 12, fontWeight: "normal", color: COLORS.muted }}>({getRelativeTime(item.date)})</Text>
+                  </Text>
+
+                  {!!item.notes && (
+                    <View style={[styles.notesContainer, { marginTop: 6 }]}>
+                      <Text style={[styles.notesText, { fontSize: isMobile ? 12 : 13 }]}>{item.notes}</Text>
+                    </View>
+                  )}
+                </View>
+
+                <View style={[styles.cardFooter, { borderTopWidth: 0, paddingTop: 2 }]}>
+                  <Text style={[styles.createdByText, { fontSize: isMobile ? 10 : 11 }]}>
+                    Registrado por {item.createdName || "Usuario"}
+                  </Text>
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      </View>
+    );
+  };
+
+  const renderGroupItem = ({ item }: { item: { id: string; items: Mantenimiento[]; gapDays: number | null } }) => {
+    return (
       <View style={styles.cardWrapper}>
-        {/* If gap days are present and it's not the first one, show indicator */}
+        {/* If gap days are present and it's not the oldest group, show gap separator */}
         {item.gapDays !== null && item.gapDays !== undefined && (
           <View style={styles.gapConnectorContainer}>
             <View style={styles.gapLine} />
             <View style={styles.gapBadge}>
-              <MaterialCommunityIcons name="timelapse" size={14} color={COLORS.muted} style={{ marginRight: 4 }} />
-              <Text style={styles.gapText}>
+              <MaterialCommunityIcons name="timelapse" size={12} color={COLORS.muted} style={{ marginRight: 4 }} />
+              <Text style={[styles.gapText, { fontSize: isMobile ? 10 : 11 }]}>
                 Pasaron {item.gapDays} {item.gapDays === 1 ? "día" : "días"} entre mantenimientos
               </Text>
             </View>
@@ -454,54 +679,14 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
           </View>
         )}
 
-        <View style={styles.mtmCard}>
-          <View style={styles.cardHeader}>
-            <View style={[styles.typeBadge, { backgroundColor: styleMeta.bg, borderColor: styleMeta.border }]}>
-              <Text style={[styles.typeBadgeText, { color: styleMeta.text }]}>
-                Tipo {item.type}
-              </Text>
-            </View>
-
-            <View style={styles.performedBadge}>
-              <MaterialCommunityIcons
-                name={isEngineer ? "account-hard-hat-outline" : "account-supervisor-outline"}
-                size={14}
-                color={isEngineer ? "#7C3AED" : COLORS.muted}
-                style={{ marginRight: 4 }}
-              />
-              <Text style={[styles.performedText, isEngineer && { color: "#7C3AED", fontWeight: "700" }]}>
-                {isEngineer ? "Ingeniero" : "Nosotros"}
-              </Text>
-            </View>
-
-            {!readOnly && (
-              <TouchableOpacity style={styles.deleteCardBtn} onPress={() => askDeleteMtm(item)}>
-                <MaterialCommunityIcons name="trash-can-outline" size={18} color="#EF4444" />
-              </TouchableOpacity>
-            )}
+        {/* Group render: if 1 item in group, render normal card, else render grouped card */}
+        {item.items.length === 1 ? (
+          <View style={styles.mtmCard}>
+            {renderSingleCardContent(item.items[0])}
           </View>
-
-          <View style={styles.cardBody}>
-            <Text style={styles.cardDate}>
-              {formatDisplayDate(item.date)}
-            </Text>
-            <Text style={styles.cardRelativeDate}>
-              {getRelativeTime(item.date)}
-            </Text>
-
-            {!!item.notes && (
-              <View style={styles.notesContainer}>
-                <Text style={styles.notesText}>{item.notes}</Text>
-              </View>
-            )}
-          </View>
-
-          <View style={styles.cardFooter}>
-            <Text style={styles.createdByText}>
-              Registrado por {item.createdName || "Usuario"}
-            </Text>
-          </View>
-        </View>
+        ) : (
+          renderGroupedCard(item.items)
+        )}
       </View>
     );
   };
@@ -523,20 +708,20 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
           <View style={styles.emptyContainer}>
             <MaterialCommunityIcons
               name="calendar-multiselect"
-              size={64}
+              size={isMobile ? 48 : 64}
               color={COLORS.muted}
               style={{ opacity: 0.4, marginBottom: 16 }}
             />
-            <Text style={styles.emptyTitle}>Sin mantenimientos registrados</Text>
-            <Text style={styles.emptySubtitle}>
+            <Text style={[styles.emptyTitle, { fontSize: isMobile ? 16 : 18 }]}>Sin mantenimientos registrados</Text>
+            <Text style={[styles.emptySubtitle, { fontSize: isMobile ? 12 : 14 }]}>
               Presioná el botón de agregar para registrar el primer mantenimiento.
             </Text>
           </View>
         ) : (
           <FlatList
-            data={displayList}
+            data={displayGroups}
             keyExtractor={(item) => item.id}
-            renderItem={renderMtmItem}
+            renderItem={renderGroupItem}
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
           />
@@ -550,12 +735,12 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
       <View style={styles.emptyContainer}>
         <MaterialCommunityIcons
           name="laptop"
-          size={80}
+          size={isMobile ? 60 : 80}
           color={COLORS.muted}
           style={{ opacity: 0.3, marginBottom: 20 }}
         />
-        <Text style={styles.emptyTitle}>Sección Barco Pc</Text>
-        <Text style={styles.emptySubtitle}>
+        <Text style={[styles.emptyTitle, { fontSize: isMobile ? 16 : 18 }]}>Sección Barco Pc</Text>
+        <Text style={[styles.emptySubtitle, { fontSize: isMobile ? 12 : 14 }]}>
           Esta sección está reservada y se desarrollará en el futuro.
         </Text>
       </View>
@@ -563,48 +748,48 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { padding: isMobile ? 8 : 16 }]}>
       <PageTitle
         title="Mantenimientos"
-        subtitle="Control y seguimiento de mantenimientos en proyección"
+        subtitle={isMobile ? "Control de proyección" : "Control y seguimiento de mantenimientos en proyección"}
         right={
           !readOnly && activeSubTab === "fechas" ? (
-            <TouchableOpacity style={styles.headerBtn} onPress={openNew}>
-              <MaterialCommunityIcons name="plus" size={18} color="#fff" style={{ marginRight: 6 }} />
-              <Text style={styles.headerBtnText}>Registrar Mtm</Text>
+            <TouchableOpacity style={[styles.headerBtn, { paddingVertical: isMobile ? 8 : 10 }]} onPress={openNew}>
+              <MaterialCommunityIcons name="plus" size={isMobile ? 16 : 18} color="#fff" style={{ marginRight: 4 }} />
+              <Text style={[styles.headerBtnText, { fontSize: isMobile ? 12 : 14 }]}>Registrar Mtm</Text>
             </TouchableOpacity>
           ) : undefined
         }
       />
 
       {/* Subtab Navigation */}
-      <View style={styles.tabBar}>
+      <View style={[styles.tabBar, { marginBottom: isMobile ? 12 : 16 }]}>
         <TouchableOpacity
-          style={[styles.tabButton, activeSubTab === "fechas" && styles.tabButtonActive]}
+          style={[styles.tabButton, { paddingVertical: isMobile ? 8 : 12, paddingHorizontal: isMobile ? 12 : 20 }, activeSubTab === "fechas" && styles.tabButtonActive]}
           onPress={() => setActiveSubTab("fechas")}
         >
           <MaterialCommunityIcons
             name="calendar-clock"
-            size={18}
+            size={isMobile ? 16 : 18}
             color={activeSubTab === "fechas" ? COLORS.primary : COLORS.muted}
-            style={{ marginRight: 8 }}
+            style={{ marginRight: 6 }}
           />
-          <Text style={[styles.tabButtonText, activeSubTab === "fechas" && styles.tabButtonTextActive]}>
+          <Text style={[styles.tabButtonText, { fontSize: isMobile ? 13 : 15 }, activeSubTab === "fechas" && styles.tabButtonTextActive]}>
             Fechas
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.tabButton, activeSubTab === "barco_pc" && styles.tabButtonActive]}
+          style={[styles.tabButton, { paddingVertical: isMobile ? 8 : 12, paddingHorizontal: isMobile ? 12 : 20 }, activeSubTab === "barco_pc" && styles.tabButtonActive]}
           onPress={() => setActiveSubTab("barco_pc")}
         >
           <MaterialCommunityIcons
             name="laptop"
-            size={18}
+            size={isMobile ? 16 : 18}
             color={activeSubTab === "barco_pc" ? COLORS.primary : COLORS.muted}
-            style={{ marginRight: 8 }}
+            style={{ marginRight: 6 }}
           />
-          <Text style={[styles.tabButtonText, activeSubTab === "barco_pc" && styles.tabButtonTextActive]}>
+          <Text style={[styles.tabButtonText, { fontSize: isMobile ? 13 : 15 }, activeSubTab === "barco_pc" && styles.tabButtonTextActive]}>
             Barco Pc
           </Text>
         </TouchableOpacity>
@@ -623,18 +808,18 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
         onRequestClose={() => setShowForm(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalCardModern}>
-            <Text style={styles.modalTitleModern}>Registrar Mantenimiento</Text>
-            <Text style={styles.modalSubtitleModern}>
+          <View style={[styles.modalCardModern, { padding: isMobile ? 16 : 22 }]}>
+            <Text style={[styles.modalTitleModern, { fontSize: isMobile ? 18 : 22 }]}>Registrar Mantenimiento</Text>
+            <Text style={[styles.modalSubtitleModern, { fontSize: isMobile ? 12 : 14, marginBottom: isMobile ? 12 : 18 }]}>
               Completá los datos correspondientes al mantenimiento realizado.
             </Text>
 
             {/* Date Selection */}
             <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>Fecha de realización</Text>
+              <Text style={styles.fieldLabel}>Fecha de inicio</Text>
               {Platform.OS === "web" ? (
                 <TextInput
-                  style={styles.modalInputModern}
+                  style={[styles.modalInputModern, { minHeight: isMobile ? 40 : 46 }]}
                   placeholder="DD/MM/AAAA"
                   placeholderTextColor="#94A3B8"
                   value={customDateText}
@@ -671,6 +856,40 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
               )}
             </View>
 
+            {/* Duration (multi-day) selection */}
+            <View style={styles.fieldGroup}>
+              <Text style={styles.fieldLabel}>Duración del Mantenimiento</Text>
+              <View style={styles.typeSelectorRow}>
+                {([1, 2, 3] as const).map((d) => {
+                  const isSelected = duration === d;
+                  return (
+                    <TouchableOpacity
+                      key={d}
+                      style={[
+                        styles.typeSelectorBtn,
+                        { height: isMobile ? 38 : 44 },
+                        isSelected && {
+                          backgroundColor: COLORS.primarySoft,
+                          borderColor: COLORS.primary,
+                        },
+                      ]}
+                      onPress={() => setDuration(d)}
+                    >
+                      <Text
+                        style={[
+                          styles.typeSelectorBtnText,
+                          { color: isSelected ? COLORS.primary : COLORS.muted, fontSize: isMobile ? 13 : 15 },
+                          isSelected && { fontWeight: "800" },
+                        ]}
+                      >
+                        {d} {d === 1 ? "día" : "días"}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+
             {/* Type Selection */}
             <View style={styles.fieldGroup}>
               <Text style={styles.fieldLabel}>Tipo de Mantenimiento</Text>
@@ -683,6 +902,7 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
                       key={t}
                       style={[
                         styles.typeSelectorBtn,
+                        { height: isMobile ? 38 : 44 },
                         isSelected && {
                           backgroundColor: styleMeta.bg,
                           borderColor: styleMeta.text,
@@ -693,7 +913,7 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
                       <Text
                         style={[
                           styles.typeSelectorBtnText,
-                          { color: isSelected ? styleMeta.text : COLORS.muted },
+                          { color: isSelected ? styleMeta.text : COLORS.muted, fontSize: isMobile ? 13 : 15 },
                           isSelected && { fontWeight: "800" },
                         ]}
                       >
@@ -707,16 +927,16 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
               {/* Informational Message about Engineer for C and D */}
               {(type === "C" || type === "D") ? (
                 <View style={styles.infoBanner}>
-                  <MaterialCommunityIcons name="information" size={16} color="#7C3AED" style={{ marginRight: 6 }} />
-                  <Text style={styles.infoBannerText}>
-                    Nota: Los mantenimientos de Tipo C y D son gestionados y ejecutados directamente por el ingeniero.
+                  <MaterialCommunityIcons name="information" size={14} color="#7C3AED" style={{ marginRight: 6, marginTop: 1 }} />
+                  <Text style={[styles.infoBannerText, { fontSize: isMobile ? 11 : 12 }]}>
+                    Nota: Los tipos C y D son ejecutados por el ingeniero.
                   </Text>
                 </View>
               ) : (
                 <View style={[styles.infoBanner, { backgroundColor: "#EFF6FF", borderColor: "#BFDBFE" }]}>
-                  <MaterialCommunityIcons name="information" size={16} color="#1D4ED8" style={{ marginRight: 6 }} />
-                  <Text style={[styles.infoBannerText, { color: "#1E40AF" }]}>
-                    Nota: Los mantenimientos Tipo A y B son ejecutados localmente por nosotros.
+                  <MaterialCommunityIcons name="information" size={14} color="#1D4ED8" style={{ marginRight: 6, marginTop: 1 }} />
+                  <Text style={[styles.infoBannerText, { color: "#1E40AF", fontSize: isMobile ? 11 : 12 }]}>
+                    Nota: Los tipos A y B son ejecutados por nosotros.
                   </Text>
                 </View>
               )}
@@ -726,8 +946,8 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
             <View style={styles.fieldGroup}>
               <Text style={styles.fieldLabel}>Notas u observaciones (Opcional)</Text>
               <TextInput
-                style={[styles.modalInputModern, styles.textAreaModern]}
-                placeholder="Ingresá detalles o repuestos utilizados..."
+                style={[styles.modalInputModern, styles.textAreaModern, { height: isMobile ? 70 : 90 }]}
+                placeholder="Detalles o repuestos..."
                 placeholderTextColor="#94A3B8"
                 value={notes}
                 onChangeText={setNotes}
@@ -738,14 +958,14 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
             {/* Actions */}
             <View style={styles.modalActionsModern}>
               <TouchableOpacity
-                style={styles.cancelBtnModern}
+                style={[styles.cancelBtnModern, { paddingVertical: isMobile ? 10 : 12 }]}
                 onPress={() => setShowForm(false)}
               >
-                <Text style={styles.cancelBtnTextModern}>Cancelar</Text>
+                <Text style={[styles.cancelBtnTextModern, { fontSize: isMobile ? 13 : 14 }]}>Cancelar</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.saveBtnModern} onPress={addMantenimiento}>
-                <Text style={styles.saveBtnTextModern}>Guardar</Text>
+              <TouchableOpacity style={[styles.saveBtnModern, { paddingVertical: isMobile ? 10 : 12 }]} onPress={addMantenimiento}>
+                <Text style={[styles.saveBtnTextModern, { fontSize: isMobile ? 13 : 14 }]}>Guardar</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -763,7 +983,7 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
           <View style={styles.confirmCard}>
             <Text style={styles.modalTitle}>Eliminar Mantenimiento</Text>
             <Text style={styles.confirmText}>
-              ¿Estás seguro de que querés eliminar este registro? Esto también quitará la etiqueta "Mtm" del calendario general.
+              ¿Estás seguro de que querés eliminar este registro? Esto también quitará las etiquetas "Mtm" correspondientes del calendario.
             </Text>
             <View style={styles.modalActionsModern}>
               <TouchableOpacity
@@ -796,7 +1016,6 @@ function formatDate(iso: string) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 16,
   },
   centered: {
     flex: 1,
@@ -806,8 +1025,7 @@ const styles = StyleSheet.create({
   headerBtn: {
     flexDirection: "row",
     backgroundColor: COLORS.primary,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingHorizontal: 12,
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
@@ -815,18 +1033,14 @@ const styles = StyleSheet.create({
   headerBtnText: {
     color: "#fff",
     fontWeight: "700",
-    fontSize: 14,
   },
   tabBar: {
     flexDirection: "row",
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
-    marginBottom: 16,
   },
   tabButton: {
     flexDirection: "row",
-    paddingVertical: 12,
-    paddingHorizontal: 20,
     borderBottomWidth: 2,
     borderBottomColor: "transparent",
     alignItems: "center",
@@ -835,7 +1049,6 @@ const styles = StyleSheet.create({
     borderBottomColor: COLORS.primary,
   },
   tabButtonText: {
-    fontSize: 15,
     fontWeight: "600",
     color: COLORS.muted,
   },
@@ -847,11 +1060,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 12,
     marginBottom: 16,
-    flexWrap: "wrap",
+  },
+  statsRowMobile: {
+    gap: 6,
+    marginBottom: 12,
   },
   statsCard: {
     flex: 1,
-    minWidth: 120,
     backgroundColor: COLORS.card,
     borderRadius: 16,
     padding: 14,
@@ -865,11 +1080,18 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
+  statsCardMobile: {
+    borderRadius: 10,
+    padding: 6,
+  },
   statsVal: {
     fontSize: 18,
     fontWeight: "800",
     color: COLORS.text,
     textAlign: "center",
+  },
+  statsValMobile: {
+    fontSize: 13,
   },
   statsLbl: {
     fontSize: 11,
@@ -877,6 +1099,10 @@ const styles = StyleSheet.create({
     marginTop: 4,
     textAlign: "center",
     fontWeight: "600",
+  },
+  statsLblMobile: {
+    fontSize: 9,
+    marginTop: 2,
   },
   listContent: {
     paddingBottom: 30,
@@ -897,32 +1123,76 @@ const styles = StyleSheet.create({
     elevation: 2,
     marginBottom: 12,
   },
+  groupedMtmCard: {
+    backgroundColor: COLORS.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderLeftWidth: 4,
+    borderLeftColor: COLORS.primary,
+    shadowColor: "#000",
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+    marginBottom: 12,
+    overflow: "hidden",
+  },
+  groupedHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.bg,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  groupedTitle: {
+    fontWeight: "800",
+    color: COLORS.text,
+  },
+  groupedSubtitle: {
+    color: COLORS.muted,
+    marginTop: 1,
+    fontWeight: "600",
+  },
+  groupedBody: {
+    padding: 4,
+  },
+  groupedItemRow: {
+    padding: 12,
+  },
+  groupedItemRowBorder: {
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  cardContent: {
+    width: "100%",
+  },
   cardHeader: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 10,
+    marginBottom: 8,
   },
   typeBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
     borderWidth: 1,
   },
   typeBadgeText: {
-    fontSize: 12,
     fontWeight: "800",
   },
   performedBadge: {
     flexDirection: "row",
     alignItems: "center",
-    marginLeft: 12,
+    marginLeft: 10,
     backgroundColor: COLORS.bg,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
     borderRadius: 6,
   },
   performedText: {
-    fontSize: 11,
     color: COLORS.muted,
   },
   deleteCardBtn: {
@@ -930,39 +1200,35 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   cardBody: {
-    marginBottom: 10,
+    marginBottom: 8,
   },
   cardDate: {
-    fontSize: 16,
     fontWeight: "700",
     color: COLORS.text,
   },
   cardRelativeDate: {
-    fontSize: 13,
     color: COLORS.muted,
     marginTop: 2,
   },
   notesContainer: {
-    marginTop: 10,
+    marginTop: 8,
     backgroundColor: COLORS.bg,
-    padding: 10,
+    padding: 8,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: COLORS.border,
   },
   notesText: {
-    fontSize: 14,
     color: COLORS.text,
-    lineHeight: 20,
+    lineHeight: 18,
   },
   cardFooter: {
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
-    paddingTop: 8,
+    paddingTop: 6,
     marginTop: 4,
   },
   createdByText: {
-    fontSize: 11,
     color: COLORS.muted,
     fontStyle: "italic",
   },
@@ -991,7 +1257,6 @@ const styles = StyleSheet.create({
     marginHorizontal: 10,
   },
   gapText: {
-    fontSize: 11,
     fontWeight: "600",
     color: COLORS.muted,
   },
@@ -1000,19 +1265,17 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     padding: 24,
-    marginTop: 40,
+    marginTop: 20,
   },
   emptyTitle: {
-    fontSize: 18,
     fontWeight: "700",
     color: COLORS.text,
     marginBottom: 8,
   },
   emptySubtitle: {
-    fontSize: 14,
     color: COLORS.muted,
     textAlign: "center",
-    lineHeight: 20,
+    lineHeight: 18,
     maxWidth: 280,
   },
   modalOverlay: {
@@ -1027,7 +1290,6 @@ const styles = StyleSheet.create({
     maxWidth: 480,
     backgroundColor: COLORS.card,
     borderRadius: 20,
-    padding: 22,
     borderWidth: 1,
     borderColor: COLORS.border,
     shadowColor: "#000",
@@ -1037,28 +1299,24 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   modalTitleModern: {
-    fontSize: 22,
     fontWeight: "800",
     color: COLORS.text,
   },
   modalSubtitleModern: {
-    marginTop: 6,
-    marginBottom: 18,
-    fontSize: 14,
-    lineHeight: 20,
+    marginTop: 4,
+    lineHeight: 18,
     color: COLORS.muted,
   },
   fieldGroup: {
-    marginBottom: 16,
+    marginBottom: 12,
   },
   fieldLabel: {
-    marginBottom: 8,
+    marginBottom: 6,
     fontSize: 13,
     fontWeight: "700",
     color: COLORS.text,
   },
   modalInputModern: {
-    minHeight: 46,
     borderWidth: 1,
     borderColor: COLORS.border,
     borderRadius: 12,
@@ -1069,17 +1327,15 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   textAreaModern: {
-    height: 90,
     textAlignVertical: "top",
   },
   typeSelectorRow: {
     flexDirection: "row",
-    gap: 10,
-    marginBottom: 10,
+    gap: 8,
+    marginBottom: 8,
   },
   typeSelectorBtn: {
     flex: 1,
-    height: 44,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: COLORS.border,
@@ -1088,23 +1344,21 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.card,
   },
   typeSelectorBtnText: {
-    fontSize: 15,
     fontWeight: "600",
   },
   infoBanner: {
     flexDirection: "row",
-    backgroundColor: "#F3E8FF", // Light purple for warning by default
+    backgroundColor: "#F3E8FF", // Light purple
     borderColor: "#E9D5FF",
     borderWidth: 1,
     borderRadius: 10,
-    padding: 10,
+    padding: 8,
     alignItems: "flex-start",
   },
   infoBannerText: {
     flex: 1,
-    fontSize: 12,
     color: "#6D28D9",
-    lineHeight: 16,
+    lineHeight: 15,
   },
   dropdownTrigger: {
     flexDirection: "row",
@@ -1129,10 +1383,10 @@ const styles = StyleSheet.create({
   },
   cancelBtnModern: {
     paddingHorizontal: 16,
-    paddingVertical: 12,
     borderRadius: 12,
     backgroundColor: COLORS.border,
     alignItems: "center",
+    justifyContent: "center",
   },
   cancelBtnTextModern: {
     color: COLORS.text,
@@ -1140,10 +1394,10 @@ const styles = StyleSheet.create({
   },
   saveBtnModern: {
     paddingHorizontal: 18,
-    paddingVertical: 12,
     borderRadius: 12,
     backgroundColor: COLORS.primary,
     alignItems: "center",
+    justifyContent: "center",
   },
   saveBtnTextModern: {
     color: "#FFFFFF",
