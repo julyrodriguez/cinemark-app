@@ -27,6 +27,14 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import dayjs from "dayjs";
+import isoWeek from "dayjs/plugin/isoWeek";
+import localizedFormat from "dayjs/plugin/localizedFormat";
+import "dayjs/locale/es";
+
+dayjs.extend(isoWeek);
+dayjs.extend(localizedFormat);
+dayjs.locale("es");
 
 import { CINES_COLLECTION, db } from "../../lib/firebaseConfig";
 import { COLORS, THEME } from "../../lib/theme";
@@ -89,7 +97,7 @@ interface LamparaMovimiento {
   userName: string;
 }
 
-type ActiveTab = "PROYECTORES" | "BACKUP" | "HISTORIAL" | "MOVIMIENTOS";
+type ActiveTab = "PROYECTORES" | "BACKUP" | "HISTORIAL" | "MOVIMIENTOS" | "SIMULACION";
 
 function PulsingDot() {
   const opacity = React.useRef(new Animated.Value(0.4)).current;
@@ -187,6 +195,15 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
   const [deleteConfirmModal, setDeleteConfirmModal] = useState<Lampara | null>(null);
   const [revertConfirmModal, setRevertConfirmModal] = useState<LamparaMovimiento | null>(null);
   const [revertingMovId, setRevertingMovId] = useState<string | null>(null);
+
+  // ── Estados para Simulación ──
+  const [simMode, setSimMode] = useState<"SEMANAL" | "MANUAL">("SEMANAL");
+  const [simSelectedRoom, setSimSelectedRoom] = useState<number | null>(null);
+  const [simSemanalDailyUsage, setSimSemanalDailyUsage] = useState<string>("");
+  
+  const [simManualHours, setSimManualHours] = useState<string>("");
+  const [simManualDailyUsage, setSimManualDailyUsage] = useState<string>("");
+  const [simManualStartDate, setSimManualStartDate] = useState<string>(dayjs().format("YYYY-MM-DD"));
 
   // ─── Cargar Salas Count ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -707,7 +724,99 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
     });
   };
 
-  // ─── Render ─────────────────────────────────────────────────────────────────
+  // ─── Simulación Helpers y Lógica ───
+
+  const adjustManualDate = (amount: number) => {
+    const d = dayjs(simManualStartDate);
+    if (d.isValid()) {
+      setSimManualStartDate(d.add(amount, "day").format("YYYY-MM-DD"));
+    } else {
+      setSimManualStartDate(dayjs().format("YYYY-MM-DD"));
+    }
+  };
+
+  const runSimulation = (remainingHours: number, dailyUsage: number, startDateStr: string) => {
+    if (isNaN(remainingHours) || remainingHours <= 0 || isNaN(dailyUsage) || dailyUsage <= 0) {
+      return null;
+    }
+
+    const days = Math.floor(remainingHours / dailyUsage);
+    const startDay = dayjs(startDateStr);
+    if (!startDay.isValid()) return null;
+
+    const simulationDays = [];
+    let currentHours = remainingHours;
+    const maxSimulate = Math.min(days + 2, 100);
+
+    for (let i = 1; i <= maxSimulate; i++) {
+      const date = startDay.add(i - 1, "day");
+      const hoursAtStart = currentHours;
+      const hoursAtEnd = currentHours - dailyUsage;
+      const isOk = hoursAtEnd >= 0;
+
+      simulationDays.push({
+        dayIndex: i,
+        date: date.format("YYYY-MM-DD"),
+        dateFormatted: date.format("dddd DD/MM"),
+        hoursAtStart: parseFloat(hoursAtStart.toFixed(1)),
+        hoursAtEnd: parseFloat(hoursAtEnd.toFixed(1)),
+        isOk,
+        status: isOk 
+          ? (hoursAtEnd < dailyUsage ? "RECOMENDADO" : "SEGURO") 
+          : "INSUFICIENTE"
+      });
+
+      currentHours = hoursAtEnd;
+      if (!isOk) break;
+    }
+
+    let recommendationText = "";
+    let changeDateLabel = "";
+    let hoursAtChange = 0;
+
+    if (days === 0) {
+      recommendationText = `Cambiar de inmediato el ${startDay.format("dddd DD/MM")} (antes de iniciar la jornada).`;
+      changeDateLabel = startDay.format("dddd DD/MM");
+      hoursAtChange = remainingHours;
+    } else {
+      const lastSafeDate = startDay.add(days - 1, "day");
+      const nextDate = startDay.add(days, "day");
+      
+      const lastSafeDateStr = lastSafeDate.format("dddd DD [de] MMMM");
+      const nextDateStr = nextDate.format("dddd DD [de] MMMM");
+      
+      recommendationText = `Al cierre de ${lastSafeDateStr} / apertura de ${nextDateStr}`;
+      changeDateLabel = `${lastSafeDateStr} (cierre) / ${nextDateStr} (apertura)`;
+      hoursAtChange = remainingHours - (days * dailyUsage);
+    }
+
+    return {
+      days,
+      recommendationText,
+      hoursAtChange: parseFloat(hoursAtChange.toFixed(1)),
+      simulationDays,
+      changeDateLabel
+    };
+  };
+
+  const simResult = useMemo(() => {
+    if (simMode === "SEMANAL") {
+      if (simSelectedRoom === null) return null;
+      const controlLamp = latestControl?.lamparas?.find((l: any) => l.sala === simSelectedRoom);
+      if (!controlLamp) return null;
+      const horasRestantes = controlLamp.horasRestantes ?? 0;
+      const fechaReporte = latestControl.fecha ?? dayjs().format("YYYY-MM-DD");
+      const dailyUsage = parseFloat(simSemanalDailyUsage);
+      return runSimulation(horasRestantes, dailyUsage, fechaReporte);
+    } else {
+      const horasRestantes = parseFloat(simManualHours);
+      const dailyUsage = parseFloat(simManualDailyUsage);
+      const fechaInicial = simManualStartDate;
+      return runSimulation(horasRestantes, dailyUsage, fechaInicial);
+    }
+  }, [simMode, simSelectedRoom, simSemanalDailyUsage, simManualHours, simManualDailyUsage, simManualStartDate, latestControl]);
+
+  // ─── Render ───
 
   if (loading) {
     return (
@@ -730,7 +839,7 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
 
       {/* Segmented Control Bar */}
       {width < 480 ? (
-        // Mobile pequeño: 2 filas de 2 tabs
+        // Mobile pequeño: 2 filas (3 y 2 tabs)
         <View style={[s.tabBar, { marginHorizontal: 6, flexDirection: "column", gap: 4 }]}>
           <View style={{ flexDirection: "row", gap: 4 }}>
             <TouchableOpacity
@@ -747,8 +856,6 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
               <MaterialCommunityIcons name="package-variant-closed" size={14} color={activeTab === "BACKUP" ? "#FFF" : COLORS.muted} />
               <Text style={[s.tabBtnText, activeTab === "BACKUP" && s.tabBtnTextActive, { fontSize: 10 }]}>Backup ({backupLamps.length})</Text>
             </TouchableOpacity>
-          </View>
-          <View style={{ flexDirection: "row", gap: 4 }}>
             <TouchableOpacity
               style={[s.tabBtn, activeTab === "HISTORIAL" && s.tabBtnActive, { flex: 1, paddingVertical: 8, gap: 3 }]}
               onPress={() => setActiveTab("HISTORIAL")}
@@ -756,6 +863,8 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
               <MaterialCommunityIcons name="history" size={14} color={activeTab === "HISTORIAL" ? "#FFF" : COLORS.muted} />
               <Text style={[s.tabBtnText, activeTab === "HISTORIAL" && s.tabBtnTextActive, { fontSize: 10 }]}>Historial</Text>
             </TouchableOpacity>
+          </View>
+          <View style={{ flexDirection: "row", gap: 4 }}>
             <TouchableOpacity
               style={[s.tabBtn, activeTab === "MOVIMIENTOS" && s.tabBtnActive, { flex: 1, paddingVertical: 8, gap: 3 }]}
               onPress={() => setActiveTab("MOVIMIENTOS")}
@@ -763,10 +872,17 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
               <MaterialCommunityIcons name="swap-horizontal" size={14} color={activeTab === "MOVIMIENTOS" ? "#FFF" : COLORS.muted} />
               <Text style={[s.tabBtnText, activeTab === "MOVIMIENTOS" && s.tabBtnTextActive, { fontSize: 10 }]}>Movimientos</Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.tabBtn, activeTab === "SIMULACION" && s.tabBtnActive, { flex: 1, paddingVertical: 8, gap: 3 }]}
+              onPress={() => setActiveTab("SIMULACION")}
+            >
+              <MaterialCommunityIcons name="calculator" size={14} color={activeTab === "SIMULACION" ? "#FFF" : COLORS.muted} />
+              <Text style={[s.tabBtnText, activeTab === "SIMULACION" && s.tabBtnTextActive, { fontSize: 10 }]}>Simulación</Text>
+            </TouchableOpacity>
           </View>
         </View>
       ) : (
-        // Tablet / Desktop: fila única con 4 tabs
+        // Tablet / Desktop: fila única con 5 tabs
         <View style={[s.tabBar, { marginHorizontal: width < 768 ? 8 : 16 }]}>
           <TouchableOpacity
             style={[s.tabBtn, activeTab === "PROYECTORES" && s.tabBtnActive, { paddingVertical: width < 768 ? 9 : 10, gap: width < 768 ? 4 : 6 }]}
@@ -802,6 +918,15 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
             <MaterialCommunityIcons name="swap-horizontal" size={width < 768 ? 15 : 18} color={activeTab === "MOVIMIENTOS" ? "#FFF" : COLORS.muted} />
             <Text style={[s.tabBtnText, activeTab === "MOVIMIENTOS" && s.tabBtnTextActive, { fontSize: width < 768 ? 11 : 13 }]}>
               Movimientos
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[s.tabBtn, activeTab === "SIMULACION" && s.tabBtnActive, { paddingVertical: width < 768 ? 9 : 10, gap: width < 768 ? 4 : 6 }]}
+            onPress={() => setActiveTab("SIMULACION")}
+          >
+            <MaterialCommunityIcons name="calculator" size={width < 768 ? 15 : 18} color={activeTab === "SIMULACION" ? "#FFF" : COLORS.muted} />
+            <Text style={[s.tabBtnText, activeTab === "SIMULACION" && s.tabBtnTextActive, { fontSize: width < 768 ? 11 : 13 }]}>
+              Simulación
             </Text>
           </TouchableOpacity>
         </View>
@@ -1214,6 +1339,294 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
                   </View>
                 );
               })
+            )}
+          </View>
+        )}
+
+        {/* PESTAÑA 5: SIMULACIÓN */}
+        {activeTab === "SIMULACION" && (
+          <View style={{ gap: 14, width: "100%" }}>
+            {/* Mode Selector Card */}
+            <View style={[s.simModeContainer, { marginHorizontal: 0 }]}>
+              <TouchableOpacity
+                style={[s.simModeBtn, simMode === "SEMANAL" && s.simModeBtnActive]}
+                onPress={() => setSimMode("SEMANAL")}
+              >
+                <MaterialCommunityIcons name="calendar-clock" size={18} color={simMode === "SEMANAL" ? "#FFF" : COLORS.muted} />
+                <Text style={[s.simModeBtnText, simMode === "SEMANAL" && s.simModeBtnTextActive]}>Control Semanal</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.simModeBtn, simMode === "MANUAL" && s.simModeBtnActive]}
+                onPress={() => setSimMode("MANUAL")}
+              >
+                <MaterialCommunityIcons name="keyboard-outline" size={18} color={simMode === "MANUAL" ? "#FFF" : COLORS.muted} />
+                <Text style={[s.simModeBtnText, simMode === "MANUAL" && s.simModeBtnTextActive]}>Simulación Manual</Text>
+              </TouchableOpacity>
+            </View>
+
+            {simMode === "SEMANAL" ? (
+              /* MODO CONTROL SEMANAL */
+              <View style={s.simCard}>
+                <Text style={s.simCardTitle}>🗓️ Simular con Control Semanal</Text>
+                <Text style={s.simCardSubtitle}>
+                  Elegí un proyector para leer sus horas restantes y la fecha del reporte. Luego cargá el promedio de uso diario para calcular el día de reemplazo.
+                </Text>
+
+                <Text style={s.label}>1. Seleccionar Proyector (Sala) *</Text>
+                
+                {latestControl ? (
+                  <View style={s.roomSelectGrid}>
+                    {Array.from({ length: salasCount }, (_, i) => i + 1).map((roomNum) => {
+                      const isSelected = simSelectedRoom === roomNum;
+                      const activeLamp = activeLampsBySala[roomNum];
+                      const controlLamp = latestControl?.lamparas?.find((l: any) => l.sala === roomNum);
+                      const hasControlData = !!controlLamp;
+                      
+                      return (
+                        <TouchableOpacity
+                          key={roomNum}
+                          style={[
+                            s.roomSelectBtn,
+                            isSelected && s.roomSelectBtnActive,
+                            !hasControlData && { opacity: 0.4 }
+                          ]}
+                          onPress={() => {
+                            if (hasControlData) {
+                              setSimSelectedRoom(roomNum);
+                            } else {
+                              Alert.alert(
+                                "Sin Datos", 
+                                `La Sala ${roomNum} no tiene datos cargados en el último Control Semanal.`
+                              );
+                            }
+                          }}
+                        >
+                          <Text style={[s.roomSelectBtnText, isSelected && s.roomSelectBtnTextActive]}>
+                            Sala {roomNum}
+                          </Text>
+                          {activeLamp && (
+                            <Text style={[s.roomSelectBtnSubText, isSelected && s.roomSelectBtnSubTextActive]} numberOfLines={1}>
+                              {activeLamp.id}
+                            </Text>
+                          )}
+                          {controlLamp && (
+                            <Text style={[s.roomSelectBtnHours, isSelected && s.roomSelectBtnHoursActive]}>
+                              {controlLamp.horasRestantes} h
+                            </Text>
+                          )}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                ) : (
+                  <View style={[s.infoBanner, { backgroundColor: "#FDE8E8", borderColor: "#F8B4B4", marginVertical: 8 }]}>
+                    <MaterialCommunityIcons name="alert-circle-outline" size={18} color="#9B1C1C" style={{ marginRight: 6 }} />
+                    <Text style={[s.infoBannerText, { color: "#9B1C1C" }]}>
+                      No se encontraron reportes de Control Semanal cargados para este cine. Completá un Control Semanal primero para usar esta opción.
+                    </Text>
+                  </View>
+                )}
+
+                {simSelectedRoom !== null && (
+                  (() => {
+                    const controlLamp = latestControl?.lamparas?.find((l: any) => l.sala === simSelectedRoom);
+                    const activeLamp = activeLampsBySala[simSelectedRoom];
+                    const dateReport = latestControl?.fecha ? dayjs(latestControl.fecha).format("dddd DD [de] MMMM") : "-";
+                    return (
+                      <View style={s.selectedRoomDetailsCard}>
+                        <View style={s.selectedRoomDetailRow}>
+                          <Text style={s.selectedRoomDetailLabel}>Lámpara Instalada:</Text>
+                          <Text style={s.selectedRoomDetailVal}>{activeLamp ? `${activeLamp.marca || ""} ${activeLamp.modelo || ""} (${activeLamp.id})` : "No registrada"}</Text>
+                        </View>
+                        <View style={s.selectedRoomDetailRow}>
+                          <Text style={s.selectedRoomDetailLabel}>Horas Restantes (al reporte):</Text>
+                          <Text style={[s.selectedRoomDetailVal, { color: COLORS.primary }]}>{controlLamp?.horasRestantes ?? 0} h</Text>
+                        </View>
+                        <View style={s.selectedRoomDetailRow}>
+                          <Text style={s.selectedRoomDetailLabel}>Fecha del Reporte:</Text>
+                          <Text style={s.selectedRoomDetailVal}>{dateReport} ({latestControl?.fecha ?? ""})</Text>
+                        </View>
+                      </View>
+                    );
+                  })()
+                )}
+
+                <Text style={s.label}>2. Cargar Uso Diario (Horas) *</Text>
+                <TextInput
+                  value={simSemanalDailyUsage}
+                  onChangeText={setSimSemanalDailyUsage}
+                  placeholder="Ej: 6.5 o 8"
+                  placeholderTextColor={COLORS.muted}
+                  style={s.input}
+                  keyboardType="numeric"
+                />
+              </View>
+            ) : (
+              /* MODO SIMULACIÓN MANUAL */
+              <View style={s.simCard}>
+                <Text style={s.simCardTitle}>✍️ Simulación Manual</Text>
+                <Text style={s.simCardSubtitle}>
+                  Ingresá las horas restantes de la lámpara, el promedio de horas de uso diarias y la fecha de inicio de la simulación.
+                </Text>
+
+                {/* Aclaración requerida por el usuario */}
+                <View style={[s.infoBanner, { backgroundColor: "#EFF6FF", borderColor: "#BFDBFE", marginBottom: 6 }]}>
+                  <MaterialCommunityIcons name="information" size={18} color="#1E40AF" style={{ marginRight: 6 }} />
+                  <Text style={[s.infoBannerText, { color: "#1E40AF" }]}>
+                    <Text style={{ fontWeight: "700" }}>Aclaración importante:</Text> Las horas ingresadas deben ser las que tiene el proyector al <Text style={{ fontWeight: "700" }}>comienzo</Text> del día o al <Text style={{ fontWeight: "700" }}>cierre</Text> del día anterior (no a mitad de jornada).
+                  </Text>
+                </View>
+
+                <View style={{ flexDirection: "row", gap: 10 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.label}>Horas Restantes *</Text>
+                    <TextInput
+                      value={simManualHours}
+                      onChangeText={setSimManualHours}
+                      placeholder="Ej: 800"
+                      placeholderTextColor={COLORS.muted}
+                      style={s.input}
+                      keyboardType="numeric"
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.label}>Uso Diario (Horas) *</Text>
+                    <TextInput
+                      value={simManualDailyUsage}
+                      onChangeText={setSimManualDailyUsage}
+                      placeholder="Ej: 7.5"
+                      placeholderTextColor={COLORS.muted}
+                      style={s.input}
+                      keyboardType="numeric"
+                    />
+                  </View>
+                </View>
+
+                <Text style={s.label}>Fecha Inicial *</Text>
+                <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+                  <TextInput
+                    value={simManualStartDate}
+                    onChangeText={setSimManualStartDate}
+                    placeholder="YYYY-MM-DD"
+                    placeholderTextColor={COLORS.muted}
+                    style={[s.input, { flex: 1 }]}
+                  />
+                  <View style={{ flexDirection: "row", gap: 4 }}>
+                    <TouchableOpacity style={[s.adjustDateBtn, { minWidth: 60 }]} onPress={() => adjustManualDate(-1)}>
+                      <Text style={s.adjustDateBtnText}>-1 día</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[s.adjustDateBtn, { minWidth: 50 }]} onPress={() => setSimManualStartDate(dayjs().format("YYYY-MM-DD"))}>
+                      <Text style={s.adjustDateBtnText}>Hoy</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[s.adjustDateBtn, { minWidth: 60 }]} onPress={() => adjustManualDate(1)}>
+                      <Text style={s.adjustDateBtnText}>+1 día</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            )}
+
+            {/* SimResult Rendering */}
+            {simResult ? (
+              <View style={s.resultsContainer}>
+                <Text style={s.resultsSectionTitle}>📊 Resultados de la Simulación</Text>
+                
+                {/* Recommended Date Card */}
+                <View style={s.recommendationCard}>
+                  <View style={s.recHeader}>
+                    <MaterialCommunityIcons name="wrench" size={20} color="#92400E" />
+                    <Text style={s.recTitle}>Momento Recomendado para el Cambio</Text>
+                  </View>
+                  
+                  <Text style={s.recDateText}>{simResult.recommendationText}</Text>
+                  
+                  <View style={s.recDetailsRow}>
+                    <View style={s.recDetailItem}>
+                      <Text style={s.recDetailLabel}>Días Seguros Restantes</Text>
+                      <Text style={s.recDetailValue}>{simResult.days} {simResult.days === 1 ? "día" : "días"}</Text>
+                    </View>
+                    <View style={s.recDetailItem}>
+                      <Text style={s.recDetailLabel}>Horas al momento de cambio</Text>
+                      <Text style={[s.recDetailValue, { color: simResult.hoursAtChange < 2 ? COLORS.danger : "#047857" }]}>
+                        {simResult.hoursAtChange} h
+                      </Text>
+                    </View>
+                  </View>
+                  
+                  <Text style={s.recNote}>
+                    💡 La lámpara se cambia lo más cercano a 0 posible sin exceder las horas de uso seguro.
+                  </Text>
+                </View>
+
+                {/* Table Title */}
+                <Text style={s.tableTitle}>📅 Proyección Día por Día</Text>
+
+                {/* Day by Day Table */}
+                <View style={s.tableContainer}>
+                  {/* Table Header */}
+                  <View style={s.tableHeaderRow}>
+                    <Text style={[s.tableColHeader, { flex: 1.2 }]}>Jornada</Text>
+                    <Text style={[s.tableColHeader, { flex: 2 }]}>Fecha</Text>
+                    <Text style={[s.tableColHeader, { flex: 1.5, textAlign: "right" }]}>Inicio</Text>
+                    <Text style={[s.tableColHeader, { flex: 1.2, textAlign: "right" }]}>Uso</Text>
+                    <Text style={[s.tableColHeader, { flex: 1.5, textAlign: "right" }]}>Final</Text>
+                    <Text style={[s.tableColHeader, { flex: 2.3, textAlign: "center" }]}>Estado</Text>
+                  </View>
+                  
+                  {/* Table Body */}
+                  {simResult.simulationDays.map((item, index) => {
+                    let badgeBg = "#DEF7EC";
+                    let badgeText = "#03543F";
+                    let statusText = "Seguro";
+                    let statusIcon = "check-circle";
+                    
+                    if (item.status === "RECOMENDADO") {
+                      badgeBg = "#FEF3C7";
+                      badgeText = "#92400E";
+                      statusText = "Cambiar al cierre";
+                      statusIcon = "wrench";
+                    } else if (item.status === "INSUFICIENTE") {
+                      badgeBg = "#FDE8E8";
+                      badgeText = "#9B1C1C";
+                      statusText = "Horas insuficientes";
+                      statusIcon = "close-circle";
+                    }
+                    
+                    const dailyUsageVal = simMode === "SEMANAL" ? parseFloat(simSemanalDailyUsage) : parseFloat(simManualDailyUsage);
+
+                    return (
+                      <View key={item.dayIndex} style={[s.tableRow, index % 2 === 1 && s.tableRowAlternating]}>
+                        <Text style={[s.tableCell, { flex: 1.2, fontWeight: "700" }]}>Día {item.dayIndex}</Text>
+                        <Text style={[s.tableCell, { flex: 2, fontSize: 12, textTransform: "capitalize" }]} numberOfLines={1}>
+                          {item.dateFormatted}
+                        </Text>
+                        <Text style={[s.tableCell, { flex: 1.5, textAlign: "right" }]}>{item.hoursAtStart} h</Text>
+                        <Text style={[s.tableCell, { flex: 1.2, textAlign: "right", color: COLORS.muted }]}>{dailyUsageVal} h</Text>
+                        <Text style={[s.tableCell, { flex: 1.5, textAlign: "right", fontWeight: "600" }]}>{item.hoursAtEnd} h</Text>
+                        
+                        <View style={{ flex: 2.3, alignItems: "center", justifyContent: "center" }}>
+                          <View style={[s.statusBadge, { backgroundColor: badgeBg }]}>
+                            <MaterialCommunityIcons name={statusIcon as any} size={11} color={badgeText} style={{ marginRight: 3 }} />
+                            <Text style={[s.statusBadgeText, { color: badgeText }]} numberOfLines={1}>
+                              {statusText}
+                            </Text>
+                          </View>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+            ) : (
+              <View style={s.emptySimCard}>
+                <MaterialCommunityIcons name="calculator-variant-outline" size={48} color={COLORS.muted} />
+                <Text style={s.emptySimTitle}>Esperando Datos Completos</Text>
+                <Text style={s.emptySimSubtitle}>
+                  {simMode === "SEMANAL"
+                    ? "Seleccioná un proyector de la lista superior e ingresá el uso diario aproximado."
+                    : "Ingresá las horas restantes de la lámpara, el promedio de uso diario y la fecha inicial."}
+                </Text>
+              </View>
             )}
           </View>
         )}
@@ -2260,5 +2673,281 @@ const s = StyleSheet.create({
     color: "#FFF",
     fontWeight: "800",
     fontSize: 14,
+  },
+
+  // 6. Simulación styles
+  simModeContainer: {
+    flexDirection: "row",
+    backgroundColor: COLORS.card,
+    borderRadius: 14,
+    marginBottom: 16,
+    padding: 4,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    ...THEME.shadow.soft,
+  },
+  simModeBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+    borderRadius: 11,
+    gap: 6,
+  },
+  simModeBtnActive: {
+    backgroundColor: COLORS.primary,
+  },
+  simModeBtnText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: COLORS.muted,
+  },
+  simModeBtnTextActive: {
+    color: "#FFF",
+  },
+  simCard: {
+    backgroundColor: COLORS.card,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 18,
+    marginBottom: 16,
+    gap: 12,
+    ...THEME.shadow.soft,
+  },
+  simCardTitle: {
+    fontSize: 16,
+    fontWeight: "900",
+    color: COLORS.text,
+  },
+  simCardSubtitle: {
+    fontSize: 13,
+    color: COLORS.muted,
+    lineHeight: 18,
+  },
+  roomSelectGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginVertical: 10,
+  },
+  roomSelectBtn: {
+    flexGrow: 1,
+    minWidth: 80,
+    backgroundColor: COLORS.bg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 10,
+    padding: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  roomSelectBtnActive: {
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.primary + "15",
+  },
+  roomSelectBtnText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: COLORS.text,
+  },
+  roomSelectBtnTextActive: {
+    color: COLORS.primary,
+  },
+  roomSelectBtnSubText: {
+    fontSize: 10,
+    color: COLORS.muted,
+    marginTop: 2,
+  },
+  roomSelectBtnSubTextActive: {
+    color: COLORS.primary + "B0",
+  },
+  roomSelectBtnHours: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#059669",
+    marginTop: 4,
+  },
+  roomSelectBtnHoursActive: {
+    color: COLORS.primary,
+  },
+  selectedRoomDetailsCard: {
+    backgroundColor: COLORS.bg,
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    gap: 6,
+  },
+  selectedRoomDetailRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  selectedRoomDetailLabel: {
+    fontSize: 12,
+    color: COLORS.muted,
+    fontWeight: "600",
+  },
+  selectedRoomDetailVal: {
+    fontSize: 12,
+    color: COLORS.text,
+    fontWeight: "800",
+  },
+  adjustDateRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 6,
+  },
+  adjustDateBtn: {
+    flex: 1,
+    backgroundColor: COLORS.bg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 10,
+    paddingVertical: 8,
+    alignItems: "center",
+  },
+  adjustDateBtnText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: COLORS.text,
+  },
+  resultsContainer: {
+    gap: 12,
+  },
+  resultsSectionTitle: {
+    fontSize: 16,
+    fontWeight: "900",
+    color: COLORS.text,
+    marginTop: 10,
+  },
+  recommendationCard: {
+    backgroundColor: "#FEF3C7",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#FCD34D",
+    padding: 16,
+    gap: 10,
+  },
+  recHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  recTitle: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#92400E",
+  },
+  recDateText: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#78350F",
+    lineHeight: 24,
+  },
+  recDetailsRow: {
+    flexDirection: "row",
+    gap: 12,
+    borderTopWidth: 1,
+    borderColor: "#FCD34D50",
+    paddingTop: 10,
+  },
+  recDetailItem: {
+    flex: 1,
+  },
+  recDetailLabel: {
+    fontSize: 11,
+    color: "#92400E",
+    fontWeight: "600",
+    marginBottom: 2,
+  },
+  recDetailValue: {
+    fontSize: 15,
+    fontWeight: "900",
+    color: "#78350F",
+  },
+  recNote: {
+    fontSize: 11,
+    color: "#B45309",
+    fontStyle: "italic",
+    marginTop: 2,
+  },
+  tableTitle: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: COLORS.text,
+    marginTop: 10,
+  },
+  tableContainer: {
+    backgroundColor: COLORS.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    overflow: "hidden",
+  },
+  tableHeaderRow: {
+    flexDirection: "row",
+    backgroundColor: COLORS.bg,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderColor: COLORS.border,
+  },
+  tableColHeader: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: COLORS.muted,
+  },
+  tableRow: {
+    flexDirection: "row",
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderColor: COLORS.border + "40",
+    alignItems: "center",
+  },
+  tableRowAlternating: {
+    backgroundColor: COLORS.bg + "40",
+  },
+  tableCell: {
+    fontSize: 12,
+    color: COLORS.text,
+    fontWeight: "500",
+  },
+  statusBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  statusBadgeText: {
+    fontSize: 9,
+    fontWeight: "800",
+  },
+  emptySimCard: {
+    backgroundColor: COLORS.card,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    ...THEME.shadow.soft,
+  },
+  emptySimTitle: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: COLORS.text,
+    marginTop: 4,
+  },
+  emptySimSubtitle: {
+    fontSize: 12,
+    color: COLORS.muted,
+    textAlign: "center",
+    lineHeight: 18,
+    maxWidth: 300,
   },
 });
