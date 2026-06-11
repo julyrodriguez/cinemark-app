@@ -1589,7 +1589,7 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
                   {simResult.simulationDays.map((item, index) => {
                     let badgeBg = "#DEF7EC";
                     let badgeText = "#03543F";
-                    let statusText = "Seguro";
+                    let statusText = width < 600 ? "" : "Seguro";
                     let statusIcon = "check-circle";
                     
                     if (item.status === "RECOMENDADO") {
@@ -1616,7 +1616,7 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
                             <Text style={[s.tableCell, { flex: 1.3, textAlign: "right", fontWeight: "600" }]}>{item.hoursAtEnd} h</Text>
                             <View style={{ flex: 2.5, alignItems: "center", justifyContent: "center" }}>
                               <View style={[s.statusBadge, { backgroundColor: badgeBg }]}>
-                                <MaterialCommunityIcons name={statusIcon as any} size={11} color={badgeText} style={{ marginRight: 3 }} />
+                                <MaterialCommunityIcons name={statusIcon as any} size={11} color={badgeText} style={{ marginRight: statusText ? 3 : 0 }} />
                                 <Text style={[s.statusBadgeText, { color: badgeText }]} numberOfLines={1}>
                                   {statusText}
                                 </Text>
@@ -1635,7 +1635,7 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
                             
                             <View style={{ flex: 2.3, alignItems: "center", justifyContent: "center" }}>
                               <View style={[s.statusBadge, { backgroundColor: badgeBg }]}>
-                                <MaterialCommunityIcons name={statusIcon as any} size={11} color={badgeText} style={{ marginRight: 3 }} />
+                                <MaterialCommunityIcons name={statusIcon as any} size={11} color={badgeText} style={{ marginRight: statusText ? 3 : 0 }} />
                                 <Text style={[s.statusBadgeText, { color: badgeText }]} numberOfLines={1}>
                                   {statusText}
                                 </Text>
