@@ -1,0 +1,1129 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+} from "firebase/firestore";
+import React, { useEffect, useState, useMemo } from "react";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import {
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Modal,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  View,
+  Platform,
+} from "react-native";
+import DateTimePicker from "@react-native-community/datetimepicker";
+
+import PageTitle from "@/components/PageTitle";
+import { auth, db, CINES_COLLECTION } from "../lib/firebaseConfig";
+import { COLORS, THEME } from "../lib/theme";
+import { useAuthUser } from "../lib/useAuthUser";
+
+export interface Mantenimiento {
+  id: string;
+  date: string; // YYYY-MM-DD
+  type: "A" | "B" | "C" | "D";
+  performedBy: "Nosotros" | "Ingeniero";
+  notes?: string;
+  calendarEventId?: string | null;
+  createdAt?: any;
+  createdBy?: string;
+  createdName?: string;
+}
+
+// Helper: Calculate days between two YYYY-MM-DD date strings
+function getDaysBetween(dateStr1: string, dateStr2: string): number {
+  const d1 = new Date(dateStr1 + "T12:00:00");
+  const d2 = new Date(dateStr2 + "T12:00:00");
+  const diffTime = Math.abs(d2.getTime() - d1.getTime());
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  return diffDays;
+}
+
+// Helper: Format date string YYYY-MM-DD to DD/MM/YYYY
+function ymdToDdmmyyyy(ymd: string): string {
+  const parts = ymd.split("-");
+  if (parts.length !== 3) return ymd;
+  return `${parts[2]}/${parts[1]}/${parts[0]}`;
+}
+
+// Helper: Format date in Spanish (e.g. Lunes, 12 de Junio de 2026)
+function formatDisplayDate(dateStr: string): string {
+  const daysOfWeek = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+  const months = [
+    "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+    "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
+  ];
+  const date = new Date(dateStr + "T12:00:00");
+  const dayName = daysOfWeek[date.getDay()];
+  const day = date.getDate();
+  const monthName = months[date.getMonth()];
+  const year = date.getFullYear();
+  return `${dayName}, ${day} de ${monthName} de ${year}`;
+}
+
+// Helper: Relative time (e.g. "Hace 5 días", "Hoy", "Ayer")
+function getRelativeTime(dateStr: string): string {
+  const target = new Date(dateStr + "T12:00:00");
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+
+  const diffTime = today.getTime() - target.getTime();
+  const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+
+  if (diffDays === 0) return "Hoy";
+  if (diffDays === 1) return "Ayer";
+  if (diffDays === -1) return "Mañana";
+  if (diffDays < 0) return `En ${Math.abs(diffDays)} días`;
+
+  if (diffDays < 30) {
+    return `Hace ${diffDays} ${diffDays === 1 ? "día" : "días"}`;
+  }
+
+  const diffMonths = Math.floor(diffDays / 30);
+  if (diffMonths < 12) {
+    const remainingDays = diffDays % 30;
+    if (remainingDays === 0) {
+      return `Hace ${diffMonths} ${diffMonths === 1 ? "mes" : "meses"}`;
+    }
+    return `Hace ${diffMonths} ${diffMonths === 1 ? "mes" : "meses"} y ${remainingDays} ${remainingDays === 1 ? "día" : "días"}`;
+  }
+
+  const diffYears = Math.floor(diffDays / 365);
+  return `Hace ${diffYears} ${diffYears === 1 ? "año" : "años"}`;
+}
+
+export default function MantenimientosScreen({ readOnly = false }: { readOnly?: boolean }) {
+  const { user, cineId, loading: sessionLoading, displayName } = useAuthUser();
+
+  const [activeSubTab, setActiveSubTab] = useState<"fechas" | "barco_pc">("fechas");
+  const [loading, setLoading] = useState(true);
+  const [mantenimientos, setMantenimientos] = useState<Mantenimiento[]>([]);
+
+  // Form states
+  const [showForm, setShowForm] = useState(false);
+  const [type, setType] = useState<"A" | "B" | "C" | "D">("A");
+  const [notes, setNotes] = useState("");
+
+  // Date states
+  const [customDateText, setCustomDateText] = useState(""); // Web YYYY-MM-DD (typed as DD/MM/YYYY)
+  const [customDateValue, setCustomDateValue] = useState<Date>(new Date()); // Mobile
+  const [showAndroidPicker, setShowAndroidPicker] = useState(false);
+
+  // Delete states
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [mtmToDelete, setMtmToDelete] = useState<Mantenimiento | null>(null);
+
+  // Fetch maintenances
+  useEffect(() => {
+    let unsub: any;
+
+    (async () => {
+      if (sessionLoading) {
+        setLoading(true);
+        return;
+      }
+      if (!user || !cineId) {
+        setMantenimientos([]);
+        setLoading(false);
+        return;
+      }
+
+      const q = query(
+        collection(db, CINES_COLLECTION, cineId, "mantenimientos"),
+        orderBy("date", "desc")
+      );
+
+      unsub = onSnapshot(
+        q,
+        (snap) => {
+          const arr = snap.docs.map((d) => ({
+            id: d.id,
+            ...(d.data() as any),
+          })) as Mantenimiento[];
+
+          setMantenimientos(arr);
+          setLoading(false);
+        },
+        (err) => {
+          console.error(err);
+          setLoading(false);
+          Alert.alert("Mantenimientos", "No se pudieron cargar los registros.");
+        }
+      );
+    })();
+
+    return () => unsub && unsub();
+  }, [user, cineId, sessionLoading]);
+
+  // Compute gaps and stats
+  const { chronologicalList, displayList, stats } = useMemo(() => {
+    // 1. Sort ascending to calculate consecutive gaps correctly
+    const sortedAsc = [...mantenimientos].sort((a, b) => {
+      const dateComp = a.date.localeCompare(b.date);
+      if (dateComp !== 0) return dateComp;
+      const timeA = a.createdAt?.seconds || 0;
+      const timeB = b.createdAt?.seconds || 0;
+      return timeA - timeB;
+    });
+
+    const gapsMap: Record<string, number> = {};
+    for (let i = 1; i < sortedAsc.length; i++) {
+      const current = sortedAsc[i];
+      const prev = sortedAsc[i - 1];
+      gapsMap[current.id] = getDaysBetween(prev.date, current.date);
+    }
+
+    // 2. Sort descending for layout display
+    const sortedDesc = [...mantenimientos].sort((a, b) => {
+      const dateComp = b.date.localeCompare(a.date);
+      if (dateComp !== 0) return dateComp;
+      const timeA = a.createdAt?.seconds || 0;
+      const timeB = b.createdAt?.seconds || 0;
+      return timeB - timeA;
+    });
+
+    // 3. Compute stats
+    const total = mantenimientos.length;
+    const ultimo = sortedDesc[0] || null;
+
+    let avgGap: number | null = null;
+    if (total > 1) {
+      let sumGaps = 0;
+      let countGaps = 0;
+      Object.values(gapsMap).forEach((gap) => {
+        sumGaps += gap;
+        countGaps++;
+      });
+      if (countGaps > 0) {
+        avgGap = Math.round(sumGaps / countGaps);
+      }
+    }
+
+    return {
+      chronologicalList: sortedAsc,
+      displayList: sortedDesc.map((item) => ({
+        ...item,
+        gapDays: gapsMap[item.id] || null,
+      })),
+      stats: {
+        total,
+        ultimo,
+        avgGap,
+      },
+    };
+  }, [mantenimientos]);
+
+  const openNew = () => {
+    const today = new Date();
+    const formattedWeb = `${String(today.getDate()).padStart(2, "0")}/${String(today.getMonth() + 1).padStart(2, "0")}/${today.getFullYear()}`;
+    setCustomDateText(formattedWeb);
+    setCustomDateValue(today);
+    setType("A");
+    setNotes("");
+    setShowForm(true);
+  };
+
+  /** Parse DD/MM/YYYY → YYYY-MM-DD */
+  const parseDateInput = (text: string): string | null => {
+    const m = text.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (!m) return null;
+    const [, dd, mm, yyyy] = m;
+    const d = parseInt(dd, 10), mo = parseInt(mm, 10), y = parseInt(yyyy, 10);
+    if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+    return `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  };
+
+  const addMantenimiento = async () => {
+    if (!user || !cineId) return;
+
+    let dateStr: string;
+
+    if (Platform.OS === "web") {
+      const parsed = parseDateInput(customDateText);
+      if (!parsed) {
+        Alert.alert("Fecha inválida", "Usá el formato DD/MM/AAAA (ej: 28/03/2026)");
+        return;
+      }
+      dateStr = parsed;
+    } else {
+      const d = customDateValue;
+      dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    }
+
+    try {
+      const storedDisplayName =
+        (await AsyncStorage.getItem("displayName")) ||
+        displayName ||
+        user.email?.split("@")[0] ||
+        "Usuario";
+
+      const performedBy = (type === "A" || type === "B") ? "Nosotros" : "Ingeniero";
+
+      // 1. Add Event to general calendarEvents collection (as type MTM)
+      const calColRef = collection(db, CINES_COLLECTION, cineId, "calendarEvents");
+      const calDocRef = await addDoc(calColRef, {
+        date: dateStr,
+        type: "MTM",
+        title: "MTM",
+        description: `Mantenimiento Tipo ${type} (${performedBy === "Nosotros" ? "Nosotros" : "Ingeniero"})${notes.trim() ? " - " + notes.trim() : ""}`,
+        createdBy: user.uid,
+        createdName: storedDisplayName,
+        createdAt: serverTimestamp(),
+        cineId: cineId,
+      });
+
+      // 2. Add maintenance record with linked calendarEventId
+      await addDoc(collection(db, CINES_COLLECTION, cineId, "mantenimientos"), {
+        date: dateStr,
+        type,
+        performedBy,
+        notes: notes.trim() || null,
+        calendarEventId: calDocRef.id,
+        createdAt: serverTimestamp(),
+        createdBy: user.uid,
+        createdName: storedDisplayName,
+      });
+
+      setShowForm(false);
+    } catch (e) {
+      console.error(e);
+      Alert.alert("Error", "No se pudo registrar el mantenimiento.");
+    }
+  };
+
+  const askDeleteMtm = (item: Mantenimiento) => {
+    if (readOnly) return;
+    setMtmToDelete(item);
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmRemoveMtm = async () => {
+    if (!mtmToDelete || !cineId) return;
+
+    try {
+      // 1. Delete associated calendar event
+      if (mtmToDelete.calendarEventId) {
+        await deleteDoc(doc(db, CINES_COLLECTION, cineId, "calendarEvents", mtmToDelete.calendarEventId));
+      }
+      // 2. Delete maintenance
+      await deleteDoc(doc(db, CINES_COLLECTION, cineId, "mantenimientos", mtmToDelete.id));
+
+      setShowDeleteConfirm(false);
+      setMtmToDelete(null);
+    } catch (e) {
+      console.error(e);
+      Alert.alert("Error", "No se pudo eliminar el mantenimiento.");
+    }
+  };
+
+  const getTypeStyle = (t: "A" | "B" | "C" | "D") => {
+    switch (t) {
+      case "A":
+        return { bg: "#EFF6FF", border: "#BFDBFE", text: "#1D4ED8" }; // Blue
+      case "B":
+        return { bg: "#ECFDF5", border: "#A7F3D0", text: "#047857" }; // Green
+      case "C":
+        return { bg: "#FFFBEB", border: "#FDE68A", text: "#B45309" }; // Amber
+      case "D":
+        return { bg: "#FAF5FF", border: "#E9D5FF", text: "#6D28D9" }; // Purple
+    }
+  };
+
+  const renderStats = () => {
+    const ultimoText = stats.ultimo
+      ? `Tipo ${stats.ultimo.type} (${getRelativeTime(stats.ultimo.date)})`
+      : "Ninguno";
+
+    return (
+      <View style={styles.statsRow}>
+        <View style={styles.statsCard}>
+          <MaterialCommunityIcons name="clipboard-list-outline" size={22} color={COLORS.primary} style={{ marginBottom: 6 }} />
+          <Text style={styles.statsVal}>{stats.total}</Text>
+          <Text style={styles.statsLbl}>Total Mtm</Text>
+        </View>
+
+        <View style={[styles.statsCard, { flex: 1.5 }]}>
+          <MaterialCommunityIcons name="clock-outline" size={22} color={COLORS.primary} style={{ marginBottom: 6 }} />
+          <Text style={styles.statsVal} numberOfLines={1}>{ultimoText}</Text>
+          <Text style={styles.statsLbl}>Último Realizado</Text>
+        </View>
+
+        <View style={styles.statsCard}>
+          <MaterialCommunityIcons name="calendar-range" size={22} color={COLORS.primary} style={{ marginBottom: 6 }} />
+          <Text style={styles.statsVal}>
+            {stats.avgGap !== null ? `${stats.avgGap}d` : "N/A"}
+          </Text>
+          <Text style={styles.statsLbl}>Frecuencia Promedio</Text>
+        </View>
+      </View>
+    );
+  };
+
+  const renderMtmItem = ({ item }: { item: Mantenimiento & { gapDays?: number | null } }) => {
+    const styleMeta = getTypeStyle(item.type);
+    const isEngineer = item.type === "C" || item.type === "D";
+
+    return (
+      <View style={styles.cardWrapper}>
+        {/* If gap days are present and it's not the first one, show indicator */}
+        {item.gapDays !== null && item.gapDays !== undefined && (
+          <View style={styles.gapConnectorContainer}>
+            <View style={styles.gapLine} />
+            <View style={styles.gapBadge}>
+              <MaterialCommunityIcons name="timelapse" size={14} color={COLORS.muted} style={{ marginRight: 4 }} />
+              <Text style={styles.gapText}>
+                Pasaron {item.gapDays} {item.gapDays === 1 ? "día" : "días"} entre mantenimientos
+              </Text>
+            </View>
+            <View style={styles.gapLine} />
+          </View>
+        )}
+
+        <View style={styles.mtmCard}>
+          <View style={styles.cardHeader}>
+            <View style={[styles.typeBadge, { backgroundColor: styleMeta.bg, borderColor: styleMeta.border }]}>
+              <Text style={[styles.typeBadgeText, { color: styleMeta.text }]}>
+                Tipo {item.type}
+              </Text>
+            </View>
+
+            <View style={styles.performedBadge}>
+              <MaterialCommunityIcons
+                name={isEngineer ? "account-hard-hat-outline" : "account-supervisor-outline"}
+                size={14}
+                color={isEngineer ? "#7C3AED" : COLORS.muted}
+                style={{ marginRight: 4 }}
+              />
+              <Text style={[styles.performedText, isEngineer && { color: "#7C3AED", fontWeight: "700" }]}>
+                {isEngineer ? "Ingeniero" : "Nosotros"}
+              </Text>
+            </View>
+
+            {!readOnly && (
+              <TouchableOpacity style={styles.deleteCardBtn} onPress={() => askDeleteMtm(item)}>
+                <MaterialCommunityIcons name="trash-can-outline" size={18} color="#EF4444" />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          <View style={styles.cardBody}>
+            <Text style={styles.cardDate}>
+              {formatDisplayDate(item.date)}
+            </Text>
+            <Text style={styles.cardRelativeDate}>
+              {getRelativeTime(item.date)}
+            </Text>
+
+            {!!item.notes && (
+              <View style={styles.notesContainer}>
+                <Text style={styles.notesText}>{item.notes}</Text>
+              </View>
+            )}
+          </View>
+
+          <View style={styles.cardFooter}>
+            <Text style={styles.createdByText}>
+              Registrado por {item.createdName || "Usuario"}
+            </Text>
+          </View>
+        </View>
+      </View>
+    );
+  };
+
+  const renderFechasTab = () => {
+    if (loading) {
+      return (
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+        </View>
+      );
+    }
+
+    return (
+      <View style={{ flex: 1 }}>
+        {renderStats()}
+
+        {mantenimientos.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <MaterialCommunityIcons
+              name="calendar-multiselect"
+              size={64}
+              color={COLORS.muted}
+              style={{ opacity: 0.4, marginBottom: 16 }}
+            />
+            <Text style={styles.emptyTitle}>Sin mantenimientos registrados</Text>
+            <Text style={styles.emptySubtitle}>
+              Presioná el botón de agregar para registrar el primer mantenimiento.
+            </Text>
+          </View>
+        ) : (
+          <FlatList
+            data={displayList}
+            keyExtractor={(item) => item.id}
+            renderItem={renderMtmItem}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+          />
+        )}
+      </View>
+    );
+  };
+
+  const renderBarcoPcTab = () => {
+    return (
+      <View style={styles.emptyContainer}>
+        <MaterialCommunityIcons
+          name="laptop"
+          size={80}
+          color={COLORS.muted}
+          style={{ opacity: 0.3, marginBottom: 20 }}
+        />
+        <Text style={styles.emptyTitle}>Sección Barco Pc</Text>
+        <Text style={styles.emptySubtitle}>
+          Esta sección está reservada y se desarrollará en el futuro.
+        </Text>
+      </View>
+    );
+  };
+
+  return (
+    <View style={styles.container}>
+      <PageTitle
+        title="Mantenimientos"
+        subtitle="Control y seguimiento de mantenimientos en proyección"
+        right={
+          !readOnly && activeSubTab === "fechas" ? (
+            <TouchableOpacity style={styles.headerBtn} onPress={openNew}>
+              <MaterialCommunityIcons name="plus" size={18} color="#fff" style={{ marginRight: 6 }} />
+              <Text style={styles.headerBtnText}>Registrar Mtm</Text>
+            </TouchableOpacity>
+          ) : undefined
+        }
+      />
+
+      {/* Subtab Navigation */}
+      <View style={styles.tabBar}>
+        <TouchableOpacity
+          style={[styles.tabButton, activeSubTab === "fechas" && styles.tabButtonActive]}
+          onPress={() => setActiveSubTab("fechas")}
+        >
+          <MaterialCommunityIcons
+            name="calendar-clock"
+            size={18}
+            color={activeSubTab === "fechas" ? COLORS.primary : COLORS.muted}
+            style={{ marginRight: 8 }}
+          />
+          <Text style={[styles.tabButtonText, activeSubTab === "fechas" && styles.tabButtonTextActive]}>
+            Fechas
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tabButton, activeSubTab === "barco_pc" && styles.tabButtonActive]}
+          onPress={() => setActiveSubTab("barco_pc")}
+        >
+          <MaterialCommunityIcons
+            name="laptop"
+            size={18}
+            color={activeSubTab === "barco_pc" ? COLORS.primary : COLORS.muted}
+            style={{ marginRight: 8 }}
+          />
+          <Text style={[styles.tabButtonText, activeSubTab === "barco_pc" && styles.tabButtonTextActive]}>
+            Barco Pc
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Content */}
+      <View style={{ flex: 1 }}>
+        {activeSubTab === "fechas" ? renderFechasTab() : renderBarcoPcTab()}
+      </View>
+
+      {/* Add Modal */}
+      <Modal
+        visible={showForm}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setShowForm(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCardModern}>
+            <Text style={styles.modalTitleModern}>Registrar Mantenimiento</Text>
+            <Text style={styles.modalSubtitleModern}>
+              Completá los datos correspondientes al mantenimiento realizado.
+            </Text>
+
+            {/* Date Selection */}
+            <View style={styles.fieldGroup}>
+              <Text style={styles.fieldLabel}>Fecha de realización</Text>
+              {Platform.OS === "web" ? (
+                <TextInput
+                  style={styles.modalInputModern}
+                  placeholder="DD/MM/AAAA"
+                  placeholderTextColor="#94A3B8"
+                  value={customDateText}
+                  onChangeText={setCustomDateText}
+                  keyboardType="numbers-and-punctuation"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              ) : (
+                <View>
+                  <TouchableOpacity
+                    style={styles.dropdownTrigger}
+                    onPress={() => setShowAndroidPicker(true)}
+                  >
+                    <Text style={styles.dropdownTriggerText}>
+                      {customDateValue
+                        ? formatDate(`${customDateValue.getFullYear()}-${String(customDateValue.getMonth() + 1).padStart(2, "0")}-${String(customDateValue.getDate()).padStart(2, "0")}`)
+                        : "Seleccionar fecha"}
+                    </Text>
+                    <MaterialCommunityIcons name="calendar" size={20} color={COLORS.muted} />
+                  </TouchableOpacity>
+                  {showAndroidPicker && (
+                    <DateTimePicker
+                      value={customDateValue}
+                      mode="date"
+                      display="default"
+                      onChange={(_: any, selectedDate?: Date) => {
+                        setShowAndroidPicker(false);
+                        if (selectedDate) setCustomDateValue(selectedDate);
+                      }}
+                    />
+                  )}
+                </View>
+              )}
+            </View>
+
+            {/* Type Selection */}
+            <View style={styles.fieldGroup}>
+              <Text style={styles.fieldLabel}>Tipo de Mantenimiento</Text>
+              <View style={styles.typeSelectorRow}>
+                {(["A", "B", "C", "D"] as const).map((t) => {
+                  const isSelected = type === t;
+                  const styleMeta = getTypeStyle(t);
+                  return (
+                    <TouchableOpacity
+                      key={t}
+                      style={[
+                        styles.typeSelectorBtn,
+                        isSelected && {
+                          backgroundColor: styleMeta.bg,
+                          borderColor: styleMeta.text,
+                        },
+                      ]}
+                      onPress={() => setType(t)}
+                    >
+                      <Text
+                        style={[
+                          styles.typeSelectorBtnText,
+                          { color: isSelected ? styleMeta.text : COLORS.muted },
+                          isSelected && { fontWeight: "800" },
+                        ]}
+                      >
+                        {t}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* Informational Message about Engineer for C and D */}
+              {(type === "C" || type === "D") ? (
+                <View style={styles.infoBanner}>
+                  <MaterialCommunityIcons name="information" size={16} color="#7C3AED" style={{ marginRight: 6 }} />
+                  <Text style={styles.infoBannerText}>
+                    Nota: Los mantenimientos de Tipo C y D son gestionados y ejecutados directamente por el ingeniero.
+                  </Text>
+                </View>
+              ) : (
+                <View style={[styles.infoBanner, { backgroundColor: "#EFF6FF", borderColor: "#BFDBFE" }]}>
+                  <MaterialCommunityIcons name="information" size={16} color="#1D4ED8" style={{ marginRight: 6 }} />
+                  <Text style={[styles.infoBannerText, { color: "#1E40AF" }]}>
+                    Nota: Los mantenimientos Tipo A y B son ejecutados localmente por nosotros.
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            {/* Notes */}
+            <View style={styles.fieldGroup}>
+              <Text style={styles.fieldLabel}>Notas u observaciones (Opcional)</Text>
+              <TextInput
+                style={[styles.modalInputModern, styles.textAreaModern]}
+                placeholder="Ingresá detalles o repuestos utilizados..."
+                placeholderTextColor="#94A3B8"
+                value={notes}
+                onChangeText={setNotes}
+                multiline
+              />
+            </View>
+
+            {/* Actions */}
+            <View style={styles.modalActionsModern}>
+              <TouchableOpacity
+                style={styles.cancelBtnModern}
+                onPress={() => setShowForm(false)}
+              >
+                <Text style={styles.cancelBtnTextModern}>Cancelar</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.saveBtnModern} onPress={addMantenimiento}>
+                <Text style={styles.saveBtnTextModern}>Guardar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        visible={showDeleteConfirm}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setShowDeleteConfirm(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.confirmCard}>
+            <Text style={styles.modalTitle}>Eliminar Mantenimiento</Text>
+            <Text style={styles.confirmText}>
+              ¿Estás seguro de que querés eliminar este registro? Esto también quitará la etiqueta "Mtm" del calendario general.
+            </Text>
+            <View style={styles.modalActionsModern}>
+              <TouchableOpacity
+                style={styles.cancelBtnModern}
+                onPress={() => setShowDeleteConfirm(false)}
+              >
+                <Text style={styles.cancelBtnTextModern}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.deleteBtnModern}
+                onPress={confirmRemoveMtm}
+              >
+                <Text style={styles.deleteBtnTextModern}>Eliminar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+// Utility: simple format for Android value display
+function formatDate(iso: string) {
+  const parts = iso.split("-");
+  if (parts.length !== 3) return iso;
+  return `${parts[2]}/${parts[1]}/${parts[0]}`;
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    padding: 16,
+  },
+  centered: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  headerBtn: {
+    flexDirection: "row",
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerBtnText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 14,
+  },
+  tabBar: {
+    flexDirection: "row",
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    marginBottom: 16,
+  },
+  tabButton: {
+    flexDirection: "row",
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderBottomWidth: 2,
+    borderBottomColor: "transparent",
+    alignItems: "center",
+  },
+  tabButtonActive: {
+    borderBottomColor: COLORS.primary,
+  },
+  tabButtonText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: COLORS.muted,
+  },
+  tabButtonTextActive: {
+    color: COLORS.text,
+    fontWeight: "700",
+  },
+  statsRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 16,
+    flexWrap: "wrap",
+  },
+  statsCard: {
+    flex: 1,
+    minWidth: 120,
+    backgroundColor: COLORS.card,
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  statsVal: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: COLORS.text,
+    textAlign: "center",
+  },
+  statsLbl: {
+    fontSize: 11,
+    color: COLORS.muted,
+    marginTop: 4,
+    textAlign: "center",
+    fontWeight: "600",
+  },
+  listContent: {
+    paddingBottom: 30,
+  },
+  cardWrapper: {
+    width: "100%",
+  },
+  mtmCard: {
+    backgroundColor: COLORS.card,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    shadowColor: "#000",
+    shadowOpacity: 0.03,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+    marginBottom: 12,
+  },
+  cardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  typeBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  typeBadgeText: {
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  performedBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginLeft: 12,
+    backgroundColor: COLORS.bg,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  performedText: {
+    fontSize: 11,
+    color: COLORS.muted,
+  },
+  deleteCardBtn: {
+    marginLeft: "auto",
+    padding: 4,
+  },
+  cardBody: {
+    marginBottom: 10,
+  },
+  cardDate: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: COLORS.text,
+  },
+  cardRelativeDate: {
+    fontSize: 13,
+    color: COLORS.muted,
+    marginTop: 2,
+  },
+  notesContainer: {
+    marginTop: 10,
+    backgroundColor: COLORS.bg,
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  notesText: {
+    fontSize: 14,
+    color: COLORS.text,
+    lineHeight: 20,
+  },
+  cardFooter: {
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    paddingTop: 8,
+    marginTop: 4,
+  },
+  createdByText: {
+    fontSize: 11,
+    color: COLORS.muted,
+    fontStyle: "italic",
+  },
+  gapConnectorContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginVertical: 8,
+    paddingHorizontal: 24,
+  },
+  gapLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: COLORS.border,
+    borderStyle: "dashed",
+  },
+  gapBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.bg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginHorizontal: 10,
+  },
+  gapText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: COLORS.muted,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+    marginTop: 40,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: COLORS.text,
+    marginBottom: 8,
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    color: COLORS.muted,
+    textAlign: "center",
+    lineHeight: 20,
+    maxWidth: 280,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 16,
+  },
+  modalCardModern: {
+    width: "100%",
+    maxWidth: 480,
+    backgroundColor: COLORS.card,
+    borderRadius: 20,
+    padding: 22,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    shadowColor: "#000",
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
+  },
+  modalTitleModern: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: COLORS.text,
+  },
+  modalSubtitleModern: {
+    marginTop: 6,
+    marginBottom: 18,
+    fontSize: 14,
+    lineHeight: 20,
+    color: COLORS.muted,
+  },
+  fieldGroup: {
+    marginBottom: 16,
+  },
+  fieldLabel: {
+    marginBottom: 8,
+    fontSize: 13,
+    fontWeight: "700",
+    color: COLORS.text,
+  },
+  modalInputModern: {
+    minHeight: 46,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: COLORS.bg,
+    color: COLORS.text,
+    fontSize: 15,
+  },
+  textAreaModern: {
+    height: 90,
+    textAlignVertical: "top",
+  },
+  typeSelectorRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 10,
+  },
+  typeSelectorBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.card,
+  },
+  typeSelectorBtnText: {
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  infoBanner: {
+    flexDirection: "row",
+    backgroundColor: "#F3E8FF", // Light purple for warning by default
+    borderColor: "#E9D5FF",
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 10,
+    alignItems: "flex-start",
+  },
+  infoBannerText: {
+    flex: 1,
+    fontSize: 12,
+    color: "#6D28D9",
+    lineHeight: 16,
+  },
+  dropdownTrigger: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    backgroundColor: COLORS.bg,
+  },
+  dropdownTriggerText: {
+    fontSize: 15,
+    color: COLORS.text,
+  },
+  modalActionsModern: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 10,
+    marginTop: 8,
+  },
+  cancelBtnModern: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: COLORS.border,
+    alignItems: "center",
+  },
+  cancelBtnTextModern: {
+    color: COLORS.text,
+    fontWeight: "700",
+  },
+  saveBtnModern: {
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: COLORS.primary,
+    alignItems: "center",
+  },
+  saveBtnTextModern: {
+    color: "#FFFFFF",
+    fontWeight: "800",
+  },
+  confirmCard: {
+    width: "100%",
+    maxWidth: 400,
+    backgroundColor: COLORS.card,
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: COLORS.text,
+    textAlign: "center",
+    marginBottom: 10,
+  },
+  confirmText: {
+    fontSize: 14,
+    color: COLORS.text,
+    textAlign: "center",
+    marginBottom: 20,
+    lineHeight: 20,
+  },
+  deleteBtnModern: {
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: "#DC2626",
+    alignItems: "center",
+  },
+  deleteBtnTextModern: {
+    color: "#FFFFFF",
+    fontWeight: "800",
+  },
+});

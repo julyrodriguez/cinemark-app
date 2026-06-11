@@ -60,3 +60,13 @@ export type Dcp = {
   createdBy?: string;
   createdName?: string;
 };
+
+export interface Mantenimiento extends BaseDoc {
+  date: string; // YYYY-MM-DD
+  type: "A" | "B" | "C" | "D";
+  performedBy: "Nosotros" | "Ingeniero";
+  notes?: string;
+  calendarEventId?: string | null;
+  createdName?: string;
+}
+

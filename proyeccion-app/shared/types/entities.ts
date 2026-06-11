@@ -108,3 +108,17 @@ export interface Marketing extends BaseDoc {
   fecha: string;
   datos: any; // Estructura específica de marketing
 }
+
+/**
+ * Mantenimiento (Mantenimientos)
+ */
+export interface Mantenimiento extends BaseDoc {
+  date: string; // YYYY-MM-DD
+  type: "A" | "B" | "C" | "D";
+  performedBy: "Nosotros" | "Ingeniero";
+  notes?: string;
+  calendarEventId?: string | null;
+  cineId?: string;
+  createdName?: string;
+}
+

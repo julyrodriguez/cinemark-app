@@ -43,9 +43,10 @@ import ControlSemanalScreen from "./screens/ControlSemanalScreen";
 import ChequeoCopiasScreen from "./screens/ChequeoCopiasScreen";
 import LamparasScreen from "./screens/LamparasScreen";
 import CierreMesScreen from "./screens/CierreMesScreen";
+import MantenimientosScreen from "./screens/MantenimientosScreen";
 
 type MainTab = "CALENDARIO" | "EVENTOS" | "PROYECCIÓN" | "SERVICIOS" | "COORDINADORES";
-type ProyeccionTab = "RMA" | "CREDITOS" | "DCP" | "TRAILERS_SEMANALES" | "CHEQUEO_COPIAS" | "CONTROL_SEMANAL" | "LAMPARAS" | "CIERRE_MES";
+type ProyeccionTab = "RMA" | "MANTENIMIENTOS" | "CREDITOS" | "DCP" | "TRAILERS_SEMANALES" | "CHEQUEO_COPIAS" | "CONTROL_SEMANAL" | "LAMPARAS" | "CIERRE_MES";
 type MarketingSubTab = "MKT" | "PROGRAMACION";
 type CoordinadoresSubTab = "QUIMICOS" | "LENTES_3D" | "PROXIMAMENTE";
 
@@ -63,6 +64,7 @@ const SUB_TABS = {
     { key: "DCP", label: "DCP", icon: "disc" },
     { key: "CREDITOS", label: "Créditos", icon: "lightbulb-outline" },
     { key: "RMA", label: "RMA", icon: "wrench-outline" },
+    { key: "MANTENIMIENTOS", label: "Mantenimientos", icon: "tools" },
     { key: "TRAILERS_SEMANALES", label: "Trailers Semanales", icon: "movie-outline" },
     { key: "CHEQUEO_COPIAS", label: "Chequeo de Copias", icon: "movie-check-outline" },
     { key: "CONTROL_SEMANAL", label: "Control Semanal", icon: "clipboard-check-outline" },
@@ -756,6 +758,7 @@ export default function Home() {
             {proyeccionTab === "DCP" && <DcpTab readOnly={!isProjectionUnlocked} />}
             {proyeccionTab === "CREDITOS" && <CreditosScreen readOnly={!isProjectionUnlocked} />}
             {proyeccionTab === "RMA" && <RmaTab readOnly={!isProjectionUnlocked} />}
+            {proyeccionTab === "MANTENIMIENTOS" && <MantenimientosScreen readOnly={!isProjectionUnlocked} />}
             {proyeccionTab === "TRAILERS_SEMANALES" && <TrailersSemanalesScreen readOnly={!isProjectionUnlocked} />}
             {proyeccionTab === "CHEQUEO_COPIAS" && <ChequeoCopiasScreen readOnly={!isProjectionUnlocked} />}
             {proyeccionTab === "CONTROL_SEMANAL" && <ControlSemanalScreen readOnly={!isProjectionUnlocked} />}
