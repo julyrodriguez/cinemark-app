@@ -571,12 +571,6 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
 
     return (
       <View style={[styles.statsRow, isMobile && styles.statsRowMobile]}>
-        <View style={[styles.statsCard, isMobile && styles.statsCardMobile]}>
-          <MaterialCommunityIcons name="clipboard-list-outline" size={isMobile ? 16 : 22} color={COLORS.primary} style={{ marginBottom: isMobile ? 3 : 6 }} />
-          <Text style={[styles.statsVal, isMobile && styles.statsValMobile]}>{stats.totalDays}</Text>
-          <Text style={[styles.statsLbl, isMobile && styles.statsLblMobile]}>Total Días</Text>
-        </View>
-
         <View style={[styles.statsCard, isMobile && styles.statsCardMobile, { flex: isMobile ? 1.4 : 1.5 }]}>
           <MaterialCommunityIcons name="clock-outline" size={isMobile ? 16 : 22} color={COLORS.primary} style={{ marginBottom: isMobile ? 3 : 6 }} />
           <Text style={[styles.statsVal, isMobile && styles.statsValMobile]} numberOfLines={1}>{ultimoText}</Text>
