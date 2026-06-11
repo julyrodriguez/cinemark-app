@@ -735,23 +735,26 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
     }
   };
 
-  const runSimulation = (remainingHours: number, dailyUsage: number, startDateStr: string) => {
-    if (isNaN(remainingHours) || remainingHours <= 0 || isNaN(dailyUsage) || dailyUsage <= 0) {
+  const runSimulation = (remainingHours: any, dailyUsage: any, startDateStr: string) => {
+    const remainingHoursNum = Number(remainingHours);
+    const dailyUsageNum = Number(dailyUsage);
+
+    if (isNaN(remainingHoursNum) || remainingHoursNum <= 0 || isNaN(dailyUsageNum) || dailyUsageNum <= 0) {
       return null;
     }
 
-    const days = Math.floor(remainingHours / dailyUsage);
+    const days = Math.floor(remainingHoursNum / dailyUsageNum);
     const startDay = dayjs(startDateStr);
     if (!startDay.isValid()) return null;
 
     const simulationDays = [];
-    let currentHours = remainingHours;
+    let currentHours = remainingHoursNum;
     const maxSimulate = Math.min(days + 2, 100);
 
     for (let i = 1; i <= maxSimulate; i++) {
       const date = startDay.add(i - 1, "day");
       const hoursAtStart = currentHours;
-      const hoursAtEnd = currentHours - dailyUsage;
+      const hoursAtEnd = currentHours - dailyUsageNum;
       const isOk = hoursAtEnd >= 0;
 
       simulationDays.push({
@@ -762,7 +765,7 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
         hoursAtEnd: parseFloat(hoursAtEnd.toFixed(1)),
         isOk,
         status: isOk 
-          ? (hoursAtEnd < dailyUsage ? "RECOMENDADO" : "SEGURO") 
+          ? (hoursAtEnd < dailyUsageNum ? "RECOMENDADO" : "SEGURO") 
           : "INSUFICIENTE"
       });
 
@@ -777,7 +780,7 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
     if (days === 0) {
       recommendationText = `Cambiar de inmediato el ${startDay.format("dddd DD/MM")} (antes de iniciar la jornada).`;
       changeDateLabel = startDay.format("dddd DD/MM");
-      hoursAtChange = remainingHours;
+      hoursAtChange = remainingHoursNum;
     } else {
       const lastSafeDate = startDay.add(days - 1, "day");
       const nextDate = startDay.add(days, "day");
@@ -787,7 +790,7 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
       
       recommendationText = `Al cierre de ${lastSafeDateStr} / apertura de ${nextDateStr}`;
       changeDateLabel = `${lastSafeDateStr} (cierre) / ${nextDateStr} (apertura)`;
-      hoursAtChange = remainingHours - (days * dailyUsage);
+      hoursAtChange = remainingHoursNum - (days * dailyUsageNum);
     }
 
     return {
