@@ -10,6 +10,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  TouchableOpacity,
   View,
 } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
@@ -206,6 +207,7 @@ export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: b
 
   const [existingCredits, setExistingCredits] = useState<string[]>([]);
   const [generatingCredits, setGeneratingCredits] = useState<Record<string, boolean>>({});
+  const [splitMovies, setSplitMovies] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (!cineId) return;
@@ -218,6 +220,8 @@ export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: b
     });
     return unsub;
   }, [cineId]);
+
+
 
   const generarCreditoDesdeCopia = async (peliculaName: string) => {
     if (!cineId || !user) return;
@@ -266,6 +270,95 @@ export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: b
   const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
   const [comparisonDone, setComparisonDone] = useState(false);
 
+  const uiCards = React.useMemo(() => {
+    const groups: Record<string, EstrenoMovie[]> = {};
+    estrenos.forEach((item) => {
+      const base = cleanMovieNameForCredits(item.pelicula);
+      if (!groups[base]) {
+        groups[base] = [];
+      }
+      groups[base].push(item);
+    });
+
+    const cards: Array<{
+      isGrouped: boolean;
+      baseTitle: string;
+      items: EstrenoMovie[];
+      key: string;
+    }> = [];
+
+    Object.keys(groups).forEach((base) => {
+      const isSplit = !!splitMovies[base];
+      const items = groups[base];
+      
+      if (isSplit || items.length === 1) {
+        items.forEach((item) => {
+          cards.push({
+            isGrouped: false,
+            baseTitle: base,
+            items: [item],
+            key: item.pelicula,
+          });
+        });
+      } else {
+        cards.push({
+          isGrouped: true,
+          baseTitle: base,
+          items: items,
+          key: `group-${base}`,
+        });
+      }
+    });
+
+    return cards;
+  }, [estrenos, splitMovies]);
+
+  const groupsCount = React.useMemo(() => {
+    const counts: Record<string, number> = {};
+    estrenos.forEach((item) => {
+      const base = cleanMovieNameForCredits(item.pelicula);
+      counts[base] = (counts[base] || 0) + 1;
+    });
+    return counts;
+  }, [estrenos]);
+
+  const handleUpdateCardField = (
+    card: { isGrouped: boolean; baseTitle: string; items: EstrenoMovie[] },
+    key: keyof EstrenoMovie,
+    value: any
+  ) => {
+    if (readOnly) return;
+    setEstrenos((prev) => {
+      return prev.map((item) => {
+        const matches = card.isGrouped 
+          ? cleanMovieNameForCredits(item.pelicula) === card.baseTitle
+          : item.pelicula === card.items[0].pelicula;
+          
+        if (matches) {
+          return {
+            ...item,
+            [key]: value,
+          };
+        }
+        return item;
+      });
+    });
+  };
+
+  const handlePrintGroup = async (items: EstrenoMovie[]) => {
+    if (Platform.OS === "web") {
+      for (let i = 0; i < items.length; i++) {
+        setTimeout(() => {
+          handlePrint(items[i]);
+        }, i * 800);
+      }
+    } else {
+      for (const item of items) {
+        await handlePrint(item);
+      }
+    }
+  };
+
   // Pick Old Week file
   const pickOldFile = async () => {
     try {
@@ -284,6 +377,7 @@ export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: b
       setComparisonDone(false);
       setEstrenos([]);
       setExpandedCards({});
+      setSplitMovies({});
     } catch (err) {
       Alert.alert("Error", "No se pudo cargar el archivo de semana vieja.");
     }
@@ -307,6 +401,7 @@ export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: b
       setComparisonDone(false);
       setEstrenos([]);
       setExpandedCards({});
+      setSplitMovies({});
     } catch (err) {
       Alert.alert("Error", "No se pudo cargar el archivo de semana nueva.");
     }
@@ -402,6 +497,7 @@ export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: b
 
       setEstrenos(detectedEstrenos);
       setExpandedCards({});
+      setSplitMovies({});
       setComparisonDone(true);
       setStatusText(`Comparación finalizada. Se encontraron ${detectedEstrenos.length} estrenos.`);
     } catch (err) {
@@ -434,6 +530,7 @@ export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: b
     setNewName(null);
     setEstrenos([]);
     setExpandedCards({});
+    setSplitMovies({});
     setComparisonDone(false);
     setStatusText("");
     setSemanaText("");
@@ -873,35 +970,93 @@ export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: b
           )}
 
           {/* Estreno card list */}
-          {estrenos.map((item, idx) => {
-            const isExpanded = !!expandedCards[item.pelicula];
+          {uiCards.map((card) => {
+            const isExpanded = !!expandedCards[card.key];
+            const item = card.items[0];
+            const baseTitle = cleanMovieNameForCredits(card.baseTitle);
+            const creditCardExists = existingCredits.includes(baseTitle.toUpperCase().trim());
+            const mergedSalas = Array.from(new Set(card.items.flatMap(it => it.salas))).sort((a, b) => a - b);
+            const displayTitle = card.isGrouped ? card.baseTitle : item.pelicula;
+
             return (
-              <View key={item.pelicula} style={[s.estrenoCard, !isExpanded && { gap: 0 }]}>
+              <View key={card.key} style={[s.estrenoCard, !isExpanded && { gap: 0 }]}>
                 {/* Estreno header */}
-                <Pressable
+                <View
                   style={[
                     s.estrenoHeader,
                     !isExpanded && { borderBottomWidth: 0, paddingBottom: 0 }
                   ]}
-                  onPress={() => {
-                    setExpandedCards((prev) => ({
-                      ...prev,
-                      [item.pelicula]: !prev[item.pelicula],
-                    }));
-                  }}
                 >
-                  <View style={{ flex: 1, paddingRight: THEME.spacing.sm }}>
-                    <Text style={s.estrenoMovieTitle}>{item.pelicula}</Text>
+                  <Pressable
+                    style={{ flex: 1, marginRight: THEME.spacing.sm }}
+                    onPress={() => {
+                      setExpandedCards((prev) => ({
+                        ...prev,
+                        [card.key]: !prev[card.key],
+                      }));
+                    }}
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+                      <Text style={s.estrenoMovieTitle}>{displayTitle}</Text>
+                      
+                      {/* Small Credits button next to the title */}
+                      {!readOnly && !creditCardExists && (
+                        <TouchableOpacity
+                          style={{
+                            backgroundColor: "#16A34A",
+                            borderRadius: 6,
+                            paddingVertical: 4,
+                            paddingHorizontal: 8,
+                          }}
+                          onPress={() => {
+                            const title = "Generar Créditos";
+                            const msg = `¿Crear tarjeta en Créditos para "${baseTitle}"?`;
+
+                            if (Platform.OS === "web") {
+                              if (window.confirm(`${title}\n\n${msg}`)) {
+                                generarCreditoDesdeCopia(displayTitle);
+                              }
+                            } else {
+                              Alert.alert(
+                                title,
+                                msg,
+                                [
+                                  { text: "Cancelar", style: "cancel" },
+                                  {
+                                    text: "Crear",
+                                    onPress: () => generarCreditoDesdeCopia(displayTitle)
+                                  }
+                                ]
+                              );
+                            }
+                          }}
+                        >
+                          <Text style={{ color: "#fff", fontSize: 11, fontWeight: "bold" }}>
+                            ➕ Créditos
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+
                     <View style={s.badgeRow}>
                       <View style={s.estrenoBadge}>
                         <Text style={s.estrenoBadgeText}>Estreno</Text>
                       </View>
                       <Text style={s.salasText}>
-                        Proyecta en Salas: {item.salas.join(", ")}
+                        Proyecta en Salas: {mergedSalas.join(", ")}
                       </Text>
                     </View>
-                  </View>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: THEME.spacing.sm }}>
+                  </Pressable>
+
+                  <Pressable
+                    style={{ flexDirection: "row", alignItems: "center", gap: THEME.spacing.sm }}
+                    onPress={() => {
+                      setExpandedCards((prev) => ({
+                        ...prev,
+                        [card.key]: !prev[card.key],
+                      }));
+                    }}
+                  >
                     {!!item.calificacion && (
                       <View style={s.ratingBadge}>
                         <Text style={s.ratingText}>{item.calificacion}</Text>
@@ -912,11 +1067,85 @@ export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: b
                       size={24}
                       color={COLORS.muted}
                     />
-                  </View>
-                </Pressable>
+                  </Pressable>
+                </View>
 
                 {isExpanded && (
                   <>
+                    {/* System grouping notice & split/join options */}
+                    {card.isGrouped ? (
+                      <View style={{
+                        backgroundColor: COLORS.primarySoft,
+                        borderRadius: THEME.radius.sm,
+                        padding: 12,
+                        borderWidth: 1,
+                        borderColor: COLORS.primarySoft,
+                        gap: 6,
+                        marginBottom: 4,
+                      }}>
+                        <Text style={{ fontSize: 13, fontWeight: "800", color: COLORS.primary }}>
+                          ℹ️ Copias agrupadas automáticamente
+                        </Text>
+                        <Text style={{ fontSize: 12, color: COLORS.text, lineHeight: 16 }}>
+                          Las copias (2D, 3D, dobladas, subtituladas) de esta película se unificaron para simplificar la carga. Al imprimir, se generará la planilla para cada formato detectado ({card.items.map(it => `${it.is3D ? "3D" : "2D"} ${it.idioma.substring(0,3)}`).join(", ")}).
+                        </Text>
+                        <Pressable
+                          style={{
+                            alignSelf: "flex-start",
+                            backgroundColor: COLORS.card,
+                            borderWidth: 1,
+                            borderColor: COLORS.border,
+                            borderRadius: 6,
+                            paddingVertical: 5,
+                            paddingHorizontal: 10,
+                            marginTop: 4,
+                          }}
+                          onPress={() => {
+                            setSplitMovies(prev => ({ ...prev, [card.baseTitle]: true }));
+                          }}
+                        >
+                          <Text style={{ fontSize: 11, fontWeight: "700", color: COLORS.text }}>
+                            🔓 Dividir en copias individuales
+                          </Text>
+                        </Pressable>
+                      </View>
+                    ) : (
+                      groupsCount[card.baseTitle] > 1 && (
+                        <View style={{
+                          backgroundColor: COLORS.bgMobile,
+                          borderRadius: THEME.radius.sm,
+                          padding: 12,
+                          borderWidth: 1,
+                          borderColor: COLORS.border,
+                          gap: 6,
+                          marginBottom: 4,
+                        }}>
+                          <Text style={{ fontSize: 12, color: COLORS.text, lineHeight: 16 }}>
+                            Esta planilla se encuentra dividida. Podés volver a agrupar todos los formatos para editarlos juntos.
+                          </Text>
+                          <Pressable
+                            style={{
+                              alignSelf: "flex-start",
+                              backgroundColor: COLORS.card,
+                              borderWidth: 1,
+                              borderColor: COLORS.border,
+                              borderRadius: 6,
+                              paddingVertical: 5,
+                              paddingHorizontal: 10,
+                              marginTop: 4,
+                            }}
+                            onPress={() => {
+                              setSplitMovies(prev => ({ ...prev, [card.baseTitle]: false }));
+                            }}
+                          >
+                            <Text style={{ fontSize: 11, fontWeight: "700", color: COLORS.text }}>
+                              🔗 Agrupar todos los formatos
+                            </Text>
+                          </Pressable>
+                        </View>
+                      )
+                    )}
+
                     {/* Technical Config Form */}
                     <View style={s.formGrid}>
                       {/* Distribuidora */}
@@ -924,7 +1153,7 @@ export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: b
                         <Text style={s.formLabel}>Distribuidora *</Text>
                         <TextInput
                           value={item.distribuidora}
-                          onChangeText={(val) => handleUpdateEstreno(idx, "distribuidora", val)}
+                          onChangeText={(val) => handleUpdateCardField(card, "distribuidora", val)}
                           placeholder="Ej: UIP, Warner, etc."
                           placeholderTextColor={COLORS.muted}
                           style={s.formInput}
@@ -936,7 +1165,7 @@ export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: b
                             <Pressable
                               key={dist}
                               style={s.distPill}
-                              onPress={() => handleUpdateEstreno(idx, "distribuidora", dist)}
+                              onPress={() => handleUpdateCardField(card, "distribuidora", dist)}
                             >
                               <Text style={s.distPillText}>{dist}</Text>
                             </Pressable>
@@ -949,7 +1178,7 @@ export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: b
                         <Text style={s.formLabel}>Responsable del Control *</Text>
                         <TextInput
                           value={item.responsable}
-                          onChangeText={(val) => handleUpdateEstreno(idx, "responsable", val)}
+                          onChangeText={(val) => handleUpdateCardField(card, "responsable", val)}
                           placeholder="Tu nombre"
                           placeholderTextColor={COLORS.muted}
                           style={s.formInput}
@@ -963,7 +1192,7 @@ export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: b
                         <View style={s.toggleGroup}>
                           <Pressable
                             style={[s.toggleBtn, item.aspect === "FLAT" && s.toggleBtnActive]}
-                            onPress={() => handleUpdateEstreno(idx, "aspect", "FLAT")}
+                            onPress={() => handleUpdateCardField(card, "aspect", "FLAT")}
                           >
                             <Text style={[s.toggleBtnText, item.aspect === "FLAT" && s.toggleBtnTextActive]}>
                               FLAT
@@ -971,7 +1200,7 @@ export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: b
                           </Pressable>
                           <Pressable
                             style={[s.toggleBtn, item.aspect === "SCOPE" && s.toggleBtnActive]}
-                            onPress={() => handleUpdateEstreno(idx, "aspect", "SCOPE")}
+                            onPress={() => handleUpdateCardField(card, "aspect", "SCOPE")}
                           >
                             <Text style={[s.toggleBtnText, item.aspect === "SCOPE" && s.toggleBtnTextActive]}>
                               SCOPE
@@ -985,44 +1214,64 @@ export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: b
                         {/* Format */}
                         <View style={s.checkCol}>
                           <Text style={s.formLabel}>Formato</Text>
-                          <View style={s.checkOptions}>
-                            <Pressable
-                              style={[s.miniCheck, item.is2D && s.miniCheckActive]}
-                              onPress={() => {
-                                handleUpdateEstreno(idx, "is2D", !item.is2D);
-                                if (!item.is2D) handleUpdateEstreno(idx, "is3D", false);
-                              }}
-                            >
-                              <Text style={[s.miniCheckText, item.is2D && s.miniCheckTextActive]}>2D</Text>
-                            </Pressable>
-                            <Pressable
-                              style={[s.miniCheck, item.is3D && s.miniCheckActive]}
-                              onPress={() => {
-                                handleUpdateEstreno(idx, "is3D", !item.is3D);
-                                if (!item.is3D) handleUpdateEstreno(idx, "is2D", false);
-                              }}
-                            >
-                              <Text style={[s.miniCheckText, item.is3D && s.miniCheckTextActive]}>3D</Text>
-                            </Pressable>
-                          </View>
+                          {card.isGrouped ? (
+                            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
+                              {Array.from(new Set(card.items.map(it => it.is3D ? "3D" : "2D"))).map(fmt => (
+                                <View key={fmt} style={[s.miniCheck, s.miniCheckActive, { flex: 0, paddingHorizontal: 10, height: 32 }]}>
+                                  <Text style={[s.miniCheckText, s.miniCheckTextActive, { fontSize: 11 }]}>{fmt}</Text>
+                                </View>
+                              ))}
+                            </View>
+                          ) : (
+                            <View style={s.checkOptions}>
+                              <Pressable
+                                style={[s.miniCheck, item.is2D && s.miniCheckActive]}
+                                onPress={() => {
+                                  handleUpdateCardField(card, "is2D", !item.is2D);
+                                  if (!item.is2D) handleUpdateCardField(card, "is3D", false);
+                                }}
+                              >
+                                <Text style={[s.miniCheckText, item.is2D && s.miniCheckTextActive]}>2D</Text>
+                              </Pressable>
+                              <Pressable
+                                style={[s.miniCheck, item.is3D && s.miniCheckActive]}
+                                onPress={() => {
+                                  handleUpdateCardField(card, "is3D", !item.is3D);
+                                  if (!item.is3D) handleUpdateCardField(card, "is2D", false);
+                                }}
+                              >
+                                <Text style={[s.miniCheckText, item.is3D && s.miniCheckTextActive]}>3D</Text>
+                              </Pressable>
+                            </View>
+                          )}
                         </View>
 
                         {/* Language */}
                         <View style={s.checkCol}>
                           <Text style={s.formLabel}>Idioma</Text>
-                          <View style={s.checkOptions}>
-                            {["Doblada", "Subtitulada", "Nativo"].map((lang) => (
-                              <Pressable
-                                key={lang}
-                                style={[s.miniCheck, item.idioma === lang && s.miniCheckActive]}
-                                onPress={() => handleUpdateEstreno(idx, "idioma", lang)}
-                              >
-                                <Text style={[s.miniCheckText, item.idioma === lang && s.miniCheckTextActive]}>
-                                  {lang.substring(0, 3)}
-                                </Text>
-                              </Pressable>
-                            ))}
-                          </View>
+                          {card.isGrouped ? (
+                            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
+                              {Array.from(new Set(card.items.map(it => it.idioma))).map(lang => (
+                                <View key={lang} style={[s.miniCheck, s.miniCheckActive, { flex: 0, paddingHorizontal: 10, height: 32 }]}>
+                                  <Text style={[s.miniCheckText, s.miniCheckTextActive, { fontSize: 11 }]}>{lang}</Text>
+                                </View>
+                              ))}
+                            </View>
+                          ) : (
+                            <View style={s.checkOptions}>
+                              {["Doblada", "Subtitulada", "Nativo"].map((lang) => (
+                                <Pressable
+                                  key={lang}
+                                  style={[s.miniCheck, item.idioma === lang && s.miniCheckActive]}
+                                  onPress={() => handleUpdateCardField(card, "idioma", lang)}
+                                >
+                                  <Text style={[s.miniCheckText, item.idioma === lang && s.miniCheckTextActive]}>
+                                    {lang.substring(0, 3)}
+                                  </Text>
+                                </Pressable>
+                              ))}
+                            </View>
+                          )}
                         </View>
 
                         {/* Audio */}
@@ -1033,7 +1282,7 @@ export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: b
                               <Pressable
                                 key={aud}
                                 style={[s.miniCheck, item.audio === aud && s.miniCheckActive]}
-                                onPress={() => handleUpdateEstreno(idx, "audio", aud)}
+                                onPress={() => handleUpdateCardField(card, "audio", aud)}
                               >
                                 <Text style={[s.miniCheckText, item.audio === aud && s.miniCheckTextActive]}>
                                   {aud}
@@ -1061,7 +1310,7 @@ export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: b
                                 isMobile ? { width: "100%" } : { width: "31%" },
                                 isSelected && s.framingCardActive
                               ]}
-                              onPress={() => handleUpdateEstreno(idx, "imageKey", opt.key)}
+                              onPress={() => handleUpdateCardField(card, "imageKey", opt.key)}
                             >
                               <View style={s.framingImageWrapper}>
                                 <FramingFigure
@@ -1086,58 +1335,21 @@ export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: b
                       </View>
                     </View>
 
-                    {/* Print Button & Generate Credits Button */}
-                    <View style={{ gap: THEME.spacing.sm, marginTop: THEME.spacing.sm }}>
-                      {(() => {
-                        const baseTitle = cleanMovieNameForCredits(item.pelicula);
-                        const creditCardExists = existingCredits.includes(baseTitle.toUpperCase().trim());
-
-                        if (readOnly || creditCardExists) return null;
-
-                        return (
-                          <Pressable
-                            style={[
-                              s.printBtn,
-                              { backgroundColor: "#16A34A" },
-                              generatingCredits[item.pelicula] && { opacity: 0.6 }
-                            ]}
-                            onPress={() => {
-                              const title = "Generar Créditos";
-                              const msg = `¿Crear tarjeta en Créditos para "${baseTitle}"?`;
-
-                              if (Platform.OS === "web") {
-                                if (window.confirm(`${title}\n\n${msg}`)) {
-                                  generarCreditoDesdeCopia(item.pelicula);
-                                }
-                              } else {
-                                Alert.alert(
-                                  title,
-                                  msg,
-                                  [
-                                    { text: "Cancelar", style: "cancel" },
-                                    {
-                                      text: "Crear",
-                                      onPress: () => generarCreditoDesdeCopia(item.pelicula)
-                                    }
-                                  ]
-                                );
-                              }
-                            }}
-                            disabled={generatingCredits[item.pelicula]}
-                          >
-                            {generatingCredits[item.pelicula] ? (
-                              <ActivityIndicator size="small" color="#fff" />
-                            ) : (
-                              <Text style={s.printBtnText}>➕ CREAR TARJETA EN CRÉDITOS</Text>
-                            )}
-                          </Pressable>
-                        );
-                      })()}
-
-                      <Pressable style={s.printBtn} onPress={() => handlePrint(item)}>
-                        <Text style={s.printBtnText}>🖨️ IMPRIMIR PLANILLA DE COPIA</Text>
-                      </Pressable>
-                    </View>
+                    {/* Print Button */}
+                    <Pressable
+                      style={s.printBtn}
+                      onPress={() => {
+                        if (card.isGrouped) {
+                          handlePrintGroup(card.items);
+                        } else {
+                          handlePrint(item);
+                        }
+                      }}
+                    >
+                      <Text style={s.printBtnText}>
+                        🖨️ {card.isGrouped ? `IMPRIMIR PLANILLAS (${card.items.length})` : "IMPRIMIR PLANILLA DE COPIA"}
+                      </Text>
+                    </Pressable>
                   </>
                 )}
               </View>
