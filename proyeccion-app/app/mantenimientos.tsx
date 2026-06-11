@@ -399,20 +399,26 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
     }
 
     // Associate gaps to groups
-    // The gap will be between consecutive groups.
-    // Group G[j] is newer than G[j+1].
-    // G[j] oldest item date vs G[j+1] newest item date.
+    // The gap will be calculated between the current group and the next newer group.
+    // Group G[idx] is older than G[idx - 1] (since list is descending).
+    // The gap is between current group's maxDate (end of cycle) and next newer group's minDate (start of next cycle).
     const displayGroupsWithGaps = groups.map((g, idx) => {
       let groupGap: number | null = null;
-      if (idx < groups.length - 1) {
-        const currentOldest = g[g.length - 1];
-        const nextNewest = groups[idx + 1][0];
-        groupGap = getDaysBetween(nextNewest.date, currentOldest.date);
+      let nextStartDate: string | null = null;
+      if (idx > 0) {
+        const maxDateOfCurrent = g[0].endDate || g[0].date;
+        const nextNewerGroup = groups[idx - 1];
+        const minDateOfNextNewer = nextNewerGroup[nextNewerGroup.length - 1].date;
+        groupGap = getDaysBetween(maxDateOfCurrent, minDateOfNextNewer);
+        nextStartDate = minDateOfNextNewer;
       }
       return {
         id: g[0].id,
         items: g,
+        maxDate: g[0].endDate || g[0].date,
+        minDate: g[g.length - 1].date,
         gapDays: groupGap,
+        nextStartDate,
       };
     });
 
@@ -588,7 +594,7 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
     );
   };
 
-  const renderSingleCardContent = (item: Mantenimiento, hideHeader = false) => {
+  const renderSingleCardContent = (item: Mantenimiento, hideHeader = false, isLatestOverall = false) => {
     const styleMeta = getTypeStyle(item.type);
     const isEngineer = item.type === "C" || item.type === "D";
     const dateText = item.duration && item.duration > 1 
@@ -629,9 +635,11 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
           <Text style={[styles.cardDate, { fontSize: isMobile ? 14 : 16 }]}>
             {dateText}
           </Text>
-          <Text style={[styles.cardRelativeDate, { fontSize: isMobile ? 12 : 13 }]}>
-            {getRelativeTime(item.date)}
-          </Text>
+          {isLatestOverall && (
+            <Text style={[styles.cardRelativeDate, { fontSize: isMobile ? 12 : 13 }]}>
+              {getRelativeTime(item.endDate || item.date)}
+            </Text>
+          )}
 
           {!!item.notes && (
             <View style={styles.notesContainer}>
@@ -649,7 +657,7 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
     );
   };
 
-  const renderGroupedCard = (items: Mantenimiento[]) => {
+  const renderGroupedCard = (items: Mantenimiento[], isLatestOverall = false) => {
     const minDate = items[items.length - 1].date;
     const maxDate = items[0].date;
     const dateRangeStr = minDate === maxDate
@@ -664,6 +672,11 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
           <View style={{ flex: 1 }}>
             <Text style={[styles.groupedTitle, { fontSize: isMobile ? 13 : 14 }]}>Mantenimientos Agrupados</Text>
             <Text style={[styles.groupedSubtitle, { fontSize: isMobile ? 11 : 12 }]}>{dateRangeStr} ({items.length} registros)</Text>
+            {isLatestOverall && (
+              <Text style={[styles.cardRelativeDate, { fontSize: isMobile ? 12 : 13, marginTop: 2 }]}>
+                {getRelativeTime(maxDate)}
+              </Text>
+            )}
           </View>
         </View>
 
@@ -706,7 +719,7 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
                 <View style={styles.cardBody}>
                   {showDateInRow && (
                     <Text style={[styles.cardDate, { fontSize: isMobile ? 13 : 15, marginTop: 4 }]}>
-                      {itemDateStr} <Text style={{ fontSize: isMobile ? 11 : 12, fontWeight: "normal", color: COLORS.muted }}>({getRelativeTime(item.date)})</Text>
+                      {itemDateStr}
                     </Text>
                   )}
 
@@ -730,17 +743,19 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
     );
   };
 
-  const renderGroupItem = ({ item }: { item: { id: string; items: Mantenimiento[]; gapDays: number | null } }) => {
+  const renderGroupItem = ({ item, index }: { item: { id: string; items: Mantenimiento[]; gapDays: number | null; nextStartDate?: string | null }; index: number }) => {
+    const isLatestGroup = index === 0;
+
     return (
       <View style={styles.cardWrapper}>
-        {/* If gap days are present and it's not the oldest group, show gap separator */}
+        {/* If gap days are present, show gap separator connecting to the next newer group */}
         {item.gapDays !== null && item.gapDays !== undefined && (
           <View style={styles.gapConnectorContainer}>
             <View style={styles.gapLine} />
             <View style={styles.gapBadge}>
               <MaterialCommunityIcons name="timelapse" size={12} color={COLORS.muted} style={{ marginRight: 4 }} />
               <Text style={[styles.gapText, { fontSize: isMobile ? 10 : 11 }]}>
-                Pasaron {item.gapDays} {item.gapDays === 1 ? "día" : "días"} entre mantenimientos
+                Pasaron {item.gapDays} {item.gapDays === 1 ? "día" : "días"} hasta el siguiente mantenimiento {item.nextStartDate ? `(${ymdToDdmmyyyy(item.nextStartDate)})` : ""}
               </Text>
             </View>
             <View style={styles.gapLine} />
@@ -750,10 +765,10 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
         {/* Group render: if 1 item in group, render normal card, else render grouped card */}
         {item.items.length === 1 ? (
           <View style={styles.mtmCard}>
-            {renderSingleCardContent(item.items[0])}
+            {renderSingleCardContent(item.items[0], false, isLatestGroup)}
           </View>
         ) : (
-          renderGroupedCard(item.items)
+          renderGroupedCard(item.items, isLatestGroup)
         )}
       </View>
     );
