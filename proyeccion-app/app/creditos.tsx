@@ -58,6 +58,11 @@ function pad2(n: number) {
   return n.toString().padStart(2, "0");
 }
 
+function removeAccents(str: string): string {
+  if (!str) return "";
+  return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
 function normalizeHHMMSS(input: string): string | null {
   const parts = input.trim().split(":");
   if (parts.length !== 3) return null;
@@ -185,7 +190,7 @@ export default function CreditosScreen({ readOnly = false }: { readOnly?: boolea
       setSearchResults([]);
       return;
     }
-    const key = term.trim().toLowerCase();
+    const key = removeAccents(term).trim().toLowerCase();
     if (key.length < 2) {
       setSearching(false);
       setSearchResults([]);
@@ -293,7 +298,7 @@ export default function CreditosScreen({ readOnly = false }: { readOnly?: boolea
       return;
     }
 
-    const pelicula = formPelicula.trim();
+    const pelicula = removeAccents(formPelicula).trim();
     const peliculaLower = pelicula.toLowerCase();
 
     const horaFinNorm = normalizeHHMMSS(formHoraFin);

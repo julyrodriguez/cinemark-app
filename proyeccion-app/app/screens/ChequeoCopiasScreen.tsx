@@ -166,9 +166,14 @@ const cleanTitleForComparison = (title: string): string => {
     .trim();
 };
 
+const removeAccents = (str: string): string => {
+  if (!str) return "";
+  return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+};
+
 const cleanMovieNameForCredits = (name: string): string => {
   if (!name) return "";
-  let clean = name.toUpperCase();
+  let clean = removeAccents(name).toUpperCase();
   
   // Remove typical tags as whole words (like 2D, 3D, DBOX, SUB, CAS, DOB, etc.)
   const tags = [
@@ -213,7 +218,7 @@ export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: b
     if (!cineId) return;
     const q = query(collection(db, CINES_COLLECTION, cineId, "creditos"));
     const unsub = onSnapshot(q, (snap) => {
-      const titles = snap.docs.map(doc => (doc.data().pelicula ?? "").toUpperCase().trim());
+      const titles = snap.docs.map(doc => removeAccents(doc.data().pelicula ?? "").toUpperCase().trim());
       setExistingCredits(titles);
     }, (err) => {
       console.error("Error listening to creditos:", err);
