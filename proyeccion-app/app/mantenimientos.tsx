@@ -828,7 +828,6 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
     <View style={[styles.container, { padding: isMobile ? 8 : 16 }]}>
       <PageTitle
         title="Mantenimientos"
-        subtitle={isMobile ? "Control de proyección" : "Control y seguimiento de mantenimientos en proyección"}
         right={
           !readOnly && activeSubTab === "fechas" ? (
             <TouchableOpacity style={[styles.headerBtn, { paddingVertical: isMobile ? 8 : 10 }]} onPress={openNew}>
