@@ -826,17 +826,7 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
 
   return (
     <View style={[styles.container, { padding: isMobile ? 8 : 16 }]}>
-      <PageTitle
-        title="Mantenimientos"
-        right={
-          !readOnly && activeSubTab === "fechas" ? (
-            <TouchableOpacity style={[styles.headerBtn, { paddingVertical: isMobile ? 8 : 10 }]} onPress={openNew}>
-              <MaterialCommunityIcons name="plus" size={isMobile ? 16 : 18} color="#fff" style={{ marginRight: 4 }} />
-              <Text style={[styles.headerBtnText, { fontSize: isMobile ? 12 : 14 }]}>Registrar Mtm</Text>
-            </TouchableOpacity>
-          ) : undefined
-        }
-      />
+      <PageTitle title="Mantenimientos" />
 
       {/* Subtab Navigation */}
       <View style={[styles.tabBar, { marginBottom: isMobile ? 12 : 16 }]}>
@@ -875,6 +865,16 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
       <View style={{ flex: 1 }}>
         {activeSubTab === "fechas" ? renderFechasTab() : renderBarcoPcTab()}
       </View>
+
+      {!readOnly && activeSubTab === "fechas" && (
+        <TouchableOpacity
+          style={styles.fabBR}
+          onPress={openNew}
+          activeOpacity={0.9}
+        >
+          <MaterialCommunityIcons name="plus" size={30} color="#fff" />
+        </TouchableOpacity>
+      )}
 
       {/* Add Modal */}
       <Modal
@@ -1181,7 +1181,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   listContent: {
-    paddingBottom: 30,
+    paddingBottom: 90,
   },
   cardWrapper: {
     width: "100%",
@@ -1516,5 +1516,22 @@ const styles = StyleSheet.create({
   deleteBtnTextModern: {
     color: "#FFFFFF",
     fontWeight: "800",
+  },
+  fabBR: {
+    position: "absolute",
+    bottom: 24,
+    right: 24,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: COLORS.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+    zIndex: 1000,
   },
 });
