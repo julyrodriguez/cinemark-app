@@ -501,6 +501,7 @@ export default function DcpScreen({ readOnly = false }: { readOnly?: boolean }) 
   };
 
   const deshacerRetiro = async (d: Dcp) => {
+    if (readOnly) return;
     if (!cineId) return;
 
     try {
@@ -672,14 +673,16 @@ export default function DcpScreen({ readOnly = false }: { readOnly?: boolean }) 
           {item.createdName ? (
             <Text style={styles.dcpMetaCenter}>Cargado por: {item.createdName}</Text>
           ) : null}
-          <TouchableOpacity
-            style={[styles.retireBtn, { backgroundColor: "#64748B" }]}
-            onPress={() => deshacerRetiro(item)}
-            activeOpacity={0.8}
-          >
-            <MaterialCommunityIcons name="undo" size={16} color="#fff" style={{ marginRight: 6 }} />
-            <Text style={styles.retireBtnText}>Marcar como no retirado</Text>
-          </TouchableOpacity>
+          {!readOnly && (
+            <TouchableOpacity
+              style={[styles.retireBtn, { backgroundColor: "#64748B" }]}
+              onPress={() => revertirDcp(item)}
+              activeOpacity={0.8}
+            >
+              <MaterialCommunityIcons name="undo" size={16} color="#fff" style={{ marginRight: 6 }} />
+              <Text style={styles.retireBtnText}>Marcar como no retirado</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     </View>

@@ -15,6 +15,7 @@ import {
 import * as DocumentPicker from "expo-document-picker";
 import * as Print from "expo-print";
 import dayjs from "dayjs";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 
 import { useAuthUser } from "../../lib/useAuthUser";
 import { useAppLayout } from "../../lib/useAppLayout";
@@ -187,6 +188,7 @@ export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: b
   const [statusText, setStatusText] = useState("");
   const [semanaText, setSemanaText] = useState("");
   const [estrenos, setEstrenos] = useState<EstrenoMovie[]>([]);
+  const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
   const [comparisonDone, setComparisonDone] = useState(false);
 
   // Pick Old Week file
@@ -206,6 +208,7 @@ export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: b
       setOldName(file.name ?? "semana_vieja.pdf");
       setComparisonDone(false);
       setEstrenos([]);
+      setExpandedCards({});
     } catch (err) {
       Alert.alert("Error", "No se pudo cargar el archivo de semana vieja.");
     }
@@ -228,6 +231,7 @@ export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: b
       setNewName(file.name ?? "semana_nueva.pdf");
       setComparisonDone(false);
       setEstrenos([]);
+      setExpandedCards({});
     } catch (err) {
       Alert.alert("Error", "No se pudo cargar el archivo de semana nueva.");
     }
@@ -322,6 +326,7 @@ export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: b
       });
 
       setEstrenos(detectedEstrenos);
+      setExpandedCards({});
       setComparisonDone(true);
       setStatusText(`Comparación finalizada. Se encontraron ${detectedEstrenos.length} estrenos.`);
     } catch (err) {
@@ -353,6 +358,7 @@ export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: b
     setNewUri(null);
     setNewName(null);
     setEstrenos([]);
+    setExpandedCards({});
     setComparisonDone(false);
     setStatusText("");
     setSemanaText("");
@@ -792,203 +798,228 @@ export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: b
           )}
 
           {/* Estreno card list */}
-          {estrenos.map((item, idx) => (
-            <View key={item.pelicula} style={s.estrenoCard}>
-              {/* Estreno header */}
-              <View style={s.estrenoHeader}>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.estrenoMovieTitle}>{item.pelicula}</Text>
-                  <View style={s.badgeRow}>
-                    <View style={s.estrenoBadge}>
-                      <Text style={s.estrenoBadgeText}>Estreno</Text>
+          {estrenos.map((item, idx) => {
+            const isExpanded = !!expandedCards[item.pelicula];
+            return (
+              <View key={item.pelicula} style={[s.estrenoCard, !isExpanded && { gap: 0 }]}>
+                {/* Estreno header */}
+                <Pressable
+                  style={[
+                    s.estrenoHeader,
+                    !isExpanded && { borderBottomWidth: 0, paddingBottom: 0 }
+                  ]}
+                  onPress={() => {
+                    setExpandedCards((prev) => ({
+                      ...prev,
+                      [item.pelicula]: !prev[item.pelicula],
+                    }));
+                  }}
+                >
+                  <View style={{ flex: 1, paddingRight: THEME.spacing.sm }}>
+                    <Text style={s.estrenoMovieTitle}>{item.pelicula}</Text>
+                    <View style={s.badgeRow}>
+                      <View style={s.estrenoBadge}>
+                        <Text style={s.estrenoBadgeText}>Estreno</Text>
+                      </View>
+                      <Text style={s.salasText}>
+                        Proyecta en Salas: {item.salas.join(", ")}
+                      </Text>
                     </View>
-                    <Text style={s.salasText}>
-                      Proyecta en Salas: {item.salas.join(", ")}
-                    </Text>
                   </View>
-                </View>
-                {!!item.calificacion && (
-                  <View style={s.ratingBadge}>
-                    <Text style={s.ratingText}>{item.calificacion}</Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: THEME.spacing.sm }}>
+                    {!!item.calificacion && (
+                      <View style={s.ratingBadge}>
+                        <Text style={s.ratingText}>{item.calificacion}</Text>
+                      </View>
+                    )}
+                    <MaterialCommunityIcons
+                      name={isExpanded ? "chevron-up" : "chevron-down"}
+                      size={24}
+                      color={COLORS.muted}
+                    />
                   </View>
+                </Pressable>
+
+                {isExpanded && (
+                  <>
+                    {/* Technical Config Form */}
+                    <View style={s.formGrid}>
+                      {/* Distribuidora */}
+                      <View style={s.inputWrapper}>
+                        <Text style={s.formLabel}>Distribuidora *</Text>
+                        <TextInput
+                          value={item.distribuidora}
+                          onChangeText={(val) => handleUpdateEstreno(idx, "distribuidora", val)}
+                          placeholder="Ej: UIP, Warner, etc."
+                          placeholderTextColor={COLORS.muted}
+                          style={s.formInput}
+                          editable={!readOnly}
+                        />
+                        {/* Quick distributor pills */}
+                        <View style={s.pillsRow}>
+                          {COMMON_DISTRIBUTORS.map((dist) => (
+                            <Pressable
+                              key={dist}
+                              style={s.distPill}
+                              onPress={() => handleUpdateEstreno(idx, "distribuidora", dist)}
+                            >
+                              <Text style={s.distPillText}>{dist}</Text>
+                            </Pressable>
+                          ))}
+                        </View>
+                      </View>
+
+                      {/* Responsable */}
+                      <View style={s.inputWrapper}>
+                        <Text style={s.formLabel}>Responsable del Control *</Text>
+                        <TextInput
+                          value={item.responsable}
+                          onChangeText={(val) => handleUpdateEstreno(idx, "responsable", val)}
+                          placeholder="Tu nombre"
+                          placeholderTextColor={COLORS.muted}
+                          style={s.formInput}
+                          editable={!readOnly}
+                        />
+                      </View>
+
+                      {/* Aspect Ratio */}
+                      <View style={s.inputWrapper}>
+                        <Text style={s.formLabel}>Aspect Ratio (Encuadre) *</Text>
+                        <View style={s.toggleGroup}>
+                          <Pressable
+                            style={[s.toggleBtn, item.aspect === "FLAT" && s.toggleBtnActive]}
+                            onPress={() => handleUpdateEstreno(idx, "aspect", "FLAT")}
+                          >
+                            <Text style={[s.toggleBtnText, item.aspect === "FLAT" && s.toggleBtnTextActive]}>
+                              FLAT
+                            </Text>
+                          </Pressable>
+                          <Pressable
+                            style={[s.toggleBtn, item.aspect === "SCOPE" && s.toggleBtnActive]}
+                            onPress={() => handleUpdateEstreno(idx, "aspect", "SCOPE")}
+                          >
+                            <Text style={[s.toggleBtnText, item.aspect === "SCOPE" && s.toggleBtnTextActive]}>
+                              SCOPE
+                            </Text>
+                          </Pressable>
+                        </View>
+                      </View>
+
+                      {/* Format & Lang & Audio checkboxes */}
+                      <View style={[s.checkboxGrid, isMobile && { flexDirection: "column" }]}>
+                        {/* Format */}
+                        <View style={s.checkCol}>
+                          <Text style={s.formLabel}>Formato</Text>
+                          <View style={s.checkOptions}>
+                            <Pressable
+                              style={[s.miniCheck, item.is2D && s.miniCheckActive]}
+                              onPress={() => {
+                                handleUpdateEstreno(idx, "is2D", !item.is2D);
+                                if (!item.is2D) handleUpdateEstreno(idx, "is3D", false);
+                              }}
+                            >
+                              <Text style={[s.miniCheckText, item.is2D && s.miniCheckTextActive]}>2D</Text>
+                            </Pressable>
+                            <Pressable
+                              style={[s.miniCheck, item.is3D && s.miniCheckActive]}
+                              onPress={() => {
+                                handleUpdateEstreno(idx, "is3D", !item.is3D);
+                                if (!item.is3D) handleUpdateEstreno(idx, "is2D", false);
+                              }}
+                            >
+                              <Text style={[s.miniCheckText, item.is3D && s.miniCheckTextActive]}>3D</Text>
+                            </Pressable>
+                          </View>
+                        </View>
+
+                        {/* Language */}
+                        <View style={s.checkCol}>
+                          <Text style={s.formLabel}>Idioma</Text>
+                          <View style={s.checkOptions}>
+                            {["Doblada", "Subtitulada", "Nativo"].map((lang) => (
+                              <Pressable
+                                key={lang}
+                                style={[s.miniCheck, item.idioma === lang && s.miniCheckActive]}
+                                onPress={() => handleUpdateEstreno(idx, "idioma", lang)}
+                              >
+                                <Text style={[s.miniCheckText, item.idioma === lang && s.miniCheckTextActive]}>
+                                  {lang.substring(0, 3)}
+                                </Text>
+                              </Pressable>
+                            ))}
+                          </View>
+                        </View>
+
+                        {/* Audio */}
+                        <View style={s.checkCol}>
+                          <Text style={s.formLabel}>Audio</Text>
+                          <View style={s.checkOptions}>
+                            {["5.1", "7.1", "Inmersivo"].map((aud) => (
+                              <Pressable
+                                key={aud}
+                                style={[s.miniCheck, item.audio === aud && s.miniCheckActive]}
+                                onPress={() => handleUpdateEstreno(idx, "audio", aud)}
+                              >
+                                <Text style={[s.miniCheckText, item.audio === aud && s.miniCheckTextActive]}>
+                                  {aud}
+                                </Text>
+                              </Pressable>
+                            ))}
+                          </View>
+                        </View>
+                      </View>
+                    </View>
+
+                    {/* Visual Framing selector */}
+                    <View style={s.framingContainer}>
+                      <Text style={s.formLabel}>Seleccionar Imagen de Encuadre en Pantalla *</Text>
+                      <Text style={s.framingSub}>Seleccioná la imagen que representa cómo se debe ver la proyección:</Text>
+                      
+                      <View style={s.framingGrid}>
+                        {FRAMING_OPTIONS.map((opt) => {
+                          const isSelected = item.imageKey === opt.key;
+                          return (
+                            <Pressable
+                              key={opt.key}
+                              style={[
+                                s.framingCard,
+                                isMobile ? { width: "100%" } : { width: "31%" },
+                                isSelected && s.framingCardActive
+                              ]}
+                              onPress={() => handleUpdateEstreno(idx, "imageKey", opt.key)}
+                            >
+                              <View style={s.framingImageWrapper}>
+                                <FramingFigure
+                                  optionKey={opt.key}
+                                  style={{
+                                    width: "100%",
+                                    height: "100%",
+                                  }}
+                                />
+                              </View>
+                              <View style={s.framingCardFooter}>
+                                <View style={[s.radioIcon, isSelected && s.radioIconActive]}>
+                                  {isSelected && <View style={s.radioDot} />}
+                                </View>
+                                <Text style={[s.framingCardLabel, isSelected && s.framingCardLabelActive]} numberOfLines={1}>
+                                  {opt.label}
+                                </Text>
+                              </View>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    </View>
+
+                    {/* Print Button */}
+                    <Pressable style={s.printBtn} onPress={() => handlePrint(item)}>
+                      <Text style={s.printBtnText}>🖨️ IMPRIMIR PLANILLA DE COPIA</Text>
+                    </Pressable>
+                  </>
                 )}
               </View>
-
-              {/* Technical Config Form */}
-              <View style={s.formGrid}>
-                {/* Distribuidora */}
-                <View style={s.inputWrapper}>
-                  <Text style={s.formLabel}>Distribuidora *</Text>
-                  <TextInput
-                    value={item.distribuidora}
-                    onChangeText={(val) => handleUpdateEstreno(idx, "distribuidora", val)}
-                    placeholder="Ej: UIP, Warner, etc."
-                    placeholderTextColor={COLORS.muted}
-                    style={s.formInput}
-                    editable={!readOnly}
-                  />
-                  {/* Quick distributor pills */}
-                  <View style={s.pillsRow}>
-                    {COMMON_DISTRIBUTORS.map((dist) => (
-                      <Pressable
-                        key={dist}
-                        style={s.distPill}
-                        onPress={() => handleUpdateEstreno(idx, "distribuidora", dist)}
-                      >
-                        <Text style={s.distPillText}>{dist}</Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                </View>
-
-                {/* Responsable */}
-                <View style={s.inputWrapper}>
-                  <Text style={s.formLabel}>Responsable del Control *</Text>
-                  <TextInput
-                    value={item.responsable}
-                    onChangeText={(val) => handleUpdateEstreno(idx, "responsable", val)}
-                    placeholder="Tu nombre"
-                    placeholderTextColor={COLORS.muted}
-                    style={s.formInput}
-                    editable={!readOnly}
-                  />
-                </View>
-
-                {/* Aspect Ratio */}
-                <View style={s.inputWrapper}>
-                  <Text style={s.formLabel}>Aspect Ratio (Encuadre) *</Text>
-                  <View style={s.toggleGroup}>
-                    <Pressable
-                      style={[s.toggleBtn, item.aspect === "FLAT" && s.toggleBtnActive]}
-                      onPress={() => handleUpdateEstreno(idx, "aspect", "FLAT")}
-                    >
-                      <Text style={[s.toggleBtnText, item.aspect === "FLAT" && s.toggleBtnTextActive]}>
-                        FLAT
-                      </Text>
-                    </Pressable>
-                    <Pressable
-                      style={[s.toggleBtn, item.aspect === "SCOPE" && s.toggleBtnActive]}
-                      onPress={() => handleUpdateEstreno(idx, "aspect", "SCOPE")}
-                    >
-                      <Text style={[s.toggleBtnText, item.aspect === "SCOPE" && s.toggleBtnTextActive]}>
-                        SCOPE
-                      </Text>
-                    </Pressable>
-                  </View>
-                </View>
-
-                {/* Format & Lang & Audio checkboxes */}
-                <View style={[s.checkboxGrid, isMobile && { flexDirection: "column" }]}>
-                  {/* Format */}
-                  <View style={s.checkCol}>
-                    <Text style={s.formLabel}>Formato</Text>
-                    <View style={s.checkOptions}>
-                      <Pressable
-                        style={[s.miniCheck, item.is2D && s.miniCheckActive]}
-                        onPress={() => {
-                          handleUpdateEstreno(idx, "is2D", !item.is2D);
-                          if (!item.is2D) handleUpdateEstreno(idx, "is3D", false);
-                        }}
-                      >
-                        <Text style={[s.miniCheckText, item.is2D && s.miniCheckTextActive]}>2D</Text>
-                      </Pressable>
-                      <Pressable
-                        style={[s.miniCheck, item.is3D && s.miniCheckActive]}
-                        onPress={() => {
-                          handleUpdateEstreno(idx, "is3D", !item.is3D);
-                          if (!item.is3D) handleUpdateEstreno(idx, "is2D", false);
-                        }}
-                      >
-                        <Text style={[s.miniCheckText, item.is3D && s.miniCheckTextActive]}>3D</Text>
-                      </Pressable>
-                    </View>
-                  </View>
-
-                  {/* Language */}
-                  <View style={s.checkCol}>
-                    <Text style={s.formLabel}>Idioma</Text>
-                    <View style={s.checkOptions}>
-                      {["Doblada", "Subtitulada", "Nativo"].map((lang) => (
-                        <Pressable
-                          key={lang}
-                          style={[s.miniCheck, item.idioma === lang && s.miniCheckActive]}
-                          onPress={() => handleUpdateEstreno(idx, "idioma", lang)}
-                        >
-                          <Text style={[s.miniCheckText, item.idioma === lang && s.miniCheckTextActive]}>
-                            {lang.substring(0, 3)}
-                          </Text>
-                        </Pressable>
-                      ))}
-                    </View>
-                  </View>
-
-                  {/* Audio */}
-                  <View style={s.checkCol}>
-                    <Text style={s.formLabel}>Audio</Text>
-                    <View style={s.checkOptions}>
-                      {["5.1", "7.1", "Inmersivo"].map((aud) => (
-                        <Pressable
-                          key={aud}
-                          style={[s.miniCheck, item.audio === aud && s.miniCheckActive]}
-                          onPress={() => handleUpdateEstreno(idx, "audio", aud)}
-                        >
-                          <Text style={[s.miniCheckText, item.audio === aud && s.miniCheckTextActive]}>
-                            {aud}
-                          </Text>
-                        </Pressable>
-                      ))}
-                    </View>
-                  </View>
-                </View>
-              </View>
-
-              {/* Visual Framing selector */}
-              <View style={s.framingContainer}>
-                <Text style={s.formLabel}>Seleccionar Imagen de Encuadre en Pantalla *</Text>
-                <Text style={s.framingSub}>Seleccioná la imagen que representa cómo se debe ver la proyección:</Text>
-                
-                <View style={s.framingGrid}>
-                  {FRAMING_OPTIONS.map((opt) => {
-                    const isSelected = item.imageKey === opt.key;
-                    return (
-                      <Pressable
-                        key={opt.key}
-                        style={[
-                          s.framingCard,
-                          isMobile ? { width: "100%" } : { width: "31%" },
-                          isSelected && s.framingCardActive
-                        ]}
-                        onPress={() => handleUpdateEstreno(idx, "imageKey", opt.key)}
-                      >
-                        <View style={s.framingImageWrapper}>
-                          <FramingFigure
-                            optionKey={opt.key}
-                            style={{
-                              width: "100%",
-                              height: "100%",
-                            }}
-                          />
-                        </View>
-                        <View style={s.framingCardFooter}>
-                          <View style={[s.radioIcon, isSelected && s.radioIconActive]}>
-                            {isSelected && <View style={s.radioDot} />}
-                          </View>
-                          <Text style={[s.framingCardLabel, isSelected && s.framingCardLabelActive]} numberOfLines={1}>
-                            {opt.label}
-                          </Text>
-                        </View>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              </View>
-
-              {/* Print Button */}
-              <Pressable style={s.printBtn} onPress={() => handlePrint(item)}>
-                <Text style={s.printBtnText}>🖨️ IMPRIMIR PLANILLA DE COPIA</Text>
-              </Pressable>
-            </View>
-          ))}
+            );
+          })}
         </View>
       )}
     </ScrollView>
