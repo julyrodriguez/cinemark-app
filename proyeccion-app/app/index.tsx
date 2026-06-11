@@ -180,6 +180,15 @@ export default function Home() {
   const [unlockPin, setUnlockPin] = useState("");
   const [unlockError, setUnlockError] = useState<string | null>(null);
 
+  const handleConfirmUnlock = () => {
+    if (unlockPin.trim() === proyeccionPin) {
+      setIsProjectionUnlocked(true);
+      setShowUnlockModal(false);
+    } else {
+      setUnlockError("PIN incorrecto.");
+    }
+  };
+
   const toggleTheme = () => {
     const nextMode = themeMode === "light" ? "dark" : "light";
     setThemeMode(nextMode);
@@ -897,6 +906,7 @@ export default function Home() {
               placeholderTextColor={COLORS.muted}
               secureTextEntry
               keyboardType="number-pad"
+              onSubmitEditing={handleConfirmUnlock}
             />
 
             {unlockError ? (
@@ -923,14 +933,7 @@ export default function Home() {
                   styles.modalBtnPrimary,
                   isMobile && styles.modalBtnMobile,
                 ]}
-                onPress={() => {
-                  if (unlockPin.trim() === proyeccionPin) {
-                    setIsProjectionUnlocked(true);
-                    setShowUnlockModal(false);
-                  } else {
-                    setUnlockError("PIN incorrecto.");
-                  }
-                }}
+                onPress={handleConfirmUnlock}
               >
                 <Text style={styles.modalBtnPrimaryText}>Confirmar</Text>
               </TouchableOpacity>
