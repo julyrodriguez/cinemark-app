@@ -8,24 +8,30 @@ type Props = {
   title: string;
   subtitle?: string;
   right?: React.ReactNode;
+  center?: boolean;
 };
 
-export default function PageTitle({ title, subtitle, right }: Props) {
+export default function PageTitle({ title, subtitle, right, center }: Props) {
   const { isDesktop, isWeb } = useAppLayout();
 
   return (
-    <View style={[styles.wrap, isDesktop && styles.wrapDesktop]}>
-      <View style={styles.left}>
+    <View style={[styles.wrap, isDesktop && styles.wrapDesktop, center && { alignItems: "center", justifyContent: "center" }]}>
+      <View style={[styles.left, center && { alignItems: "center" }]}>
         <Text
           style={[
             styles.title,
             { fontSize: isWeb ? THEME.fontSize.xxl : THEME.fontSize.xl },
+            center && { textAlign: "center" },
           ]}
         >
           {title}
         </Text>
 
-        {!!subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
+        {!!subtitle && (
+          <Text style={[styles.subtitle, center && { textAlign: "center" }]}>
+            {subtitle}
+          </Text>
+        )}
       </View>
 
       {!!right && <View style={styles.right}>{right}</View>}

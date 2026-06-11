@@ -826,7 +826,7 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
 
   return (
     <View style={[styles.container, { padding: isMobile ? 8 : 16 }]}>
-      <PageTitle title="Mantenimientos" />
+      <PageTitle title="Mantenimientos" center />
 
       {/* Subtab Navigation */}
       <View style={[styles.tabBar, { marginBottom: isMobile ? 12 : 16 }]}>
@@ -1112,6 +1112,7 @@ const styles = StyleSheet.create({
   },
   tabBar: {
     flexDirection: "row",
+    justifyContent: "center",
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
