@@ -54,9 +54,10 @@ export interface Mantenimiento {
 function getDaysBetween(dateStr1: string, dateStr2: string): number {
   const d1 = new Date(dateStr1 + "T12:00:00");
   const d2 = new Date(dateStr2 + "T12:00:00");
-  const diffTime = Math.abs(d2.getTime() - d1.getTime());
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  return diffDays;
+  const utc1 = Date.UTC(d1.getFullYear(), d1.getMonth(), d1.getDate());
+  const utc2 = Date.UTC(d2.getFullYear(), d2.getMonth(), d2.getDate());
+  const diffTime = Math.abs(utc2 - utc1);
+  return Math.round(diffTime / (1000 * 60 * 60 * 24));
 }
 
 // Helper: Add days to YYYY-MM-DD string
