@@ -1345,6 +1345,7 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
             )}
           </View>
         )}
+        </View>
 
         {/* PESTAÑA 5: SIMULACIÓN */}
         {activeTab === "SIMULACION" && (
@@ -1633,7 +1634,6 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
             )}
           </View>
         )}
-        </View>
       </ScrollView>
 
       {/* ─── MODAL: NUEVA LÁMPARA A BACKUP ─── */}
