@@ -1213,14 +1213,17 @@ export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: b
                       <View style={[s.checkboxGrid, isMobile && { flexDirection: "column" }]}>
                         {/* Format */}
                         <View style={s.checkCol}>
-                          <Text style={s.formLabel}>Formato</Text>
+                          <Text style={s.formLabel}>
+                            Formato {card.isGrouped && "(Auto-detectado)"}
+                          </Text>
                           {card.isGrouped ? (
-                            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
-                              {Array.from(new Set(card.items.map(it => it.is3D ? "3D" : "2D"))).map(fmt => (
-                                <View key={fmt} style={[s.miniCheck, s.miniCheckActive, { flex: 0, paddingHorizontal: 10, height: 32 }]}>
-                                  <Text style={[s.miniCheckText, s.miniCheckTextActive, { fontSize: 11 }]}>{fmt}</Text>
-                                </View>
-                              ))}
+                            <View style={s.checkOptions}>
+                              <View style={s.miniCheck}>
+                                <Text style={s.miniCheckText}>🔒 2D</Text>
+                              </View>
+                              <View style={s.miniCheck}>
+                                <Text style={s.miniCheckText}>🔒 3D</Text>
+                              </View>
                             </View>
                           ) : (
                             <View style={s.checkOptions}>
@@ -1248,14 +1251,20 @@ export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: b
 
                         {/* Language */}
                         <View style={s.checkCol}>
-                          <Text style={s.formLabel}>Idioma</Text>
+                          <Text style={s.formLabel}>
+                            Idioma {card.isGrouped && "(Auto-detectado)"}
+                          </Text>
                           {card.isGrouped ? (
-                            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
-                              {Array.from(new Set(card.items.map(it => it.idioma))).map(lang => (
-                                <View key={lang} style={[s.miniCheck, s.miniCheckActive, { flex: 0, paddingHorizontal: 10, height: 32 }]}>
-                                  <Text style={[s.miniCheckText, s.miniCheckTextActive, { fontSize: 11 }]}>{lang}</Text>
-                                </View>
-                              ))}
+                            <View style={s.checkOptions}>
+                              <View style={s.miniCheck}>
+                                <Text style={s.miniCheckText}>🔒 DOB</Text>
+                              </View>
+                              <View style={s.miniCheck}>
+                                <Text style={s.miniCheckText}>🔒 SUB</Text>
+                              </View>
+                              <View style={s.miniCheck}>
+                                <Text style={s.miniCheckText}>🔒 NAT</Text>
+                              </View>
                             </View>
                           ) : (
                             <View style={s.checkOptions}>
