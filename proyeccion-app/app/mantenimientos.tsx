@@ -270,6 +270,60 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
     };
   }, [user, cineId, sessionLoading, loading, mantenimientos]);
 
+  const hasCleanedRef = React.useRef(false);
+
+  // Automatic client-side cleanup: delete duplicate maintenance documents on the same date, leaving only one.
+  useEffect(() => {
+    if (sessionLoading || !user || !cineId || loading || mantenimientos.length === 0 || hasCleanedRef.current) return;
+
+    const performClientCleanup = async () => {
+      hasCleanedRef.current = true;
+      try {
+        const seenDates = new Set();
+        const duplicatesToDelete: Mantenimiento[] = [];
+
+        // Sort by creation time (oldest first) so we keep the first one registered
+        const sorted = [...mantenimientos].sort((a, b) => {
+          const timeA = a.createdAt?.seconds || 0;
+          const timeB = b.createdAt?.seconds || 0;
+          return timeA - timeB;
+        });
+
+        for (const mtm of sorted) {
+          if (seenDates.has(mtm.date)) {
+            duplicatesToDelete.push(mtm);
+          } else {
+            seenDates.add(mtm.date);
+          }
+        }
+
+        if (duplicatesToDelete.length === 0) return;
+
+        console.log(`[Cleanup] Found ${duplicatesToDelete.length} duplicate maintenance records. Cleaning up...`);
+
+        for (const dup of duplicatesToDelete) {
+          // Delete linked calendar events
+          if (dup.calendarEventIds && dup.calendarEventIds.length > 0) {
+            for (const eventId of dup.calendarEventIds) {
+              await deleteDoc(doc(db, CINES_COLLECTION, cineId, "calendarEvents", eventId));
+            }
+          } else if (dup.calendarEventId) {
+            await deleteDoc(doc(db, CINES_COLLECTION, cineId, "calendarEvents", dup.calendarEventId));
+          }
+
+          // Delete the maintenance document
+          await deleteDoc(doc(db, CINES_COLLECTION, cineId, "mantenimientos", dup.id));
+          console.log(`[Cleanup] Deleted duplicate maintenance ${dup.id} for date ${dup.date}`);
+        }
+        console.log(`[Cleanup] Successfully removed duplicate records.`);
+      } catch (err) {
+        console.error("[Cleanup] Error during duplicate cleanup: ", err);
+      }
+    };
+
+    performClientCleanup();
+  }, [user, cineId, sessionLoading, loading, mantenimientos]);
+
   // Compute gaps, stats and visual groups (difference of 1 day or less)
   const { displayGroups, stats } = useMemo(() => {
     // 1. Sort ascending to calculate consecutive gaps correctly
