@@ -835,7 +835,10 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
       {/* Header */}
       <View style={s.headerRow}>
         <View style={s.headerTextBlock}>
-          <Text style={s.pageTitle}>💡 Lámparas</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", position: "relative" }}>
+            <Text style={{ position: "absolute", left: -28, fontSize: 22 }}>💡</Text>
+            <Text style={s.pageTitle}>Lámparas</Text>
+          </View>
           <Text style={s.pageSubtitle}>Control de ciclo de vida de proyectores y stock</Text>
         </View>
       </View>
