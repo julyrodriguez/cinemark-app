@@ -4,10 +4,12 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDocs,
   onSnapshot,
   orderBy,
   query,
   serverTimestamp,
+  where,
 } from "firebase/firestore";
 import React, { useEffect, useState, useMemo } from "react";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
@@ -168,6 +170,65 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
 
     return () => unsub && unsub();
   }, [user, cineId, sessionLoading]);
+
+  // Automatic migration: check calendar events of type MTM that are not yet in mantenimientos, and migrate them as type B.
+  useEffect(() => {
+    if (sessionLoading || !user || !cineId || loading) return;
+
+    let active = true;
+
+    const performClientMigration = async () => {
+      try {
+        const calCol = collection(db, CINES_COLLECTION, cineId, "calendarEvents");
+        const qCal = query(calCol, where("type", "==", "MTM"));
+        const calSnap = await getDocs(qCal);
+
+        if (!active) return;
+
+        const unmigrated: any[] = [];
+        for (const docSnap of calSnap.docs) {
+          const eventData = docSnap.data();
+          const eventId = docSnap.id;
+          
+          // Check if this eventId is already linked or date matches
+          const isLinked = mantenimientos.some(
+            (m) => m.calendarEventId === eventId || (m.date === eventData.date && m.type === "B")
+          );
+
+          if (!isLinked) {
+            unmigrated.push({ id: eventId, ...eventData });
+          }
+        }
+
+        if (unmigrated.length === 0) return;
+
+        console.log(`[Migration] Found ${unmigrated.length} unmigrated Mtm calendar events. Migrating...`);
+
+        const mtmColRef = collection(db, CINES_COLLECTION, cineId, "mantenimientos");
+        for (const evt of unmigrated) {
+          await addDoc(mtmColRef, {
+            date: evt.date,
+            type: "B",
+            performedBy: "Nosotros",
+            notes: evt.description || "Migrado desde calendario",
+            calendarEventId: evt.id,
+            createdAt: evt.createdAt || serverTimestamp(),
+            createdBy: evt.createdBy || user.uid,
+            createdName: evt.createdName || "Sistema",
+          });
+        }
+        console.log(`[Migration] Successfully migrated ${unmigrated.length} events to new mantenimientos collection.`);
+      } catch (err) {
+        console.error("[Migration] Error migrating calendar MTM events: ", err);
+      }
+    };
+
+    performClientMigration();
+
+    return () => {
+      active = false;
+    };
+  }, [user, cineId, sessionLoading, loading, mantenimientos]);
 
   // Compute gaps and stats
   const { chronologicalList, displayList, stats } = useMemo(() => {

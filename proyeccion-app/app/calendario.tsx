@@ -306,6 +306,14 @@ export default function CalendarTab() {
       return;
     }
 
+    if (type === "MTM") {
+      Alert.alert(
+        "No permitido",
+        "Los mantenimientos (MTM) solo pueden registrarse desde la sección de Mantenimientos."
+      );
+      return;
+    }
+
     try {
       const createdName =
         displayName?.trim() || user.email?.split("@")[0] || "Usuario";
@@ -504,10 +512,10 @@ export default function CalendarTab() {
             {user && (
               <>
                 <View style={styles.typeRow}>
-                  {["TTA", "MTM", "Especial"].map((t) => (
+                  {["TTA", "Especial"].map((t) => (
                     <TouchableOpacity
                       key={t}
-                      onPress={() => setType(t as "TTA" | "MTM" | "Especial")}
+                      onPress={() => setType(t as "TTA" | "Especial")}
                       style={[
                         styles.typeBtn,
                         {
