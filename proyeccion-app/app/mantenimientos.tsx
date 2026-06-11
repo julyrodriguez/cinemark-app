@@ -217,17 +217,25 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
 
         if (!active) return;
 
+        const migratedDatesAndIds = new Set();
         const unmigrated: any[] = [];
         for (const docSnap of calSnap.docs) {
           const eventData = docSnap.data();
           const eventId = docSnap.id;
           
-          const isLinked = mantenimientos.some(
-            (m) => m.calendarEventId === eventId || (m.date === eventData.date && m.type === "B")
+          const dateKey = eventData.date;
+          const isAlreadyProcessed = migratedDatesAndIds.has(eventId) || (dateKey && migratedDatesAndIds.has(dateKey));
+
+          const isLinked = isAlreadyProcessed || mantenimientos.some(
+            (m) => m.calendarEventId === eventId || (m.date === dateKey && m.type === "B")
           );
 
           if (!isLinked) {
             unmigrated.push({ id: eventId, ...eventData });
+            migratedDatesAndIds.add(eventId);
+            if (dateKey) {
+              migratedDatesAndIds.add(dateKey);
+            }
           }
         }
 
@@ -589,7 +597,9 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
   const renderGroupedCard = (items: Mantenimiento[]) => {
     const minDate = items[items.length - 1].date;
     const maxDate = items[0].date;
-    const dateRangeStr = isMobile ? formatRangeDateShort(minDate, maxDate) : formatRangeDate(minDate, maxDate);
+    const dateRangeStr = minDate === maxDate
+      ? (isMobile ? formatDisplayDateShort(minDate) : formatDisplayDate(minDate))
+      : (isMobile ? formatRangeDateShort(minDate, maxDate) : formatRangeDate(minDate, maxDate));
 
     return (
       <View style={styles.groupedMtmCard}>
@@ -607,6 +617,7 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
           {items.map((item, idx) => {
             const styleMeta = getTypeStyle(item.type);
             const isEngineer = item.type === "C" || item.type === "D";
+            const showDateInRow = (minDate !== maxDate) && (idx === 0 || items[idx].date !== items[idx - 1].date);
             const itemDateStr = isMobile ? formatDisplayDateShort(item.date) : formatDisplayDate(item.date);
 
             return (
@@ -638,9 +649,11 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
                 </View>
 
                 <View style={styles.cardBody}>
-                  <Text style={[styles.cardDate, { fontSize: isMobile ? 13 : 15, marginTop: 4 }]}>
-                    {itemDateStr} <Text style={{ fontSize: isMobile ? 11 : 12, fontWeight: "normal", color: COLORS.muted }}>({getRelativeTime(item.date)})</Text>
-                  </Text>
+                  {showDateInRow && (
+                    <Text style={[styles.cardDate, { fontSize: isMobile ? 13 : 15, marginTop: 4 }]}>
+                      {itemDateStr} <Text style={{ fontSize: isMobile ? 11 : 12, fontWeight: "normal", color: COLORS.muted }}>({getRelativeTime(item.date)})</Text>
+                    </Text>
+                  )}
 
                   {!!item.notes && (
                     <View style={[styles.notesContainer, { marginTop: 6 }]}>
