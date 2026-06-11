@@ -69,6 +69,9 @@ export function IpAccessGate({
             style={s.input}
             keyboardType="number-pad"
             secureTextEntry
+            autoComplete="one-time-code"
+            textContentType="oneTimeCode"
+            importantForAutofill="no"
             editable={!loading}
           />
 

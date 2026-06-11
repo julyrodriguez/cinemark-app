@@ -906,6 +906,9 @@ export default function Home() {
               placeholderTextColor={COLORS.muted}
               secureTextEntry
               keyboardType="number-pad"
+              autoComplete="one-time-code"
+              textContentType="oneTimeCode"
+              importantForAutofill="no"
               onSubmitEditing={handleConfirmUnlock}
             />
 
