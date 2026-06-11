@@ -2063,7 +2063,8 @@ const s = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingTop: 2,
     paddingBottom: 4,
   },
   headerTextBlock: {
