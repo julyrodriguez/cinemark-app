@@ -29,7 +29,7 @@ import { db, CINES_COLLECTION } from "../../lib/firebaseConfig";
 import { useAuthUser } from "../../lib/useAuthUser";
 import { useAppLayout } from "../../lib/useAppLayout";
 import { parseWeeklyProgrammingPDF } from "../../lib/programacion/pdf";
-import { WeeklyMovieRow } from "../../lib/programacion/types";
+import { WeeklyMovieRow, WeekdayKey } from "../../lib/programacion/types";
 import { COLORS, THEME } from "../../lib/theme";
 import {
   LOGO_B64,
@@ -433,10 +433,51 @@ export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: b
         setSemanaText("Nueva Semana");
       }
 
-      // Unique clean titles from old week
-      const oldTitles = new Set(
-        oldResult.rows.map((r) => cleanTitleForComparison(r.pelicula))
-      );
+      // Group old week rows by cleaned movie name to check if they only have showtimes on Wednesday
+      const oldMoviesSchedule: Record<string, Record<WeekdayKey, number>> = {};
+
+      oldResult.rows.forEach((row) => {
+        const compName = cleanTitleForComparison(row.pelicula);
+        if (!oldMoviesSchedule[compName]) {
+          oldMoviesSchedule[compName] = {
+            jueves: 0,
+            viernes: 0,
+            sabado: 0,
+            domingo: 0,
+            lunes: 0,
+            martes: 0,
+            miercoles: 0,
+          };
+        }
+        
+        if (row.horariosPorDia) {
+          Object.keys(row.horariosPorDia).forEach((dayKey) => {
+            const times = row.horariosPorDia[dayKey as WeekdayKey] || [];
+            oldMoviesSchedule[compName][dayKey as WeekdayKey] += times.length;
+          });
+        }
+      });
+
+      // Unique clean titles from old week that are NOT preestrenos (only Wednesday shows)
+      const oldTitles = new Set<string>();
+
+      Object.keys(oldMoviesSchedule).forEach((compName) => {
+        const sched = oldMoviesSchedule[compName];
+        const hasOtherDays = (
+          sched.jueves > 0 ||
+          sched.viernes > 0 ||
+          sched.sabado > 0 ||
+          sched.domingo > 0 ||
+          sched.lunes > 0 ||
+          sched.martes > 0
+        );
+
+        // A movie is NOT a Wednesday-only preestreno if it has showtimes on any other day of the week.
+        // If it only has showtimes on Wednesday, we exclude it from oldTitles so it's treated as an estreno in the new week.
+        if (hasOtherDays) {
+          oldTitles.add(compName);
+        }
+      });
 
       // Group new week rows by cleaned movie name to ignore DBOX and find screens
       const newMoviesMap: Record<string, { calificacion: string; salas: Set<number> }> = {};
