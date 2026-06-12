@@ -9,6 +9,7 @@ import {
   orderBy,
   query,
   serverTimestamp,
+  setDoc,
   where,
 } from "firebase/firestore";
 import React, { useEffect, useState, useMemo } from "react";
@@ -19,6 +20,7 @@ import {
   FlatList,
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -161,6 +163,180 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
   // Delete states
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [mtmToDelete, setMtmToDelete] = useState<Mantenimiento | null>(null);
+
+  // Barco PC States
+  const [barcoData, setBarcoData] = useState<any>(null);
+  const [barcoLoading, setBarcoLoading] = useState(true);
+  const [showManualDaysModal, setShowManualDaysModal] = useState(false);
+  const [manualSelectedType, setManualSelectedType] = useState<"A" | "B" | "C" | "D">("A");
+  const [manualDaysText, setManualDaysText] = useState("");
+
+  const BARCO_TYPES = {
+    A: { key: "A", name: "Mantenimiento A", period: 30, description: "Revisión mensual de filtros y temperaturas." },
+    B: { key: "B", name: "Mantenimiento B", period: 90, description: "Limpieza trimestral, ventiladores y conexiones." },
+    C: { key: "C", name: "Mantenimiento C", period: 360, description: "Calibración anual, revisión óptica y de lámpara." },
+    D: { key: "D", name: "Mantenimiento D", period: 1460, description: "Mantenimiento mayor cada 4 años y revisión profunda." },
+  };
+
+  const getTodayYmd = () => {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  };
+
+  function getSignedDaysBetween(dateStrStart: string, dateStrEnd: string): number {
+    const dStart = new Date(dateStrStart + "T12:00:00");
+    const dEnd = new Date(dateStrEnd + "T12:00:00");
+    const utcStart = Date.UTC(dStart.getFullYear(), dStart.getMonth(), dStart.getDate());
+    const utcEnd = Date.UTC(dEnd.getFullYear(), dEnd.getMonth(), dEnd.getDate());
+    const diffTime = utcEnd - utcStart;
+    return Math.round(diffTime / (1000 * 60 * 60 * 24));
+  }
+
+  const resetPeriod = async (typeKey: "A" | "B" | "C" | "D") => {
+    if (!user || !cineId) return;
+    const todayYmd = getTodayYmd();
+    const period = BARCO_TYPES[typeKey].period;
+    const newExpirationDate = addDaysToYmd(todayYmd, period);
+    
+    try {
+      const storedDisplayName =
+        (await AsyncStorage.getItem("displayName")) ||
+        displayName ||
+        user.email?.split("@")[0] ||
+        "Usuario";
+        
+      const docRef = doc(db, CINES_COLLECTION, cineId, "barco_pc", "status");
+      await setDoc(docRef, {
+        [typeKey]: {
+          expirationDate: newExpirationDate,
+          updatedAt: new Date().toISOString(),
+          updatedBy: user.uid,
+          updatedByName: storedDisplayName,
+        }
+      }, { merge: true });
+    } catch (err) {
+      console.error(err);
+      Alert.alert("Error", "No se pudo reiniciar el periodo.");
+    }
+  };
+
+  const confirmResetPeriod = (typeKey: "A" | "B" | "C" | "D") => {
+    Alert.alert(
+      `Reiniciar Mantenimiento ${typeKey}`,
+      `¿Estás seguro de que querés reiniciar el periodo del Mantenimiento ${typeKey} a ${BARCO_TYPES[typeKey].period} días?`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        { text: "Reiniciar", onPress: () => resetPeriod(typeKey) },
+      ]
+    );
+  };
+
+  const saveManualDays = async () => {
+    const days = parseInt(manualDaysText, 10);
+    if (isNaN(days) || days < 0) {
+      Alert.alert("Error", "Por favor ingresá un número de días válido (mayor o igual a 0).");
+      return;
+    }
+    if (!user || !cineId) return;
+    const todayYmd = getTodayYmd();
+    const newExpirationDate = addDaysToYmd(todayYmd, days);
+    
+    try {
+      const storedDisplayName =
+        (await AsyncStorage.getItem("displayName")) ||
+        displayName ||
+        user.email?.split("@")[0] ||
+        "Usuario";
+        
+      const docRef = doc(db, CINES_COLLECTION, cineId, "barco_pc", "status");
+      await setDoc(docRef, {
+        [manualSelectedType]: {
+          expirationDate: newExpirationDate,
+          updatedAt: new Date().toISOString(),
+          updatedBy: user.uid,
+          updatedByName: storedDisplayName,
+        }
+      }, { merge: true });
+      setShowManualDaysModal(false);
+      setManualDaysText("");
+    } catch (err) {
+      console.error(err);
+      Alert.alert("Error", "No se pudo actualizar los días.");
+    }
+  };
+
+  const getBarcoStatusStyles = (status: "ok" | "warning" | "expired" | "not_started") => {
+    switch (status) {
+      case "ok":
+        return {
+          bg: "#ECFDF5",
+          border: "#A7F3D0",
+          text: "#065F46",
+          primaryText: "#047857",
+          badgeBg: "#D1FAE5",
+          badgeText: "#065F46",
+          icon: "check-circle",
+          label: "Al día",
+        };
+      case "warning":
+        return {
+          bg: "#FFFBEB",
+          border: "#FDE68A",
+          text: "#92400E",
+          primaryText: "#D97706",
+          badgeBg: "#FEF3C7",
+          badgeText: "#92400E",
+          icon: "alert",
+          label: "Próximo a vencer",
+        };
+      case "expired":
+        return {
+          bg: "#FEF2F2",
+          border: "#FCA5A5",
+          text: "#991B1B",
+          primaryText: "#DC2626",
+          badgeBg: "#FEE2E2",
+          badgeText: "#991B1B",
+          icon: "alert-circle",
+          label: "Vencido",
+        };
+      case "not_started":
+      default:
+        return {
+          bg: "#F8FAFC",
+          border: "#E2E8F0",
+          text: "#334155",
+          primaryText: "#64748B",
+          badgeBg: "#F1F5F9",
+          badgeText: "#475569",
+          icon: "clock-outline",
+          label: "Pendiente",
+        };
+    }
+  };
+
+  // Subscribe to barco_pc status
+  useEffect(() => {
+    if (sessionLoading || !user || !cineId) {
+      setBarcoLoading(true);
+      return;
+    }
+    
+    const docRef = doc(db, CINES_COLLECTION, cineId, "barco_pc", "status");
+    const unsub = onSnapshot(docRef, (docSnap) => {
+      if (docSnap.exists()) {
+        setBarcoData(docSnap.data());
+      } else {
+        setBarcoData(null);
+      }
+      setBarcoLoading(false);
+    }, (err) => {
+      console.error("Error loading barco_pc:", err);
+      setBarcoLoading(false);
+    });
+    
+    return () => unsub();
+  }, [user, cineId, sessionLoading]);
 
   // Fetch mantenimientos
   useEffect(() => {
@@ -808,19 +984,198 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
   };
 
   const renderBarcoPcTab = () => {
+    if (barcoLoading) {
+      return (
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+        </View>
+      );
+    }
+
+    const todayYmd = getTodayYmd();
+
     return (
-      <View style={styles.emptyContainer}>
-        <MaterialCommunityIcons
-          name="laptop"
-          size={isMobile ? 60 : 80}
-          color={COLORS.muted}
-          style={{ opacity: 0.3, marginBottom: 20 }}
-        />
-        <Text style={[styles.emptyTitle, { fontSize: isMobile ? 16 : 18 }]}>Sección Barco Pc</Text>
-        <Text style={[styles.emptySubtitle, { fontSize: isMobile ? 12 : 14 }]}>
-          Esta sección está reservada y se desarrollará en el futuro.
-        </Text>
-      </View>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingBottom: 100 }}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.barcoHeaderCard}>
+          <View style={styles.barcoHeaderInfo}>
+            <MaterialCommunityIcons
+              name="laptop"
+              size={isMobile ? 22 : 28}
+              color={COLORS.primary}
+              style={{ marginRight: 10, marginTop: 2 }}
+            />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.barcoHeaderTitle, { fontSize: isMobile ? 16 : 18 }]}>
+                Mantenimiento Barco PC
+              </Text>
+              <Text style={[styles.barcoHeaderSubtitle, { fontSize: isMobile ? 11 : 13 }]}>
+                Control de vencimientos para mantenimientos preventivos Tipo A, B, C y D.
+              </Text>
+            </View>
+          </View>
+          {!readOnly && (
+            <TouchableOpacity
+              style={[styles.barcoHeaderBtn, { paddingVertical: isMobile ? 8 : 10 }]}
+              onPress={() => {
+                setManualSelectedType("A");
+                setManualDaysText("");
+                setShowManualDaysModal(true);
+              }}
+            >
+              <MaterialCommunityIcons name="pencil" size={isMobile ? 14 : 16} color="#fff" style={{ marginRight: 6 }} />
+              <Text style={[styles.barcoHeaderBtnText, { fontSize: isMobile ? 12 : 14 }]}>
+                Ajuste Manual
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        <View style={[styles.barcoGrid, isMobile ? styles.barcoGridMobile : styles.barcoGridDesktop]}>
+          {(["A", "B", "C", "D"] as const).map((typeKey) => {
+            const info = BARCO_TYPES[typeKey];
+            const data = barcoData ? barcoData[typeKey] : null;
+            const expirationDate = data?.expirationDate;
+
+            let daysLeft: number | null = null;
+            let status: "ok" | "warning" | "expired" | "not_started" = "not_started";
+
+            if (expirationDate) {
+              daysLeft = getSignedDaysBetween(todayYmd, expirationDate);
+              if (daysLeft < 0) {
+                status = "expired";
+              } else if (daysLeft <= 10) {
+                status = "warning";
+              } else {
+                status = "ok";
+              }
+            }
+
+            const cStyles = getBarcoStatusStyles(status);
+            const styleMeta = getTypeStyle(typeKey);
+
+            return (
+              <View
+                key={typeKey}
+                style={[
+                  styles.barcoCard,
+                  {
+                    borderColor: cStyles.border,
+                    backgroundColor: cStyles.bg,
+                    width: isMobile ? "100%" : "48.5%",
+                  },
+                ]}
+              >
+                {/* Card Header */}
+                <View style={styles.barcoCardHeader}>
+                  <View
+                    style={[
+                      styles.barcoCardLetterContainer,
+                      { backgroundColor: styleMeta.bg, borderColor: styleMeta.border },
+                    ]}
+                  >
+                    <Text style={[styles.barcoCardLetter, { color: styleMeta.text }]}>
+                      {typeKey}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={styles.barcoCardTitle}>{info.name}</Text>
+                    <Text style={styles.barcoCardPeriod}>Período: {info.period} días</Text>
+                  </View>
+                  <View style={[styles.barcoStatusBadge, { backgroundColor: cStyles.badgeBg }]}>
+                    <MaterialCommunityIcons
+                      name={cStyles.icon as any}
+                      size={12}
+                      color={cStyles.badgeText}
+                      style={{ marginRight: 4 }}
+                    />
+                    <Text style={[styles.barcoStatusBadgeText, { color: cStyles.badgeText }]}>
+                      {cStyles.label}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Description */}
+                <Text style={styles.barcoCardDesc}>{info.description}</Text>
+
+                {/* Days counter */}
+                <View style={styles.barcoCardDaysContainer}>
+                  {daysLeft !== null ? (
+                    <>
+                      <Text style={[styles.barcoCardDaysNum, { color: cStyles.primaryText }]}>
+                        {daysLeft === 0
+                          ? "Vence hoy"
+                          : daysLeft < 0
+                          ? `Vencido`
+                          : daysLeft}
+                      </Text>
+                      <Text style={[styles.barcoCardDaysLbl, { color: cStyles.primaryText }]}>
+                        {daysLeft === 0
+                          ? ""
+                          : daysLeft < 0
+                          ? `hace ${Math.abs(daysLeft)} ${Math.abs(daysLeft) === 1 ? "día" : "días"}`
+                          : daysLeft === 1
+                          ? "día restante"
+                          : "días restantes"}
+                      </Text>
+                    </>
+                  ) : (
+                    <Text style={[styles.barcoCardDaysNum, { color: cStyles.primaryText, fontSize: 20, marginVertical: 8 }]}>
+                      Sin iniciar
+                    </Text>
+                  )}
+                </View>
+
+                {/* Info and Metadata */}
+                <View style={styles.barcoCardInfoBlock}>
+                  <View style={styles.barcoCardMetaRow}>
+                    <MaterialCommunityIcons name="calendar" size={13} color={COLORS.muted} style={{ marginRight: 5 }} />
+                    <Text style={styles.barcoCardMetaText}>
+                      Vence: {expirationDate ? ymdToDdmmyyyy(expirationDate) : "Pendiente"}
+                    </Text>
+                  </View>
+                  {data?.updatedByName && (
+                    <View style={styles.barcoCardMetaRow}>
+                      <MaterialCommunityIcons name="account-edit" size={13} color={COLORS.muted} style={{ marginRight: 5 }} />
+                      <Text style={styles.barcoCardMetaText} numberOfLines={1}>
+                        Por: {data.updatedByName} ({ymdToDdmmyyyy(data.updatedAt.split("T")[0])})
+                      </Text>
+                    </View>
+                  )}
+                </View>
+
+                {/* Card Actions */}
+                {!readOnly && (
+                  <View style={styles.barcoCardActions}>
+                    <TouchableOpacity
+                      style={[styles.barcoBtnReset, { borderColor: styleMeta.text }]}
+                      onPress={() => confirmResetPeriod(typeKey)}
+                    >
+                      <MaterialCommunityIcons name="refresh" size={14} color={styleMeta.text} style={{ marginRight: 4 }} />
+                      <Text style={[styles.barcoBtnResetText, { color: styleMeta.text }]}>Reiniciar</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.barcoBtnEdit}
+                      onPress={() => {
+                        setManualSelectedType(typeKey);
+                        setManualDaysText(daysLeft !== null ? String(Math.max(0, daysLeft)) : "");
+                        setShowManualDaysModal(true);
+                      }}
+                    >
+                      <MaterialCommunityIcons name="pencil-outline" size={14} color={COLORS.muted} style={{ marginRight: 4 }} />
+                      <Text style={styles.barcoBtnEditText}>Ajustar</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            );
+          })}
+        </View>
+      </ScrollView>
     );
   };
 
@@ -1077,6 +1432,103 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
             </View>
           </View>
         </View>
+      </Modal>
+
+      {/* Manual Days Adjustment Modal */}
+      <Modal
+        visible={showManualDaysModal}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setShowManualDaysModal(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setShowManualDaysModal(false)}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={[styles.modalCardModern, { padding: isMobile ? 16 : 22 }]}>
+                <Text style={[styles.modalTitleModern, { fontSize: isMobile ? 18 : 22 }]}>
+                  Ajustar Días Restantes
+                </Text>
+                <Text style={[styles.modalSubtitleModern, { fontSize: isMobile ? 12 : 14, marginBottom: isMobile ? 12 : 18 }]}>
+                  Ingresá manualmente la cantidad de días restantes para el vencimiento.
+                </Text>
+
+                {/* Type Selection */}
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.fieldLabel}>Mantenimiento a ajustar</Text>
+                  <View style={styles.typeSelectorRow}>
+                    {(["A", "B", "C", "D"] as const).map((t) => {
+                      const isSelected = manualSelectedType === t;
+                      const styleMeta = getTypeStyle(t);
+                      return (
+                        <TouchableOpacity
+                          key={t}
+                          style={[
+                            styles.typeSelectorBtn,
+                            { height: isMobile ? 38 : 44 },
+                            isSelected && {
+                              backgroundColor: styleMeta.bg,
+                              borderColor: styleMeta.border,
+                            },
+                          ]}
+                          onPress={() => setManualSelectedType(t)}
+                        >
+                          <Text
+                            style={[
+                              styles.typeSelectorBtnText,
+                              { color: isSelected ? styleMeta.text : COLORS.muted, fontSize: isMobile ? 13 : 15 },
+                              isSelected && { fontWeight: "800" },
+                            ]}
+                          >
+                            {t}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                {/* Days Input */}
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.fieldLabel}>Días restantes</Text>
+                  <TextInput
+                    style={[styles.modalInputModern, { minHeight: isMobile ? 40 : 46 }]}
+                    placeholder="Ej: 15"
+                    placeholderTextColor="#94A3B8"
+                    value={manualDaysText}
+                    onChangeText={setManualDaysText}
+                    keyboardType="number-pad"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                </View>
+
+                {/* Actions */}
+                <View style={styles.modalActionsModern}>
+                  <TouchableOpacity
+                    style={[styles.cancelBtnModern, { paddingVertical: isMobile ? 10 : 12 }]}
+                    onPress={() => {
+                      setShowManualDaysModal(false);
+                      setManualDaysText("");
+                    }}
+                  >
+                    <Text style={[styles.cancelBtnTextModern, { fontSize: isMobile ? 13 : 14 }]}>
+                      Cancelar
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.saveBtnModern, { paddingVertical: isMobile ? 10 : 12 }]}
+                    onPress={saveManualDays}
+                  >
+                    <Text style={[styles.saveBtnTextModern, { fontSize: isMobile ? 13 : 14 }]}>
+                      Guardar
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
       </Modal>
     </View>
   );
@@ -1534,5 +1986,187 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 6,
     zIndex: 1000,
+  },
+  // Barco PC Styles
+  barcoHeaderCard: {
+    backgroundColor: COLORS.card,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    shadowColor: "#000",
+    shadowOpacity: 0.03,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+    marginBottom: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    flexWrap: "wrap",
+    gap: 12,
+  },
+  barcoHeaderInfo: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    flex: 1,
+    minWidth: 200,
+  },
+  barcoHeaderTitle: {
+    fontWeight: "800",
+    color: COLORS.text,
+  },
+  barcoHeaderSubtitle: {
+    color: COLORS.muted,
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  barcoHeaderBtn: {
+    flexDirection: "row",
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  barcoHeaderBtnText: {
+    color: "#fff",
+    fontWeight: "700",
+  },
+  barcoGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    width: "100%",
+  },
+  barcoGridMobile: {
+    flexDirection: "column",
+    gap: 12,
+  },
+  barcoGridDesktop: {
+    gap: 16,
+  },
+  barcoCard: {
+    borderRadius: 16,
+    borderWidth: 1.5,
+    padding: 16,
+    shadowColor: "#000",
+    shadowOpacity: 0.02,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  barcoCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  barcoCardLetterContainer: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  barcoCardLetter: {
+    fontSize: 18,
+    fontWeight: "900",
+  },
+  barcoCardTitle: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: COLORS.text,
+  },
+  barcoCardPeriod: {
+    fontSize: 11,
+    color: COLORS.muted,
+    fontWeight: "600",
+    marginTop: 1,
+  },
+  barcoStatusBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    alignSelf: "flex-start",
+  },
+  barcoStatusBadgeText: {
+    fontSize: 10,
+    fontWeight: "800",
+  },
+  barcoCardDesc: {
+    fontSize: 12,
+    color: COLORS.muted,
+    lineHeight: 16,
+    marginBottom: 12,
+  },
+  barcoCardDaysContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+    backgroundColor: "rgba(255, 255, 255, 0.4)",
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  barcoCardDaysNum: {
+    fontSize: 28,
+    fontWeight: "900",
+  },
+  barcoCardDaysLbl: {
+    fontSize: 11,
+    fontWeight: "700",
+    marginTop: 2,
+  },
+  barcoCardInfoBlock: {
+    borderTopWidth: 1,
+    borderTopColor: "rgba(0, 0, 0, 0.05)",
+    paddingTop: 8,
+    marginBottom: 12,
+    gap: 4,
+  },
+  barcoCardMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  barcoCardMetaText: {
+    fontSize: 11,
+    color: COLORS.muted,
+    fontWeight: "600",
+  },
+  barcoCardActions: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  barcoBtnReset: {
+    flex: 1.5,
+    flexDirection: "row",
+    borderWidth: 1.5,
+    borderRadius: 10,
+    paddingVertical: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fff",
+  },
+  barcoBtnResetText: {
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  barcoBtnEdit: {
+    flex: 1,
+    flexDirection: "row",
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 10,
+    paddingVertical: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.card,
+  },
+  barcoBtnEditText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: COLORS.text,
   },
 });
