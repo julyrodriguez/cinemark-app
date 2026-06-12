@@ -1196,7 +1196,7 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
             style={{ marginRight: 6 }}
           />
           <Text style={[styles.tabButtonText, { fontSize: isMobile ? 13 : 15 }, activeSubTab === "fechas" && styles.tabButtonTextActive]}>
-            Fechas
+            Cronograma
           </Text>
         </TouchableOpacity>
 
