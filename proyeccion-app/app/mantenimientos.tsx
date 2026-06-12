@@ -266,6 +266,56 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
   };
 
   const getBarcoStatusStyles = (status: "ok" | "warning" | "expired" | "not_started") => {
+    if (Platform.OS === "web") {
+      switch (status) {
+        case "ok":
+          return {
+            bg: "var(--success-bg, #ECFDF5)",
+            border: "var(--success-border, #A7F3D0)",
+            text: "var(--success, #065F46)",
+            primaryText: "var(--success, #047857)",
+            badgeBg: "var(--success-bg, #D1FAE5)",
+            badgeText: "var(--success, #065F46)",
+            icon: "check-circle",
+            label: "Al día",
+          };
+        case "warning":
+          return {
+            bg: "var(--warning-bg, #FFFBEB)",
+            border: "var(--warning-border, #FDE68A)",
+            text: "var(--warning, #92400E)",
+            primaryText: "var(--warning, #D97706)",
+            badgeBg: "var(--warning-bg, #FEF3C7)",
+            badgeText: "var(--warning, #92400E)",
+            icon: "alert",
+            label: "Próximo a vencer",
+          };
+        case "expired":
+          return {
+            bg: "var(--danger-soft, #FEF2F2)",
+            border: "var(--danger, #FCA5A5)",
+            text: "var(--danger, #991B1B)",
+            primaryText: "var(--danger, #DC2626)",
+            badgeBg: "var(--danger-soft, #FEE2E2)",
+            badgeText: "var(--danger, #991B1B)",
+            icon: "alert-circle",
+            label: "Vencido",
+          };
+        case "not_started":
+        default:
+          return {
+            bg: "var(--bg, #F8FAFC)",
+            border: "var(--border, #E2E8F0)",
+            text: "var(--text, #334155)",
+            primaryText: "var(--muted, #64748B)",
+            badgeBg: "var(--bg-mobile, #F1F5F9)",
+            badgeText: "var(--muted, #475569)",
+            icon: "clock-outline",
+            label: "Pendiente",
+          };
+      }
+    }
+
     switch (status) {
       case "ok":
         return {
@@ -728,6 +778,19 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
   };
 
   const getTypeStyle = (t: "A" | "B" | "C" | "D") => {
+    if (Platform.OS === "web") {
+      switch (t) {
+        case "A":
+          return { bg: "var(--info-bg, #EFF6FF)", border: "var(--info-border, #BFDBFE)", text: "var(--info, #1D4ED8)" };
+        case "B":
+          return { bg: "var(--success-bg, #ECFDF5)", border: "var(--success-border, #A7F3D0)", text: "var(--success, #047857)" };
+        case "C":
+          return { bg: "var(--warning-bg, #FFFBEB)", border: "var(--warning-border, #FDE68A)", text: "var(--warning, #B45309)" };
+        case "D":
+          return { bg: "var(--beta-bg, #FAF5FF)", border: "var(--beta-border, #E9D5FF)", text: "var(--beta-text, #6D28D9)" };
+      }
+    }
+
     switch (t) {
       case "A":
         return { bg: "#EFF6FF", border: "#BFDBFE", text: "#1D4ED8" }; // Blue
@@ -2106,7 +2169,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 10,
-    backgroundColor: "rgba(255, 255, 255, 0.4)",
+    backgroundColor: COLORS.bgMobile,
     borderRadius: 12,
     marginBottom: 12,
   },
@@ -2147,7 +2210,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#fff",
+    backgroundColor: COLORS.card,
   },
   barcoBtnResetText: {
     fontSize: 13,
