@@ -221,14 +221,23 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
   };
 
   const confirmResetPeriod = (typeKey: "A" | "B" | "C" | "D") => {
-    Alert.alert(
-      `Reiniciar Mantenimiento ${typeKey}`,
-      `¿Estás seguro de que querés reiniciar el periodo del Mantenimiento ${typeKey} a ${BARCO_TYPES[typeKey].period} días?`,
-      [
-        { text: "Cancelar", style: "cancel" },
-        { text: "Reiniciar", onPress: () => resetPeriod(typeKey) },
-      ]
-    );
+    const title = `Reiniciar Mantenimiento ${typeKey}`;
+    const msg = `¿Estás seguro de que querés reiniciar el periodo del Mantenimiento ${typeKey} a ${BARCO_TYPES[typeKey].period} días?`;
+
+    if (Platform.OS === "web") {
+      if (window.confirm(`${title}\n\n${msg}`)) {
+        resetPeriod(typeKey);
+      }
+    } else {
+      Alert.alert(
+        title,
+        msg,
+        [
+          { text: "Cancelar", style: "cancel" },
+          { text: "Reiniciar", onPress: () => resetPeriod(typeKey) },
+        ]
+      );
+    }
   };
 
   const saveManualDays = async () => {
