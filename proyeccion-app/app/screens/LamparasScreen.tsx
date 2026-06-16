@@ -547,7 +547,7 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
       setRetireError("Por favor ingresá un número válido para las horas usadas.");
       return;
     }
-    if (isNaN(horasRestantesNum) || horasRestantesNum < 0) {
+    if (isNaN(horasRestantesNum)) {
       setRetireError("Por favor ingresá un número válido para las horas restantes.");
       return;
     }
@@ -1865,7 +1865,7 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
                 <Text style={s.label}>Horas Usadas *</Text>
                 <TextInput
                   value={rHorasUsadas}
-                  onChangeText={setRHorasUsadas}
+                  onChangeText={(text) => setRHorasUsadas(text.replace(/[^0-9]/g, ""))}
                   placeholder="Ej: 2100"
                   placeholderTextColor={COLORS.muted}
                   style={s.input}
@@ -1876,11 +1876,11 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
                 <Text style={s.label}>Horas Restantes *</Text>
                 <TextInput
                   value={rHorasRestantes}
-                  onChangeText={setRHorasRestantes}
-                  placeholder="Ej: 900"
+                  onChangeText={(text) => setRHorasRestantes(text.replace(/[^0-9-]/g, "").replace(/(?!^)-/g, ""))}
+                  placeholder="Ej: -200"
                   placeholderTextColor={COLORS.muted}
                   style={s.input}
-                  keyboardType="numeric"
+                  keyboardType="numbers-and-punctuation"
                 />
               </View>
             </View>
