@@ -7,7 +7,11 @@ service cloud.firestore {
 
     function isAdmin() {
       return isSignedIn() 
-        && (request.auth.token.admin == true || request.auth.token.role == "admin");
+        && (
+          request.auth.token.admin == true 
+          || request.auth.token.role == "admin"
+          || request.auth.token.email == "cinemarkproyecto@equipo.local"
+        );
     }
 
     function isOficinas() {

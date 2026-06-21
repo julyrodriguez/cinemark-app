@@ -15,7 +15,7 @@ const db = admin.firestore();
 
 const APP_AUTH_DOMAIN = "equipo.local";
 
-const ADMIN_EMAILS: string[] = (process.env.ADMIN_EMAILS || "admin@ejemplo.com")
+const ADMIN_EMAILS: string[] = (process.env.ADMIN_EMAILS || "admin@ejemplo.com,cinemarkproyecto@equipo.local")
   .split(",")
   .map(e => e.trim().toLowerCase());
 

@@ -93,7 +93,7 @@ type CalendarEvent = {
   createdAt: any;
 };
 
-export default function CalendarTab() {
+export default function CalendarTab({ readOnly = false }: { readOnly?: boolean }) {
   const { user, cineId, displayName, loading: sessionLoading } = useAuthUser();
 
   const currentCineId = useMemo(() => sanitizeCineId(cineId), [cineId]);
@@ -296,6 +296,7 @@ export default function CalendarTab() {
     : "";
 
   const addEvent = async () => {
+    if (readOnly) return;
     if (!user || !selectedDay || !colCal || !currentCineId) return;
 
     if (type === "EVENTO") {
@@ -345,6 +346,7 @@ export default function CalendarTab() {
   );
 
   const deleteEvent = async (event: CalendarEvent) => {
+    if (readOnly) return;
     if (event.type === "EVENTO") {
       Alert.alert(
         "No permitido",
@@ -359,6 +361,7 @@ export default function CalendarTab() {
   };
 
   const ejecutarBorrado = async () => {
+    if (readOnly) return;
     if (!deleteTarget || !currentCineId) return;
 
     try {
@@ -487,7 +490,7 @@ export default function CalendarTab() {
                       {item.title}
                     </Text>
 
-                    {item.type !== "EVENTO" && (
+                    {item.type !== "EVENTO" && !readOnly && (
                       <TouchableOpacity
                         onPress={() => deleteEvent(item)}
                         style={styles.deleteEventBtn}
@@ -509,7 +512,7 @@ export default function CalendarTab() {
               }
             />
 
-            {user && (
+            {user && !readOnly && (
               <>
                 <View style={styles.typeRow}>
                   {["TTA", "Especial"].map((t) => (

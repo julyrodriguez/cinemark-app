@@ -743,7 +743,16 @@ export default function Home() {
 
   function renderContent() {
     if (mainTab === "CALENDARIO") {
-      return isOficinas ? <OficinasCalendarioScreen /> : <CalendarTab />;
+      return isOficinas ? (
+        <OficinasCalendarioScreen />
+      ) : (
+        <View style={styles.screenWrap}>
+          {renderProjectionLockBanner()}
+          <View style={styles.subContent}>
+            <CalendarTab readOnly={!isProjectionUnlocked} />
+          </View>
+        </View>
+      );
     }
 
     if (mainTab === "EVENTOS") {
