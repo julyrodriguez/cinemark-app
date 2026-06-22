@@ -259,6 +259,14 @@ export default function CineProfileModal({
             >
               <Text style={s.sectionTitle}>Configuración</Text>
 
+              {(cineId === "parquebrown" || authEmail.toLowerCase().includes("parquebrown")) && (
+                <View style={s.warningBanner}>
+                  <Text style={s.warningBannerText}>
+                    ⚠️ El control de acceso por IP (checkIpAccess) se encuentra desactivado para este usuario.
+                  </Text>
+                </View>
+              )}
+
               <Text style={s.label}>Nombre</Text>
               <TextInput
                 value={nombre}
@@ -583,5 +591,22 @@ const s = StyleSheet.create({
 
   sectionBtn: {
     marginTop: THEME.spacing.md,
+  },
+
+  warningBanner: {
+    backgroundColor: COLORS.warningBg,
+    borderColor: COLORS.warningBorder,
+    borderWidth: 1,
+    borderRadius: THEME.radius.md,
+    padding: THEME.spacing.md,
+    marginBottom: THEME.spacing.md,
+    marginTop: THEME.spacing.sm,
+  },
+
+  warningBannerText: {
+    color: COLORS.warning,
+    fontSize: THEME.fontSize.sm,
+    fontWeight: "700",
+    lineHeight: 20,
   },
 });

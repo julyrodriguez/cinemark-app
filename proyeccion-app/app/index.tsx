@@ -276,6 +276,12 @@ export default function Home() {
       return;
     }
 
+    // Saltar check de IP para Parque Brown
+    if (cineId === "parquebrown" || (user?.email && user.email.toLowerCase().includes("parquebrown"))) {
+      setIpCheckState({ state: "authorized" });
+      return;
+    }
+
     // Saltar web check si corre en Android/iOS (ej: APK nativa)
     if (Platform.OS !== "web") {
       setIpCheckState({ state: "authorized" });
