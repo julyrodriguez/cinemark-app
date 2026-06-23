@@ -709,6 +709,11 @@ export default function TrailersSemanalesScreen({ readOnly = false }: { readOnly
               color: #0f172a;
               font-weight: bold;
             }
+            .sala-card-container {
+              page-break-inside: avoid;
+              break-inside: avoid;
+              margin-bottom: 15px;
+            }
             .sala-table {
               width: 100%;
               border-collapse: collapse;
@@ -791,11 +796,8 @@ export default function TrailersSemanalesScreen({ readOnly = false }: { readOnly
 
       // Draw tables for each Sala
       editableScreens.forEach((scr, idx) => {
-        // Break page after every 3 tables to prevent overflow during printing
-        const pageBreakClass = (idx > 0 && idx % 3 === 0) ? 'class="page-break"' : '';
-
         html += `
-          <div ${pageBreakClass}>
+          <div class="sala-card-container">
             <table class="sala-table">
               <thead>
                 <tr class="sala-header-row">
