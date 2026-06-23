@@ -39,6 +39,7 @@ import { db, CINES_COLLECTION } from "../../lib/firebaseConfig";
 import { COLORS, THEME } from "../../lib/theme";
 import { useAuthUser } from "../../lib/useAuthUser";
 import { Rma } from "../../lib/types";
+import { getCineConfig } from "../../lib/cineConfig";
 
 // ─── Constants & Defaults ───────────────────────────────────────────────────
 
@@ -71,6 +72,25 @@ const SALAS_DEFAULTS = [
 
 const DIAS_SEMANA = ["Sabado", "Domingo", "Lunes", "Martes", "Miercoles", "Jueves", "Viernes"];
 
+const getDynamicSalasDefaults = (count: number) => {
+  return Array.from({ length: count }, (_, i) => {
+    const salaNum = i + 1;
+    const existing = SALAS_DEFAULTS.find((d) => d.sala === salaNum);
+    if (existing) {
+      return { ...existing };
+    }
+    return {
+      sala: salaNum,
+      potencia: "3000W Digital",
+      medicion2d: "",
+      medicion3d: "",
+      calibrado: true,
+      horasActuales: "0",
+      horasRestantes: "0",
+    };
+  });
+};
+
 // ─── Interfaces ─────────────────────────────────────────────────────────────
 
 interface LamparaData {
@@ -93,6 +113,9 @@ export default function ControlSemanalScreen({ readOnly = false }: { readOnly?: 
   const [rmas, setRmas] = useState<Rma[]>([]);
   const [saving, setSaving] = useState(false);
 
+  const [salasCount, setSalasCount] = useState(12);
+  const [loadingSalas, setLoadingSalas] = useState(true);
+
   // Refs para navegación con flechas del teclado
   const actualRefs = React.useRef<(any)[]>([]);
   const restanteRefs = React.useRef<(any)[]>([]);
@@ -105,7 +128,7 @@ export default function ControlSemanalScreen({ readOnly = false }: { readOnly?: 
     const key = e.nativeEvent.key;
     if (key === "ArrowDown") {
       const nextIdx = index + 1;
-      if (nextIdx < 12) {
+      if (nextIdx < salasCount) {
         const target = field === "horasActuales" ? actualRefs.current[nextIdx] : restanteRefs.current[nextIdx];
         target?.focus();
       }
@@ -135,10 +158,8 @@ export default function ControlSemanalScreen({ readOnly = false }: { readOnly?: 
   const [responsable, setResponsable] = useState<string>("");
   const [complejo, setComplejo] = useState<string>("Complejo 2004 - Abasto");
 
-  // Lectura de Lámparas (Salas 1 a 12)
-  const [lamparas, setLamparas] = useState<LamparaData[]>(
-    SALAS_DEFAULTS.map((s) => ({ ...s }))
-  );
+  // Lectura de Lámparas
+  const [lamparas, setLamparas] = useState<LamparaData[]>([]);
 
   // Helper para obtener vida útil predeterminada de la lámpara
   const getVidaUtil = (potenciaStr: string) => {
@@ -148,6 +169,48 @@ export default function ControlSemanalScreen({ readOnly = false }: { readOnly?: 
     if (p.includes("2000")) return parseInt(vidaUtil2000, 10) || 2500;
     return 3000; // default fallback
   };
+
+  // Cargar configuración del cine (salasCount)
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadConfig() {
+      if (!cineId) {
+        setSalasCount(12);
+        setLoadingSalas(false);
+        return;
+      }
+
+      try {
+        setLoadingSalas(true);
+        const cfg = await getCineConfig(cineId);
+
+        if (cancelled) return;
+
+        const count =
+          cfg?.salasCount && Number.isFinite(cfg.salasCount) && cfg.salasCount > 0
+            ? Math.floor(cfg.salasCount)
+            : 12;
+
+        setSalasCount(count);
+      } catch (e) {
+        console.error("ControlSemanal config error:", e);
+        if (!cancelled) {
+          setSalasCount(12);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingSalas(false);
+        }
+      }
+    }
+
+    loadConfig();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [cineId]);
 
   // Cargar configuración de autollenado
   useEffect(() => {
@@ -337,7 +400,7 @@ export default function ControlSemanalScreen({ readOnly = false }: { readOnly?: 
 
   // Carga automática del reporte semanal desde Firestore
   useEffect(() => {
-    if (!cineId || !weekKey) return;
+    if (!cineId || !weekKey || loadingSalas) return;
 
     let active = true;
     setLoading(true);
@@ -361,8 +424,9 @@ export default function ControlSemanalScreen({ readOnly = false }: { readOnly?: 
 
           // Lámparas
           if (Array.isArray(data.lamparas)) {
-            // Combinar con los defaults oficiales de Abasto por si falta alguna sala o campo
-            const merged = SALAS_DEFAULTS.map((def) => {
+            // Combinar con los defaults oficiales por si falta alguna sala o campo
+            const dynamicDefaults = getDynamicSalasDefaults(salasCount);
+            const merged = dynamicDefaults.map((def) => {
               const saved = data.lamparas.find((l: any) => l.sala === def.sala);
               return saved ? {
                 sala: def.sala,
@@ -376,7 +440,7 @@ export default function ControlSemanalScreen({ readOnly = false }: { readOnly?: 
             });
             setLamparas(merged);
           } else {
-            setLamparas(SALAS_DEFAULTS.map((s) => ({ ...s })));
+            setLamparas(getDynamicSalasDefaults(salasCount));
           }
 
           // Tablero de Control
@@ -443,7 +507,7 @@ export default function ControlSemanalScreen({ readOnly = false }: { readOnly?: 
 
         } else {
           // Si no existe, resetear todo a los valores default (con horas de lámparas en "0")
-          setLamparas(SALAS_DEFAULTS.map((s) => ({ ...s })));
+          setLamparas(getDynamicSalasDefaults(salasCount));
           setTempElevada(false);
           setTempBaja(false);
           setTempCorrecta(true);
@@ -481,7 +545,7 @@ export default function ControlSemanalScreen({ readOnly = false }: { readOnly?: 
     return () => {
       active = false;
     };
-  }, [cineId, weekKey]);
+  }, [cineId, weekKey, loadingSalas, salasCount]);
 
   // Función para guardar el reporte semanal en Firestore
   const handleSave = async () => {
@@ -1078,7 +1142,7 @@ export default function ControlSemanalScreen({ readOnly = false }: { readOnly?: 
         <Text style={[s.th, { flex: 1.8, textAlign: "right" }]}>Horas Rest.</Text>
       </View>
 
-      {/* Filas Salas 1 a 12 */}
+      {/* Filas de Salas */}
       {lamparas.map((l, idx) => (
         <View key={l.sala} style={[s.tableRowLamp, idx % 2 === 1 && s.tableRowAlt]}>
 
@@ -1153,7 +1217,7 @@ export default function ControlSemanalScreen({ readOnly = false }: { readOnly?: 
 
   // ─── Render ─────────────────────────────────────────────────────────────────
 
-  if (sessionLoading || loading) {
+  if (sessionLoading || loading || loadingSalas) {
     return (
       <View style={s.center}>
         <ActivityIndicator size="large" color={COLORS.primary} />
