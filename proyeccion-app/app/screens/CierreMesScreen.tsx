@@ -323,7 +323,7 @@ export default function CierreMesScreen({ readOnly = false }: { readOnly?: boole
   // 2. Escuchar cambios de mes o datos base para computar/cargar el Cierre
   useEffect(() => {
     loadOrCreateCierre();
-  }, [selectedMesAno, lamparasRaw, movimientosRaw, latestControl]);
+  }, [selectedMesAno, lamparasRaw, movimientosRaw, latestControl, salasCount]);
 
   // Método principal para cargar de BD o autocalcular el cierre de mes
   const loadOrCreateCierre = async () => {
@@ -468,7 +468,8 @@ export default function CierreMesScreen({ readOnly = false }: { readOnly?: boole
 
         if (latestControl?.lamparas) {
           latestControl.lamparas.forEach((controlLamp: any) => {
-            const roomNum = controlLamp.sala;
+            const roomNum = Number(controlLamp.sala);
+            if (isNaN(roomNum) || roomNum > salasCount) return;
             const remainingHours = parseInt(controlLamp.horasRestantes || "9999", 10);
 
             // Sugerir si tiene menos de 400 horas
@@ -1461,13 +1462,14 @@ export default function CierreMesScreen({ readOnly = false }: { readOnly?: boole
     });
   };
 
-  // Sugerencias calculadas a partir del último control semanal e independientemente del estado 'pedido'
+  // Sugerir/detectar a partir del último control semanal e independientemente del estado 'pedido'
   const sugerenciasDetectadas = useMemo(() => {
     const suggestionsList: OrderItem[] = [];
 
     if (latestControl?.lamparas) {
       latestControl.lamparas.forEach((controlLamp: any) => {
-        const roomNum = controlLamp.sala;
+        const roomNum = Number(controlLamp.sala);
+        if (isNaN(roomNum) || roomNum > salasCount) return;
         const remainingHours = parseInt(controlLamp.horasRestantes || "9999", 10);
 
         if (remainingHours < 400) {
@@ -1489,7 +1491,7 @@ export default function CierreMesScreen({ readOnly = false }: { readOnly?: boole
       });
     }
     return suggestionsList;
-  }, [latestControl, lamparasRaw]);
+  }, [latestControl, lamparasRaw, salasCount]);
 
   const suggestedLampsCount = sugerenciasDetectadas.length;
 
