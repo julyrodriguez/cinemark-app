@@ -45,10 +45,11 @@ import LamparasScreen from "./screens/LamparasScreen";
 import CierreMesScreen from "./screens/CierreMesScreen";
 import MantenimientosScreen from "./screens/MantenimientosScreen";
 import ProgramacionProyeccionScreen from "./screens/ProgramacionProyeccionScreen";
+import ControlSalasScreen from "./screens/ControlSalasScreen";
 
 type MainTab = "PROGRAMACIÓN" | "CALENDARIO" | "EVENTOS" | "PROYECCIÓN" | "SERVICIOS" | "COORDINADORES";
 type ProyeccionTab = "RMA" | "MANTENIMIENTOS" | "CREDITOS" | "DCP" | "TRAILERS_SEMANALES" | "CHEQUEO_COPIAS" | "CONTROL_SEMANAL" | "LAMPARAS" | "CIERRE_MES";
-type MarketingSubTab = "MKT" | "PROGRAMACION";
+type MarketingSubTab = "MKT" | "PROGRAMACION" | "CONTROL_SALAS";
 type CoordinadoresSubTab = "QUIMICOS" | "LENTES_3D" | "PROXIMAMENTE";
 
 const MAIN_TAB_META = {
@@ -75,6 +76,7 @@ const SUB_TABS = {
   SERVICIOS: [
     { key: "PROGRAMACION", label: "Programaciones", icon: "clipboard-text-outline" },
     { key: "MKT", label: "Marketing", icon: "bullhorn-outline" },
+    { key: "CONTROL_SALAS", label: "Control de Salas", icon: "sofa-single-outline" },
   ],
   COORDINADORES: [
     { key: "QUIMICOS", label: "Químicos", icon: "flask-outline" },
@@ -802,6 +804,7 @@ export default function Home() {
           <View style={styles.subContent}>
             {marketingTab === "MKT" && <MarketingTab />}
             {marketingTab === "PROGRAMACION" && <ProgramacionTab />}
+            {marketingTab === "CONTROL_SALAS" && <ControlSalasScreen />}
           </View>
         </View>
       );
