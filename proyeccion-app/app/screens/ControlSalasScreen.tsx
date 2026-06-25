@@ -833,7 +833,7 @@ export default function ControlSalasScreen() {
         >
           <View style={styles.gridContainer}>
             {layout.rows.map((rowName) => {
-              const rowSeats = layout.seats[rowName];
+              const rowSeats = [...layout.seats[rowName]].reverse();
 
               // Slice row seats dynamically based on aisles definition
               const sections: SeatInfo[][] = [];
