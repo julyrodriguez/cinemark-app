@@ -17,6 +17,7 @@ import { db, CINES_COLLECTION } from "../../lib/firebaseConfig";
 import { useAuthUser } from "../../lib/useAuthUser";
 import { COLORS, THEME } from "../../lib/theme";
 import { WeekdayKey } from "../../lib/programacion/types";
+import dayjs from "dayjs";
 
 // Types
 interface DailyShow {
@@ -44,6 +45,16 @@ const DAYS_OF_WEEK: { key: WeekdayKey; label: string }[] = [
   { key: "martes", label: "Martes" },
   { key: "miercoles", label: "Miércoles" },
 ];
+
+const DAY_CYCLE_INDEX: Record<WeekdayKey, number> = {
+  jueves: 0,
+  viernes: 1,
+  sabado: 2,
+  domingo: 3,
+  lunes: 4,
+  martes: 5,
+  miercoles: 6,
+};
 
 const MINUTE_WIDTH = 2; // px per minute
 const HOUR_WIDTH = 60 * MINUTE_WIDTH; // 120px per hour
@@ -76,6 +87,30 @@ function formatMinutesToTime(minsFrom6AM: number): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
+// Helper to get current weekday key
+function getCurrentWeekdayKey(): WeekdayKey {
+  const dayNum = dayjs().day(); // 0 = Sunday, 1 = Monday, etc.
+  const map: Record<number, WeekdayKey> = {
+    0: "domingo",
+    1: "lunes",
+    2: "martes",
+    3: "miercoles",
+    4: "jueves",
+    5: "viernes",
+    6: "sabado",
+  };
+  return map[dayNum];
+}
+
+// Helper to get current time in minutes from 6 AM
+function getCurrentTimeMins(): number {
+  const now = dayjs();
+  const h = now.hour();
+  const m = now.minute();
+  const minsFromMidnight = h * 60 + m;
+  return minsFromMidnight >= 360 ? minsFromMidnight - 360 : minsFromMidnight + 1440 - 360;
+}
+
 // Generate deterministic colors for each movie title
 function getMovieColor(title: string) {
   let hash = 0;
@@ -93,6 +128,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
   const [selectedDay, setSelectedDay] = useState<WeekdayKey>("jueves");
   const [selectedShow, setSelectedShow] = useState<DailyShow | null>(null);
 
+  const [currentTimeMins, setCurrentTimeMins] = useState(getCurrentTimeMins());
   const timelineScrollRef = useRef<any>(null);
 
   // Subscribe to weekly programming saved in database under "Servicios Programacion"
@@ -126,6 +162,14 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
     return () => unsubscribe();
   }, [cineId]);
+
+  // Keep track of current time dynamically (every 15 seconds)
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTimeMins(getCurrentTimeMins());
+    }, 15000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Inject scrollbar styles for web
   useEffect(() => {
@@ -163,7 +207,6 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
   // Mouse drag-to-scroll on web
   useEffect(() => {
     if (Platform.OS !== "web") return;
-    // Delay slightly to ensure scrollNode is rendered
     const timer = setTimeout(() => {
       const scrollNode = timelineScrollRef.current?.getScrollableNode
         ? timelineScrollRef.current.getScrollableNode()
@@ -309,6 +352,52 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
     const openingMins = minStartMins - 30;
     return (openingMins - timelineStartMins) * MINUTE_WIDTH;
   }, [minStartMins, timelineStartMins, shows]);
+
+  // Calculate current time line position
+  const showCurrentTimeLine = useMemo(() => {
+    const today = getCurrentWeekdayKey();
+    return (
+      selectedDay === today &&
+      currentTimeMins >= timelineStartMins &&
+      currentTimeMins <= timelineEndMins
+    );
+  }, [selectedDay, currentTimeMins, timelineStartMins, timelineEndMins]);
+
+  const currentTimeLeft = useMemo(() => {
+    return (currentTimeMins - timelineStartMins) * MINUTE_WIDTH;
+  }, [currentTimeMins, timelineStartMins]);
+
+  // Determine status (PAST, PLAYING, FUTURE) of a show
+  const getShowStatus = (show: DailyShow) => {
+    const today = getCurrentWeekdayKey();
+    const todayIdx = DAY_CYCLE_INDEX[today];
+    const selectedIdx = DAY_CYCLE_INDEX[selectedDay];
+
+    if (selectedIdx < todayIdx) {
+      return "PAST";
+    }
+    if (selectedIdx > todayIdx) {
+      return "FUTURE";
+    }
+
+    // Today: compare showtimes
+    const startMins = timeToMinutes(show.inicio);
+    const endMins = timeToMinutes(show.fin);
+    let tStart = startMins >= 360 ? startMins - 360 : startMins + 1440 - 360;
+    let tEnd = endMins >= 360 ? endMins - 360 : endMins + 1440 - 360;
+
+    if (tEnd < tStart) {
+      tEnd += 1440;
+    }
+
+    if (currentTimeMins > tEnd) {
+      return "PAST";
+    }
+    if (currentTimeMins >= tStart && currentTimeMins <= tEnd) {
+      return "PLAYING";
+    }
+    return "FUTURE";
+  };
 
   // Calculate card position and width based on dynamic timeline bounds
   const getPositionAndWidth = (show: DailyShow) => {
@@ -502,6 +591,26 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                     </View>
                   )}
 
+                  {/* Current Time Line (zIndex: 4, sits on top of cards) */}
+                  {showCurrentTimeLine && (
+                    <View
+                      style={[
+                        styles.currentTimeLine,
+                        {
+                          left: currentTimeLeft,
+                          height: rooms.length * ROW_HEIGHT,
+                          top: HEADER_HEIGHT,
+                        },
+                      ]}
+                    >
+                      <View style={styles.currentTimeBadge}>
+                        <Text style={styles.currentTimeBadgeText} numberOfLines={1}>
+                          Ahora: {formatMinutesToTime(currentTimeMins)}
+                        </Text>
+                      </View>
+                    </View>
+                  )}
+
                   {/* Rows containing the movie cards (zIndex: 2) */}
                   {rooms.map((salaNum, roomIndex) => {
                     const showsInSala = shows.filter((s) => s.sala === salaNum);
@@ -522,6 +631,10 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                           const is3D = /3d/i.test(show.pelicula);
                           const showAds = width > 50; // show ads prefix block if card is wide enough
 
+                          const status = getShowStatus(show);
+                          const isPast = status === "PAST";
+                          const isPlaying = status === "PLAYING";
+
                           return (
                             <TouchableOpacity
                               key={showIdx}
@@ -541,6 +654,16 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                                   : {
                                       backgroundColor: COLORS.card,
                                     },
+                                isPast && { opacity: 0.45 },
+                                isPlaying && {
+                                  borderColor: "#10B981",
+                                  borderWidth: 2,
+                                  ...Platform.select({
+                                    web: {
+                                      boxShadow: "0 0 10px rgba(16, 185, 129, 0.4)",
+                                    },
+                                  }),
+                                },
                               ]}
                               onPress={() => setSelectedShow(show)}
                             >
@@ -559,15 +682,18 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
                               {/* Card Content */}
                               <View style={[styles.movieCardContent, showAds && { paddingLeft: 12 * MINUTE_WIDTH + 6 }]}>
-                                <Text
-                                  style={[styles.movieCardTitle, is3D && { color: "#FFFFFF" }]}
-                                  numberOfLines={1}
-                                >
-                                  {show.pelicula}
-                                </Text>
+                                <View style={styles.movieCardHeaderRow}>
+                                  {isPlaying && <View style={styles.playingDot} />}
+                                  <Text
+                                    style={[styles.movieCardTitle, is3D && { color: "#FFFFFF" }]}
+                                    numberOfLines={1}
+                                  >
+                                    {show.pelicula}
+                                  </Text>
+                                </View>
                                 <View style={styles.movieCardFooter}>
                                   <Text
-                                    style={[styles.movieCardTime, is3D && { color: "rgba(255,255,255,0.85)" }]}
+                                    style={[styles.movieCardTime, is3D && { color: "#FFFFFF" }]}
                                     numberOfLines={1}
                                   >
                                     {show.inicio} - {show.fin}
@@ -809,7 +935,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.card,
   },
   roomLabelText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "bold",
     color: COLORS.text,
   },
@@ -830,7 +956,7 @@ const styles = StyleSheet.create({
     paddingLeft: THEME.spacing.xs,
   },
   hourHeaderText: {
-    fontSize: 11,
+    fontSize: 10.5,
     fontWeight: "bold",
     color: COLORS.textSoft,
   },
@@ -867,6 +993,37 @@ const styles = StyleSheet.create({
     }),
   },
   openingLineBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 9.5,
+    fontWeight: "bold",
+  },
+  currentTimeLine: {
+    position: "absolute",
+    width: 2,
+    borderStyle: "dashed",
+    borderWidth: 1,
+    borderColor: "#10B981", // Emerald green
+    zIndex: 4,
+    alignItems: "center",
+  },
+  currentTimeBadge: {
+    position: "absolute",
+    top: 2,
+    backgroundColor: "#10B981",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#FFFFFF",
+    width: 104,
+    alignItems: "center",
+    ...Platform.select({
+      web: {
+        boxShadow: "0 2px 5px rgba(0,0,0,0.15)",
+      },
+    }),
+  },
+  currentTimeBadgeText: {
     color: "#FFFFFF",
     fontSize: 9.5,
     fontWeight: "bold",
@@ -914,6 +1071,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 3,
     justifyContent: "space-between",
+  },
+  movieCardHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  playingDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#10B981",
   },
   movieCardTitle: {
     fontSize: 11,
