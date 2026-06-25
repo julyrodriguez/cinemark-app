@@ -132,6 +132,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
   const [currentTimeMins, setCurrentTimeMins] = useState(getCurrentTimeMins());
   const [scrollEl, setScrollEl] = useState<any>(null);
+  const headerScrollRef = useRef<ScrollView>(null);
 
   const { width: windowWidth } = useWindowDimensions();
   const isMobile = windowWidth < 768;
@@ -140,9 +141,12 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
   const isCollapsed = isMobile && isScrolled;
   const currentRoomColWidth = isCollapsed ? 34 : ROOM_COL_WIDTH;
 
-  const handleScroll = (event: any) => {
+  const handleGridScroll = (event: any) => {
     const x = event.nativeEvent.contentOffset.x;
     setIsScrolled(x > 5);
+    if (headerScrollRef.current) {
+      headerScrollRef.current.scrollTo({ x, animated: false });
+    }
   };
 
   const handleScrollRef = (el: any) => {
@@ -503,8 +507,8 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
       {/* Main Grid View */}
       <View style={styles.gridContainer}>
-        <ScrollView style={styles.verticalScrollView} bounces={false}>
-          {/* Days Tabs Selection */}
+        <ScrollView style={styles.verticalScrollView} bounces={false} stickyHeaderIndices={[1]}>
+          {/* Days Tabs Selection (Index 0) */}
           <View style={styles.tabBarContainer}>
             <ScrollView
               horizontal
@@ -528,20 +532,49 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
             </ScrollView>
           </View>
 
-          <View style={styles.mainLayoutRow}>
-            {/* Rooms fixed left column starting from top header */}
-            <View style={[styles.roomsColumn, { width: currentRoomColWidth }]}>
-              {/* Corner intersection block */}
-              <View style={[styles.cornerHeaderCell, { width: currentRoomColWidth }]}>
-                {isCollapsed ? (
+          {/* Grid Header Row (Index 1) */}
+          <View style={[
+            styles.mainLayoutRow,
+            { zIndex: 10 },
+            Platform.OS === "web" ? { position: "sticky" as any, top: 0, backgroundColor: COLORS.bg } : {}
+          ]}>
+            {/* Corner intersection block */}
+            <View style={[styles.cornerHeaderCell, { width: currentRoomColWidth }]}>
+              {isCollapsed ? (
+                <MaterialCommunityIcons name="theater" size={14} color={COLORS.textSoft} />
+              ) : (
+                <View style={styles.cornerContent}>
                   <MaterialCommunityIcons name="theater" size={14} color={COLORS.textSoft} />
-                ) : (
-                  <View style={styles.cornerContent}>
-                    <MaterialCommunityIcons name="theater" size={14} color={COLORS.textSoft} />
-                    <Text style={styles.cornerText}>Salas</Text>
-                  </View>
-                )}
+                  <Text style={styles.cornerText}>Salas</Text>
+                </View>
+              )}
+            </View>
+
+            {/* Horizontal Scroll for hours header only */}
+            <ScrollView
+              ref={headerScrollRef}
+              horizontal
+              bounces={false}
+              scrollEnabled={false}
+              showsHorizontalScrollIndicator={false}
+              style={styles.timelineHorizontalScroll}
+            >
+              <View style={{ width: timelineWidth }}>
+                <View style={styles.hourHeaderRow}>
+                  {dynamicHoursArray.map((hourText, idx) => (
+                    <View key={idx} style={[styles.hourHeaderCell, { width: HOUR_WIDTH }]}>
+                      <Text style={styles.hourHeaderText}>{hourText}</Text>
+                    </View>
+                  ))}
+                </View>
               </View>
+            </ScrollView>
+          </View>
+
+          {/* Grid Content Row (Index 2) */}
+          <View style={styles.mainLayoutRow}>
+            {/* Rooms fixed left column */}
+            <View style={[styles.roomsColumn, { width: currentRoomColWidth }]}>
               {rooms.map((salaNum) => (
                 <View key={salaNum} style={[styles.roomLabelCell, { width: currentRoomColWidth }]}>
                   <Text style={styles.roomLabelText}>
@@ -563,19 +596,10 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
               showsHorizontalScrollIndicator={true}
               style={styles.timelineHorizontalScroll}
               contentContainerStyle={{ paddingBottom: SCROLLBAR_HEIGHT }}
-              onScroll={handleScroll}
+              onScroll={handleGridScroll}
               scrollEventThrottle={16}
             >
               <View style={{ width: timelineWidth, position: "relative" }}>
-                {/* Timeline Hour Header */}
-                <View style={styles.hourHeaderRow}>
-                  {dynamicHoursArray.map((hourText, idx) => (
-                    <View key={idx} style={[styles.hourHeaderCell, { width: HOUR_WIDTH }]}>
-                      <Text style={styles.hourHeaderText}>{hourText}</Text>
-                    </View>
-                  ))}
-                </View>
-
                 {/* Timeline Grid & Cards */}
                 <View style={[styles.gridAndCardsContainer, { height: rooms.length * ROW_HEIGHT }]}>
                   {/* Grid Lines Background */}
@@ -724,7 +748,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                   })}
                 </View>
 
-                {/* Cinema Opening Line (zIndex: 10, sits on top of cards, starts from top of Sala 1) */}
+                {/* Cinema Opening Line (zIndex: 3, sits on top of cards, starts from top of Sala 1) */}
                 {openingLeft !== null && (
                   <View
                     style={[
@@ -732,7 +756,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                       {
                         left: openingLeft,
                         height: rooms.length * ROW_HEIGHT,
-                        top: HEADER_HEIGHT,
+                        top: 0,
                       },
                     ]}
                   >
@@ -744,7 +768,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                   </View>
                 )}
 
-                {/* Current Time Line (zIndex: 11, sits on top of cards, starts from top of Sala 1) */}
+                {/* Current Time Line (zIndex: 4, sits on top of cards, starts from top of Sala 1) */}
                 {showCurrentTimeLine && (
                   <View
                     style={[
@@ -752,7 +776,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                       {
                         left: currentTimeLeft,
                         height: rooms.length * ROW_HEIGHT,
-                        top: HEADER_HEIGHT,
+                        top: 0,
                       },
                     ]}
                   >
