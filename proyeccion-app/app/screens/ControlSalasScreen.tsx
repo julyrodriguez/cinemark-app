@@ -1347,14 +1347,16 @@ export default function ControlSalasScreen() {
         <View style={styles.cardHeaderRow}>
           <Text style={styles.cardHeaderTitle}>Control de Estado Físico de Salas</Text>
           
-          <TouchableOpacity
-            style={styles.adminMigrationBtn}
-            onPress={handleMigrateAllDefaultLayouts}
-            activeOpacity={0.8}
-          >
-            <MaterialCommunityIcons name="database-import" size={16} color={COLORS.primary} style={{ marginRight: 4 }} />
-            <Text style={styles.adminMigrationBtnText}>Guardar Plantillas Abasto en BD</Text>
-          </TouchableOpacity>
+          {isLayoutEditorMode && (
+            <TouchableOpacity
+              style={styles.adminMigrationBtn}
+              onPress={handleMigrateAllDefaultLayouts}
+              activeOpacity={0.8}
+            >
+              <MaterialCommunityIcons name="database-import" size={16} color={COLORS.primary} style={{ marginRight: 4 }} />
+              <Text style={styles.adminMigrationBtnText}>Guardar Plantillas Abasto en BD</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         <View style={styles.roomsGridContainer}>
