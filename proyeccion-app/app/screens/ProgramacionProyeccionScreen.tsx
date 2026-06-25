@@ -446,26 +446,17 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                               ]}
                               onPress={() => setSelectedShow(show)}
                             >
-                              {/* 12m Publicity prefix zone */}
+                              {/* 12m Publicity prefix zone (painted yellow) */}
                               {showAds && (
                                 <View
                                   style={[
                                     styles.adsPrefix,
-                                    is3D
-                                      ? {
-                                          backgroundColor: "rgba(255, 255, 255, 0.16)",
-                                          borderRightColor: "rgba(255, 255, 255, 0.3)",
-                                        }
-                                      : {
-                                          backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F1F5F9)" : "#F1F5F9",
-                                          borderRightColor: COLORS.border,
-                                        },
+                                    {
+                                      backgroundColor: "#EAB308", // Yellow representing ads/pre-show
+                                      borderRightColor: "rgba(0, 0, 0, 0.15)",
+                                    },
                                   ]}
-                                >
-                                  <Text style={[styles.adsPrefixText, is3D && { color: "#FFFFFF" }]}>
-                                    Publi 12m
-                                  </Text>
-                                </View>
+                                />
                               )}
 
                               {/* Card Content */}
@@ -808,14 +799,7 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     width: 12 * MINUTE_WIDTH,
-    justifyContent: "center",
-    alignItems: "center",
     borderRightWidth: 1,
-  },
-  adsPrefixText: {
-    fontSize: 8,
-    fontWeight: "900",
-    color: COLORS.textSoft,
   },
   movieCardContent: {
     flex: 1,
