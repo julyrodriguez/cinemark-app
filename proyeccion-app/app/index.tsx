@@ -242,9 +242,9 @@ export default function Home() {
   const visibleMainTabs = useMemo(
     () => {
       if (isOficinas) {
-        return ["CALENDARIO", "EVENTOS"] as const;
+        return ["PROGRAMACIÓN", "CALENDARIO", "EVENTOS"] as const;
       }
-      return ["CALENDARIO", "EVENTOS", "PROYECCIÓN", "SERVICIOS", "COORDINADORES"] as const;
+      return ["PROGRAMACIÓN", "CALENDARIO", "EVENTOS", "PROYECCIÓN", "SERVICIOS", "COORDINADORES"] as const;
     },
     [isOficinas]
   );

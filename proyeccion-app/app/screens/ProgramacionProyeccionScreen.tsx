@@ -47,9 +47,9 @@ const DAYS_OF_WEEK: { key: WeekdayKey; label: string }[] = [
 
 const MINUTE_WIDTH = 2; // px per minute
 const HOUR_WIDTH = 60 * MINUTE_WIDTH; // 120px per hour
-const ROW_HEIGHT = 48; // height of each room row (compact)
-const HEADER_HEIGHT = 32; // height of timeline hours header (compact)
-const ROOM_COL_WIDTH = 70; // width of rooms left column (compact)
+const ROW_HEIGHT = 62; // height of each room row (more spacious)
+const HEADER_HEIGHT = 38; // height of timeline hours header
+const ROOM_COL_WIDTH = 75; // width of rooms left column
 
 // Helper to convert time "HH:MM" to minutes from midnight
 function timeToMinutes(timeStr: string): number {
@@ -522,7 +522,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                               )}
 
                               {/* Card Content */}
-                              <View style={[styles.movieCardContent, showAds && { paddingLeft: 12 * MINUTE_WIDTH + 4 }]}>
+                              <View style={[styles.movieCardContent, showAds && { paddingLeft: 12 * MINUTE_WIDTH + 6 }]}>
                                 <Text
                                   style={[styles.movieCardTitle, is3D && { color: "#FFFFFF" }]}
                                   numberOfLines={1}
@@ -773,7 +773,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.card,
   },
   roomLabelText: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: "bold",
     color: COLORS.text,
   },
@@ -794,7 +794,7 @@ const styles = StyleSheet.create({
     paddingLeft: THEME.spacing.xs,
   },
   hourHeaderText: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: "bold",
     color: COLORS.textSoft,
   },
@@ -820,7 +820,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
-    width: 92,
+    width: 98,
     alignItems: "center",
     ...Platform.select({
       web: {
@@ -830,7 +830,7 @@ const styles = StyleSheet.create({
   },
   openingLineBadgeText: {
     color: "#FFFFFF",
-    fontSize: 8,
+    fontSize: 9,
     fontWeight: "bold",
   },
   timelineRow: {
@@ -844,7 +844,7 @@ const styles = StyleSheet.create({
   },
   movieCard: {
     position: "absolute",
-    height: ROW_HEIGHT - 10, // 38px height (vertical spacing)
+    height: ROW_HEIGHT - 12, // leaves vertical spacing
     borderWidth: 1,
     borderColor: COLORS.border,
     borderLeftWidth: 4,
@@ -873,12 +873,12 @@ const styles = StyleSheet.create({
   },
   movieCardContent: {
     flex: 1,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     justifyContent: "space-between",
   },
   movieCardTitle: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: "bold",
     color: COLORS.text,
   },
@@ -888,20 +888,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   movieCardTime: {
-    fontSize: 8,
-    color: COLORS.textSoft,
-    fontWeight: "500",
+    fontSize: 10,
+    color: COLORS.text,
+    fontWeight: "bold",
   },
   ratingBadge: {
     backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F1F5F9)" : "#F1F5F9",
     paddingHorizontal: THEME.spacing.xs,
-    paddingVertical: 0,
+    paddingVertical: 1,
     borderRadius: 4,
     borderWidth: 0.5,
     borderColor: COLORS.border,
   },
   ratingBadgeText: {
-    fontSize: 8,
+    fontSize: 9,
     fontWeight: "bold",
     color: COLORS.muted,
   },
