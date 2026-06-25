@@ -16,7 +16,7 @@ import { doc, onSnapshot } from "firebase/firestore";
 import { db, CINES_COLLECTION } from "../../lib/firebaseConfig";
 import { useAuthUser } from "../../lib/useAuthUser";
 import { COLORS, THEME } from "../../lib/theme";
-import { WeekdayKey, WEEKDAY_LABELS } from "../../lib/programacion/types";
+import { WeekdayKey } from "../../lib/programacion/types";
 
 // Types
 interface DailyShow {
@@ -47,7 +47,6 @@ const DAYS_OF_WEEK: { key: WeekdayKey; label: string }[] = [
 
 const MINUTE_WIDTH = 2; // px per minute
 const HOUR_WIDTH = 60 * MINUTE_WIDTH; // 120px per hour
-const TIMELINE_WIDTH = 24 * HOUR_WIDTH; // 2880px total width (24 hours)
 const ROW_HEIGHT = 72; // height of each room row
 const HEADER_HEIGHT = 44; // height of timeline hours header
 const ROOM_COL_WIDTH = 80; // width of rooms left column
@@ -59,6 +58,24 @@ function timeToMinutes(timeStr: string): number {
   return (h || 0) * 60 + (m || 0);
 }
 
+// Helper to add minutes to a time string
+function addMinutesToTimeStr(timeStr: string, minsToAdd: number): string {
+  if (!timeStr) return "";
+  const [h, m] = timeStr.split(":").map(Number);
+  const totalMins = (h * 60 + m + minsToAdd) % 1440;
+  const newH = Math.floor(totalMins / 60);
+  const newM = totalMins % 60;
+  return `${String(newH).padStart(2, "0")}:${String(newM).padStart(2, "0")}`;
+}
+
+// Helper to format minutes from 6 AM to time "HH:MM"
+function formatMinutesToTime(minsFrom6AM: number): string {
+  const totalMins = (6 * 60 + minsFrom6AM) % 1440;
+  const h = Math.floor(totalMins / 60);
+  const m = totalMins % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
 // Generate deterministic colors for each movie title
 function getMovieColor(title: string) {
   let hash = 0;
@@ -66,7 +83,7 @@ function getMovieColor(title: string) {
     hash = title.charCodeAt(i) + ((hash << 5) - hash);
   }
   const hue = Math.abs(hash) % 360;
-  return `hsl(${hue}, 75%, 42%)`;
+  return `hsl(${hue}, 75%, 38%)`;
 }
 
 export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: boolean }) {
@@ -162,16 +179,49 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
     return list;
   }, [savedWeekly, selectedDay]);
 
-  // Calculate card position and width based on 06:00 AM - 06:00 AM timeline
+  // Determine dynamic timeline start and end bounds based on shows of the selected day
+  const { timelineStartMins, timelineEndMins, minStartMins } = useMemo(() => {
+    if (shows.length === 0) {
+      return { timelineStartMins: 0, timelineEndMins: 1440, minStartMins: 0 };
+    }
+    let minStart = 1440;
+    let maxEnd = 0;
+    shows.forEach((show) => {
+      const startMins = timeToMinutes(show.inicio);
+      const endMins = timeToMinutes(show.fin);
+      let tStart = startMins >= 360 ? startMins - 360 : startMins + 1440 - 360;
+      let tEnd = endMins >= 360 ? endMins - 360 : endMins + 1440 - 360;
+      if (tEnd < tStart) {
+        tEnd += 1440;
+      }
+      if (tStart < minStart) minStart = tStart;
+      if (tEnd > maxEnd) maxEnd = tEnd;
+    });
+
+    // 1 hour before first show start (aligned to start of hour)
+    let start = Math.max(0, Math.floor((minStart - 60) / 60) * 60);
+    // 1 hour after last show end (aligned to end of hour)
+    let end = Math.min(1440, Math.ceil((maxEnd + 60) / 60) * 60);
+
+    return { timelineStartMins: start, timelineEndMins: end, minStartMins: minStart };
+  }, [shows]);
+
+  // Calculate opening line position (30 minutes before first show starts)
+  const openingLeft = useMemo(() => {
+    if (shows.length === 0) return null;
+    const openingMins = minStartMins - 30;
+    return (openingMins - timelineStartMins) * MINUTE_WIDTH;
+  }, [minStartMins, timelineStartMins, shows]);
+
+  // Calculate card position and width based on dynamic timeline bounds
   const getPositionAndWidth = (show: DailyShow) => {
     const startMins = timeToMinutes(show.inicio);
     const endMins = timeToMinutes(show.fin);
 
-    // Map to timeline minutes (0 to 1440, starting at 06:00 AM)
+    // Map to timeline minutes (starting at 06:00 AM)
     let tStart = startMins >= 360 ? startMins - 360 : startMins + 1440 - 360;
     let tEnd = endMins >= 360 ? endMins - 360 : endMins + 1440 - 360;
 
-    // Handle wraps / exceptions where end time is before start time (crosses the 06:00 boundary)
     if (tEnd < tStart) {
       tEnd += 1440;
     }
@@ -179,18 +229,24 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
     const duration = tEnd - tStart;
 
     return {
-      left: tStart * MINUTE_WIDTH,
+      left: (tStart - timelineStartMins) * MINUTE_WIDTH,
       width: Math.max(duration * MINUTE_WIDTH, 50),
     };
   };
 
-  // Generate 24-hour markers starting at 6 AM
-  const hoursArray = useMemo(() => {
-    return Array.from({ length: 24 }, (_, i) => {
-      const h = (6 + i) % 24;
-      return `${String(h).padStart(2, "0")}:00`;
-    });
-  }, []);
+  // Generate hour markings for the header
+  const dynamicHoursArray = useMemo(() => {
+    const list = [];
+    const startHour = 6 + timelineStartMins / 60;
+    const totalHours = (timelineEndMins - timelineStartMins) / 60;
+    for (let i = 0; i < totalHours; i++) {
+      const h = (startHour + i) % 24;
+      list.push(`${String(h).padStart(2, "0")}:00`);
+    }
+    return list;
+  }, [timelineStartMins, timelineEndMins]);
+
+  const timelineWidth = dynamicHoursArray.length * HOUR_WIDTH;
 
   // Calculate show duration in minutes
   const getShowDuration = (show: DailyShow) => {
@@ -225,7 +281,6 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
     );
   }
 
-  // Display week date label if it exists
   const formattedWeekLabel = savedWeekly.startDate
     ? `Semana del ${savedWeekly.startDate}`
     : "Programación Semanal";
@@ -237,7 +292,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
         <View style={styles.headerInfo}>
           <Text style={styles.headerTitle}>{formattedWeekLabel}</Text>
           <Text style={styles.headerSubtitle}>
-            Línea de tiempo de 24 horas (6:00 AM a 6:00 AM del día siguiente)
+            Línea de tiempo dinámica adaptada a las funciones de cada día (6:00 AM a 6:00 AM)
           </Text>
         </View>
       </View>
@@ -286,10 +341,10 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
               showsHorizontalScrollIndicator={true}
               style={styles.timelineHorizontalScroll}
             >
-              <View style={{ width: TIMELINE_WIDTH }}>
+              <View style={{ width: timelineWidth }}>
                 {/* Timeline Hour Header */}
                 <View style={styles.hourHeaderRow}>
-                  {hoursArray.map((hourText, idx) => (
+                  {dynamicHoursArray.map((hourText, idx) => (
                     <View key={idx} style={[styles.hourHeaderCell, { width: HOUR_WIDTH }]}>
                       <Text style={styles.hourHeaderText}>{hourText}</Text>
                     </View>
@@ -300,7 +355,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                 <View style={[styles.gridAndCardsContainer, { height: rooms.length * ROW_HEIGHT }]}>
                   {/* Grid Lines Background */}
                   <View style={StyleSheet.absoluteFill}>
-                    {hoursArray.map((_, idx) => (
+                    {dynamicHoursArray.map((_, idx) => (
                       <View
                         key={idx}
                         style={[
@@ -319,7 +374,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                     {/* Final closing line */}
                     <View
                       style={{
-                        left: TIMELINE_WIDTH - 1,
+                        left: timelineWidth - 1,
                         width: 1,
                         backgroundColor: COLORS.border,
                         position: "absolute",
@@ -329,7 +384,27 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                     />
                   </View>
 
-                  {/* Rows containing the movie cards */}
+                  {/* Cinema Opening Line (zIndex: 1, sits under cards but above grid) */}
+                  {openingLeft !== null && (
+                    <View
+                      style={[
+                        styles.openingLine,
+                        {
+                          left: openingLeft,
+                          height: rooms.length * ROW_HEIGHT,
+                          top: 0,
+                        },
+                      ]}
+                    >
+                      <View style={styles.openingLineBadge}>
+                        <Text style={styles.openingLineBadgeText} numberOfLines={1}>
+                          Apertura: {formatMinutesToTime(minStartMins - 30)}
+                        </Text>
+                      </View>
+                    </View>
+                  )}
+
+                  {/* Rows containing the movie cards (zIndex: 2) */}
                   {rooms.map((salaNum, roomIndex) => {
                     const showsInSala = shows.filter((s) => s.sala === salaNum);
                     return (
@@ -346,6 +421,9 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                         {showsInSala.map((show, showIdx) => {
                           const { left, width } = getPositionAndWidth(show);
                           const movieAccentColor = getMovieColor(show.pelicula);
+                          const is3D = /3d/i.test(show.pelicula);
+                          const showAds = width > 75; // show ads prefix block if card is wide enough
+
                           return (
                             <TouchableOpacity
                               key={showIdx}
@@ -357,23 +435,73 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                                   width,
                                   borderLeftColor: movieAccentColor,
                                 },
+                                is3D
+                                  ? {
+                                      backgroundColor: movieAccentColor,
+                                      borderColor: movieAccentColor,
+                                    }
+                                  : {
+                                      backgroundColor: COLORS.card,
+                                    },
                               ]}
                               onPress={() => setSelectedShow(show)}
                             >
-                              <Text style={styles.movieCardTitle} numberOfLines={1}>
-                                {show.pelicula}
-                              </Text>
-                              <View style={styles.movieCardFooter}>
-                                <Text style={styles.movieCardTime} numberOfLines={1}>
-                                  {show.inicio} - {show.fin}
+                              {/* 12m Publicity prefix zone */}
+                              {showAds && (
+                                <View
+                                  style={[
+                                    styles.adsPrefix,
+                                    is3D
+                                      ? {
+                                          backgroundColor: "rgba(255, 255, 255, 0.16)",
+                                          borderRightColor: "rgba(255, 255, 255, 0.3)",
+                                        }
+                                      : {
+                                          backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F1F5F9)" : "#F1F5F9",
+                                          borderRightColor: COLORS.border,
+                                        },
+                                  ]}
+                                >
+                                  <Text style={[styles.adsPrefixText, is3D && { color: "#FFFFFF" }]}>
+                                    Publi 12m
+                                  </Text>
+                                </View>
+                              )}
+
+                              {/* Card Content */}
+                              <View style={[styles.movieCardContent, showAds && { paddingLeft: 12 * MINUTE_WIDTH + 6 }]}>
+                                <Text
+                                  style={[styles.movieCardTitle, is3D && { color: "#FFFFFF" }]}
+                                  numberOfLines={1}
+                                >
+                                  {show.pelicula}
                                 </Text>
-                                {show.calificacion ? (
-                                  <View style={styles.ratingBadge}>
-                                    <Text style={styles.ratingBadgeText} numberOfLines={1}>
-                                      {show.calificacion}
-                                    </Text>
-                                  </View>
-                                ) : null}
+                                <View style={styles.movieCardFooter}>
+                                  <Text
+                                    style={[styles.movieCardTime, is3D && { color: "rgba(255,255,255,0.85)" }]}
+                                    numberOfLines={1}
+                                  >
+                                    {show.inicio} - {show.fin}
+                                  </Text>
+                                  {show.calificacion ? (
+                                    <View
+                                      style={[
+                                        styles.ratingBadge,
+                                        is3D && {
+                                          backgroundColor: "rgba(255, 255, 255, 0.22)",
+                                          borderColor: "transparent",
+                                        },
+                                      ]}
+                                    >
+                                      <Text
+                                        style={[styles.ratingBadgeText, is3D && { color: "#FFFFFF" }]}
+                                        numberOfLines={1}
+                                      >
+                                        {show.calificacion}
+                                      </Text>
+                                    </View>
+                                  ) : null}
+                                </View>
                               </View>
                             </TouchableOpacity>
                           );
@@ -418,12 +546,19 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                   </View>
                 </View>
 
+                {/* Ads / Film Startup detail breakdown */}
                 <View style={styles.detailRow}>
-                  <MaterialCommunityIcons name="clock-outline" size={22} color={COLORS.muted} style={styles.detailIcon} />
+                  <MaterialCommunityIcons name="projector" size={22} color={COLORS.muted} style={styles.detailIcon} />
                   <View>
-                    <Text style={styles.detailLabel}>Horario</Text>
-                    <Text style={styles.detailValue}>
-                      {selectedShow.inicio} a {selectedShow.fin} hs
+                    <Text style={styles.detailLabel}>Cronograma de Proyección</Text>
+                    <Text style={styles.detailValueSub}>
+                      • Encendido / Publicidad (12 min): <Text style={styles.detailHighlight}>{selectedShow.inicio} hs</Text>
+                    </Text>
+                    <Text style={styles.detailValueSub}>
+                      • Inicio de Película: <Text style={styles.detailHighlight}>{addMinutesToTimeStr(selectedShow.inicio, 12)} hs</Text>
+                    </Text>
+                    <Text style={styles.detailValueSub}>
+                      • Finalización de Función: <Text style={styles.detailHighlight}>{selectedShow.fin} hs</Text>
                     </Text>
                   </View>
                 </View>
@@ -431,8 +566,8 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                 <View style={styles.detailRow}>
                   <MaterialCommunityIcons name="timer-outline" size={22} color={COLORS.muted} style={styles.detailIcon} />
                   <View>
-                    <Text style={styles.detailLabel}>Duración aproximada</Text>
-                    <Text style={styles.detailValue}>{getShowDuration(selectedShow)} minutos</Text>
+                    <Text style={styles.detailLabel}>Duración Total del Bloque</Text>
+                    <Text style={styles.detailValue}>{getShowDuration(selectedShow)} minutos (incluye publicidad)</Text>
                   </View>
                 </View>
 
@@ -554,8 +689,7 @@ const styles = StyleSheet.create({
     borderRightWidth: 1,
     borderRightColor: COLORS.border,
     backgroundColor: COLORS.card,
-    zIndex: 2,
-    // Add shadow/elevation to stand out over the scrolling timeline
+    zIndex: 3,
     ...Platform.select({
       web: {
         boxShadow: "2px 0 8px rgba(0,0,0,0.05)",
@@ -609,6 +743,35 @@ const styles = StyleSheet.create({
   gridLineColumn: {
     opacity: 0.25,
   },
+  openingLine: {
+    position: "absolute",
+    width: 2,
+    borderStyle: "dashed",
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    zIndex: 1,
+    alignItems: "center",
+  },
+  openingLineBadge: {
+    position: "absolute",
+    top: 4,
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+    width: 104,
+    alignItems: "center",
+    ...Platform.select({
+      web: {
+        boxShadow: "0 2px 5px rgba(0,0,0,0.1)",
+      },
+    }),
+  },
+  openingLineBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 9,
+    fontWeight: "bold",
+  },
   timelineRow: {
     position: "absolute",
     left: 0,
@@ -616,18 +779,18 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
     justifyContent: "center",
+    zIndex: 2,
   },
   movieCard: {
     position: "absolute",
-    height: ROW_HEIGHT - 16, // Top/bottom padding
-    backgroundColor: COLORS.card,
+    height: ROW_HEIGHT - 16,
     borderWidth: 1,
     borderColor: COLORS.border,
     borderLeftWidth: 4,
     borderRadius: THEME.radius.sm,
-    paddingHorizontal: THEME.spacing.sm,
-    paddingVertical: THEME.spacing.xs,
-    justifyContent: "space-between",
+    flexDirection: "row",
+    alignItems: "stretch",
+    overflow: "hidden",
     ...Platform.select({
       web: {
         boxShadow: "0 2px 4px rgba(0,0,0,0.04)",
@@ -638,6 +801,27 @@ const styles = StyleSheet.create({
         elevation: 1,
       },
     }),
+  },
+  adsPrefix: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 12 * MINUTE_WIDTH,
+    justifyContent: "center",
+    alignItems: "center",
+    borderRightWidth: 1,
+  },
+  adsPrefixText: {
+    fontSize: 8,
+    fontWeight: "900",
+    color: COLORS.textSoft,
+  },
+  movieCardContent: {
+    flex: 1,
+    paddingHorizontal: THEME.spacing.sm,
+    paddingVertical: THEME.spacing.xs,
+    justifyContent: "space-between",
   },
   movieCardTitle: {
     fontSize: THEME.fontSize.xs + 1,
@@ -715,11 +899,12 @@ const styles = StyleSheet.create({
   },
   detailRow: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     marginBottom: THEME.spacing.sm,
   },
   detailIcon: {
     marginRight: THEME.spacing.md,
+    marginTop: 2,
   },
   detailLabel: {
     fontSize: THEME.fontSize.xs,
@@ -730,6 +915,16 @@ const styles = StyleSheet.create({
     fontSize: THEME.fontSize.sm + 1,
     fontWeight: "bold",
     color: COLORS.text,
+  },
+  detailValueSub: {
+    fontSize: THEME.fontSize.sm,
+    color: COLORS.text,
+    marginTop: 2,
+    lineHeight: 18,
+  },
+  detailHighlight: {
+    fontWeight: "bold",
+    color: COLORS.primary,
   },
   modalButton: {
     backgroundColor: COLORS.primary,
