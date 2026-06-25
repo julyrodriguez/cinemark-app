@@ -47,9 +47,9 @@ const DAYS_OF_WEEK: { key: WeekdayKey; label: string }[] = [
 
 const MINUTE_WIDTH = 2; // px per minute
 const HOUR_WIDTH = 60 * MINUTE_WIDTH; // 120px per hour
-const ROW_HEIGHT = 62; // height of each room row (more spacious)
-const HEADER_HEIGHT = 38; // height of timeline hours header
-const ROOM_COL_WIDTH = 75; // width of rooms left column
+const ROW_HEIGHT = 54; // height of each room row (perfect middle-ground)
+const HEADER_HEIGHT = 34; // height of timeline hours header
+const ROOM_COL_WIDTH = 72; // width of rooms left column
 
 // Helper to convert time "HH:MM" to minutes from midnight
 function timeToMinutes(timeStr: string): number {
@@ -127,6 +127,39 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
     return () => unsubscribe();
   }, [cineId]);
 
+  // Inject scrollbar styles for web
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    const styleElement = document.createElement("style");
+    styleElement.id = "programacion-scrollbar-style";
+    styleElement.innerHTML = `
+      .programacion-scroll-area::-webkit-scrollbar {
+        height: 10px !important;
+        display: block !important;
+      }
+      .programacion-scroll-area::-webkit-scrollbar-track {
+        background: var(--border, #E2E8F0) !important;
+        border-radius: 5px !important;
+      }
+      .programacion-scroll-area::-webkit-scrollbar-thumb {
+        background: var(--muted, #94A3B8) !important;
+        border-radius: 5px !important;
+        border: 2px solid var(--border, #E2E8F0) !important;
+      }
+      .programacion-scroll-area::-webkit-scrollbar-thumb:hover {
+        background: var(--primary, #E11D48) !important;
+      }
+    `;
+    document.head.appendChild(styleElement);
+
+    return () => {
+      const existing = document.getElementById("programacion-scrollbar-style");
+      if (existing) {
+        existing.remove();
+      }
+    };
+  }, []);
+
   // Mouse drag-to-scroll on web
   useEffect(() => {
     if (Platform.OS !== "web") return;
@@ -137,6 +170,9 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
         : timelineScrollRef.current;
 
       if (!scrollNode) return;
+
+      // Add scrollbar custom class
+      scrollNode.classList.add("programacion-scroll-area");
 
       let isDown = false;
       let startX: number;
@@ -817,20 +853,22 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 2,
     backgroundColor: COLORS.primary,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    width: 98,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#FFFFFF",
+    width: 104,
     alignItems: "center",
     ...Platform.select({
       web: {
-        boxShadow: "0 2px 5px rgba(0,0,0,0.1)",
+        boxShadow: "0 2px 5px rgba(0,0,0,0.15)",
       },
     }),
   },
   openingLineBadgeText: {
     color: "#FFFFFF",
-    fontSize: 9,
+    fontSize: 9.5,
     fontWeight: "bold",
   },
   timelineRow: {
@@ -844,7 +882,7 @@ const styles = StyleSheet.create({
   },
   movieCard: {
     position: "absolute",
-    height: ROW_HEIGHT - 12, // leaves vertical spacing
+    height: ROW_HEIGHT - 10, // 44px height (vertical spacing)
     borderWidth: 1,
     borderColor: COLORS.border,
     borderLeftWidth: 4,
@@ -873,12 +911,12 @@ const styles = StyleSheet.create({
   },
   movieCardContent: {
     flex: 1,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
     justifyContent: "space-between",
   },
   movieCardTitle: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "bold",
     color: COLORS.text,
   },
@@ -888,20 +926,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   movieCardTime: {
-    fontSize: 10,
+    fontSize: 9.5,
     color: COLORS.text,
     fontWeight: "bold",
   },
   ratingBadge: {
     backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F1F5F9)" : "#F1F5F9",
     paddingHorizontal: THEME.spacing.xs,
-    paddingVertical: 1,
+    paddingVertical: 0,
     borderRadius: 4,
     borderWidth: 0.5,
     borderColor: COLORS.border,
   },
   ratingBadgeText: {
-    fontSize: 9,
+    fontSize: 8.5,
     fontWeight: "bold",
     color: COLORS.muted,
   },
