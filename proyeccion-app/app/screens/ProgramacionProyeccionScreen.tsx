@@ -10,6 +10,7 @@ import {
   Text,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { doc, onSnapshot } from "firebase/firestore";
@@ -130,6 +131,18 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
   const [currentTimeMins, setCurrentTimeMins] = useState(getCurrentTimeMins());
   const timelineScrollRef = useRef<any>(null);
+
+  const { width: windowWidth } = useWindowDimensions();
+  const isMobile = windowWidth < 768;
+  const [isScrolled, setIsScrolled] = useState(false);
+
+  const isCollapsed = isMobile && isScrolled;
+  const currentRoomColWidth = isCollapsed ? 34 : ROOM_COL_WIDTH;
+
+  const handleScroll = (event: any) => {
+    const x = event.nativeEvent.contentOffset.x;
+    setIsScrolled(x > 5);
+  };
 
   // Subscribe to weekly programming saved in database under "Servicios Programacion"
   useEffect(() => {
@@ -516,10 +529,12 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
         <ScrollView style={styles.verticalScrollView} bounces={false}>
           <View style={styles.mainLayoutRow}>
             {/* Rooms fixed left column */}
-            <View style={[styles.roomsColumn, { marginTop: HEADER_HEIGHT }]}>
+            <View style={[styles.roomsColumn, { width: currentRoomColWidth, marginTop: HEADER_HEIGHT }]}>
               {rooms.map((salaNum) => (
-                <View key={salaNum} style={styles.roomLabelCell}>
-                  <Text style={styles.roomLabelText}>Sala {salaNum}</Text>
+                <View key={salaNum} style={[styles.roomLabelCell, { width: currentRoomColWidth }]}>
+                  <Text style={styles.roomLabelText}>
+                    {isCollapsed ? `${salaNum}` : `Sala ${salaNum}`}
+                  </Text>
                 </View>
               ))}
             </View>
@@ -531,6 +546,8 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
               bounces={false}
               showsHorizontalScrollIndicator={true}
               style={styles.timelineHorizontalScroll}
+              onScroll={handleScroll}
+              scrollEventThrottle={16}
             >
               <View style={{ width: timelineWidth }}>
                 {/* Timeline Hour Header */}
@@ -912,7 +929,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
   },
   roomsColumn: {
-    width: ROOM_COL_WIDTH,
     borderRightWidth: 1,
     borderRightColor: COLORS.border,
     backgroundColor: COLORS.card,
@@ -920,6 +936,8 @@ const styles = StyleSheet.create({
     ...Platform.select({
       web: {
         boxShadow: "2px 0 8px rgba(0,0,0,0.05)",
+        transitionProperty: "width",
+        transitionDuration: "0.2s",
       },
       default: {
         elevation: 3,
@@ -937,6 +955,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
     backgroundColor: COLORS.card,
+    ...Platform.select({
+      web: {
+        transitionProperty: "width",
+        transitionDuration: "0.2s",
+      },
+    }),
   },
   roomLabelText: {
     fontSize: 13,
