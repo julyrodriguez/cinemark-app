@@ -183,13 +183,13 @@ export const getRoomLayout = (salaId: number): RoomLayout => {
         } else if (row === "D" || row === "E") {
           isSeat = true; // 1 to 21
         } else if (row === "G") {
-          isSeat = (c >= 2 && c <= 4) || (c >= 18 && c <= 20) || (c >= 8 && c <= 15);
-          isDbox = c >= 8 && c <= 15;
+          isSeat = (c >= 2 && c <= 4) || (c >= 18 && c <= 20) || (c >= 7 && c <= 15);
+          isDbox = c >= 7 && c <= 15;
         } else if (row === "H") {
           isSeat = (c >= 2 && c <= 4) || (c >= 18 && c <= 20);
         } else if (row === "I" || row === "J") {
-          isSeat = (c >= 2 && c <= 4) || (c >= 18 && c <= 20) || (c >= 8 && c <= 15);
-          isDbox = c >= 8 && c <= 15;
+          isSeat = (c >= 2 && c <= 4) || (c >= 18 && c <= 20) || (c >= 7 && c <= 15);
+          isDbox = c >= 7 && c <= 15;
         } else if (row === "K" || row === "L" || row === "M" || row === "N" || row === "O") {
           isSeat = c >= 2 && c <= 20;
         } else if (row === "P") {
@@ -881,7 +881,7 @@ export default function ControlSalasScreen() {
       {/* Rooms Horizontal Tab Selector */}
       <View style={styles.tabsCard}>
         <Text style={styles.cardHeaderTitle}>Control de Estado Físico de Salas</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.roomsScroll}>
+        <View style={styles.roomsGridContainer}>
           {SALAS_INFO.map((sala) => {
             const isSel = selectedSala === sala.id;
             const salaKey = String(sala.id);
@@ -907,7 +907,7 @@ export default function ControlSalasScreen() {
               </TouchableOpacity>
             );
           })}
-        </ScrollView>
+        </View>
       </View>
 
       {/* Main Panel grid */}
@@ -1154,8 +1154,9 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     marginBottom: THEME.spacing.sm,
   },
-  roomsScroll: {
-    paddingRight: THEME.spacing.lg,
+  roomsGridContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 8,
   },
   salaTabBtn: {
