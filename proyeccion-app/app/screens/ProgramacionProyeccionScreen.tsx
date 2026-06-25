@@ -501,33 +501,33 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
         </View>
       </View>
 
-      {/* Days Tabs Selection */}
-      <View style={styles.tabBarContainer}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.tabBar}
-        >
-          {DAYS_OF_WEEK.map((day) => {
-            const isActive = selectedDay === day.key;
-            return (
-              <TouchableOpacity
-                key={day.key}
-                onPress={() => setSelectedDay(day.key)}
-                style={[styles.tabButton, isActive && styles.tabButtonActive]}
-              >
-                <Text style={[styles.tabButtonText, isActive && styles.tabButtonTextActive]}>
-                  {day.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      </View>
-
       {/* Main Grid View */}
       <View style={styles.gridContainer}>
         <ScrollView style={styles.verticalScrollView} bounces={false}>
+          {/* Days Tabs Selection */}
+          <View style={styles.tabBarContainer}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.tabBar}
+            >
+              {DAYS_OF_WEEK.map((day) => {
+                const isActive = selectedDay === day.key;
+                return (
+                  <TouchableOpacity
+                    key={day.key}
+                    onPress={() => setSelectedDay(day.key)}
+                    style={[styles.tabButton, isActive && styles.tabButtonActive]}
+                  >
+                    <Text style={[styles.tabButtonText, isActive && styles.tabButtonTextActive]}>
+                      {day.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+
           <View style={styles.mainLayoutRow}>
             {/* Rooms fixed left column starting from top header */}
             <View style={[styles.roomsColumn, { width: currentRoomColWidth }]}>
@@ -974,6 +974,9 @@ const styles = StyleSheet.create({
     borderBottomColor: COLORS.border,
     ...Platform.select({
       web: {
+        position: "sticky" as any,
+        top: 0,
+        zIndex: 6,
         transitionProperty: "width",
         transitionDuration: "0.2s",
       },
@@ -1007,6 +1010,13 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
     backgroundColor: COLORS.card,
+    ...Platform.select({
+      web: {
+        position: "sticky" as any,
+        top: 0,
+        zIndex: 5,
+      },
+    }),
   },
   hourHeaderCell: {
     height: HEADER_HEIGHT,
@@ -1031,7 +1041,7 @@ const styles = StyleSheet.create({
     borderLeftWidth: 2,
     borderLeftColor: COLORS.primary,
     borderStyle: "dashed",
-    zIndex: 10,
+    zIndex: 3,
     alignItems: "center",
   },
   openingLineBadge: {
@@ -1063,7 +1073,7 @@ const styles = StyleSheet.create({
     borderLeftWidth: 2,
     borderLeftColor: "#10B981", // Emerald green
     borderStyle: "dashed",
-    zIndex: 11,
+    zIndex: 4,
     alignItems: "center",
   },
   currentTimeBadge: {
