@@ -2,10 +2,8 @@ import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  FlatList,
   Modal,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -61,53 +59,181 @@ interface SeatInfo {
   row: string;
   number: number;
   type: "seat" | "empty";
+  isDbox?: boolean;
 }
 
-// Sala 1 configuration:
-// Rows A-K. A, B, C go from 2 to 20 with aisles between 4-5 and 17-18.
-// Rows D-J go from 1 to 21 with same layout.
-// Row K has only 5 to 17.
-const buildSala1Layout = (): { [row: string]: SeatInfo[] } => {
-  const rows = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"];
-  const layout: { [row: string]: SeatInfo[] } = {};
+interface RoomLayout {
+  rows: string[];
+  maxCol: number;
+  aisles: number[];
+  seats: { [row: string]: SeatInfo[] };
+}
+
+// Dynamic layout builder for all 12 rooms based on exact user specification
+export const getRoomLayout = (salaId: number): RoomLayout => {
+  let rows: string[] = [];
+  let maxCol = 21;
+  let aisles = [4, 17];
+
+  if (salaId === 1 || salaId === 4) {
+    rows = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"];
+  } else if (salaId === 2 || salaId === 3) {
+    rows = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N"];
+  } else if (salaId === 5) {
+    rows = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N"];
+    maxCol = 20;
+    aisles = [4, 16];
+  } else if (salaId === 6 || salaId === 7) {
+    rows = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"];
+    maxCol = 14;
+    aisles = [];
+  } else if (salaId === 8) {
+    rows = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O"];
+  } else if (salaId === 9 || salaId === 10) {
+    rows = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q"];
+  } else if (salaId === 11) {
+    rows = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O"];
+  } else if (salaId === 12) {
+    rows = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N"];
+  }
+
+  const seats: { [row: string]: SeatInfo[] } = {};
 
   for (const row of rows) {
     const rowSeats: SeatInfo[] = [];
-    if (row === "A" || row === "B" || row === "C") {
-      // Columns 1 to 21
-      // Seat 1 is missing/empty
-      rowSeats.push({ row, number: 1, type: "empty" });
-      // Left section: 2, 3, 4
-      for (let i = 2; i <= 4; i++) rowSeats.push({ row, number: i, type: "seat" });
-      // Center section: 5 to 17
-      for (let i = 5; i <= 17; i++) rowSeats.push({ row, number: i, type: "seat" });
-      // Right section: 18, 19, 20
-      for (let i = 18; i <= 20; i++) rowSeats.push({ row, number: i, type: "seat" });
-      // Seat 21 is missing/empty
-      rowSeats.push({ row, number: 21, type: "empty" });
-    } else if (row === "K") {
-      // Columns 1 to 21
-      // Left section (1-4) is empty
-      for (let i = 1; i <= 4; i++) rowSeats.push({ row, number: i, type: "empty" });
-      // Center section: 5 to 17
-      for (let i = 5; i <= 17; i++) rowSeats.push({ row, number: i, type: "seat" });
-      // Right section (18-21) is empty
-      for (let i = 18; i <= 21; i++) rowSeats.push({ row, number: i, type: "empty" });
-    } else {
-      // Rows D to J: 1 to 21
-      // Left section: 1, 2, 3, 4
-      for (let i = 1; i <= 4; i++) rowSeats.push({ row, number: i, type: "seat" });
-      // Center section: 5 to 17
-      for (let i = 5; i <= 17; i++) rowSeats.push({ row, number: i, type: "seat" });
-      // Right section: 18 to 21
-      for (let i = 18; i <= 21; i++) rowSeats.push({ row, number: i, type: "seat" });
-    }
-    layout[row] = rowSeats;
-  }
-  return layout;
-};
+    for (let c = 1; c <= maxCol; c++) {
+      let isSeat = false;
+      let isDbox = false;
 
-const SALA1_LAYOUT = buildSala1Layout();
+      if (salaId === 1) {
+        if (row === "A" || row === "B" || row === "C") {
+          isSeat = c >= 2 && c <= 20;
+        } else if (row === "K") {
+          isSeat = c >= 5 && c <= 17;
+        } else {
+          isSeat = true; // D to J: 1 to 21
+        }
+      } else if (salaId === 2 || salaId === 3) {
+        if (row === "A") {
+          isSeat = c >= 3 && c <= 19;
+        } else if (row === "N") {
+          isSeat = c >= 15 && c <= 17;
+        } else if (row === "M") {
+          isSeat = true; // 1 to 21
+        } else {
+          isSeat = c >= 2 && c <= 20; // B to L
+        }
+      } else if (salaId === 4) {
+        if (row === "K") {
+          isSeat = c >= 5 && c <= 17;
+        } else {
+          isSeat = c >= 2 && c <= 20; // A to J
+        }
+      } else if (salaId === 5) {
+        if (row === "A") {
+          isSeat = c >= 3 && c <= 18;
+        } else if (row === "M" || row === "N") {
+          isSeat = c >= 5 && c <= 16;
+        } else if (row === "I" || row === "J" || row === "K" || row === "L") {
+          isSeat = c >= 1 && c <= 20;
+        } else {
+          isSeat = c >= 2 && c <= 19; // B to H
+        }
+      } else if (salaId === 6 || salaId === 7) {
+        if (row === "J") {
+          isSeat = c >= 4 && c <= 11;
+        } else {
+          isSeat = c >= 1 && c <= 14; // A to I
+        }
+      } else if (salaId === 8) {
+        if (row === "L" || row === "M") {
+          isSeat = true; // 1 to 21
+        } else if (row === "O") {
+          isSeat = c >= 6 && c <= 16;
+        } else {
+          isSeat = c >= 2 && c <= 20; // A to K, and N (which is same as A)
+        }
+      } else if (salaId === 9) {
+        if (row === "A") {
+          isSeat = c >= 3 && c <= 19;
+        } else if (row === "B") {
+          isSeat = c >= 2 && c <= 20;
+        } else if (row === "C" || row === "D" || row === "E" || row === "F") {
+          isSeat = true; // 1 to 21
+        } else if (row === "G") {
+          isSeat = (c >= 1 && c <= 4) || (c >= 18 && c <= 21) || (c >= 7 && c <= 15);
+          isDbox = c >= 7 && c <= 15;
+        } else if (row === "H") {
+          isSeat = (c >= 2 && c <= 4) || (c >= 18 && c <= 20);
+        } else if (row === "I" || row === "J") {
+          isSeat = (c >= 2 && c <= 4) || (c >= 18 && c <= 20) || (c >= 7 && c <= 15);
+          isDbox = c >= 7 && c <= 15;
+        } else if (row === "K" || row === "L" || row === "M" || row === "N" || row === "O") {
+          isSeat = c >= 2 && c <= 20;
+        } else if (row === "P") {
+          isSeat = true; // 1 to 21
+        } else if (row === "Q") {
+          isSeat = c >= 6 && c <= 16;
+        }
+      } else if (salaId === 10) {
+        if (row === "A") {
+          isSeat = c >= 3 && c <= 19;
+        } else if (row === "B" || row === "C" || row === "F") {
+          isSeat = c >= 2 && c <= 20;
+        } else if (row === "D" || row === "E") {
+          isSeat = true; // 1 to 21
+        } else if (row === "G") {
+          isSeat = (c >= 2 && c <= 4) || (c >= 18 && c <= 20) || (c >= 8 && c <= 15);
+          isDbox = c >= 8 && c <= 15;
+        } else if (row === "H") {
+          isSeat = (c >= 2 && c <= 4) || (c >= 18 && c <= 20);
+        } else if (row === "I" || row === "J") {
+          isSeat = (c >= 2 && c <= 4) || (c >= 18 && c <= 20) || (c >= 8 && c <= 15);
+          isDbox = c >= 8 && c <= 15;
+        } else if (row === "K" || row === "L" || row === "M" || row === "N" || row === "O") {
+          isSeat = c >= 2 && c <= 20;
+        } else if (row === "P") {
+          isSeat = true; // 1 to 21
+        } else if (row === "Q") {
+          isSeat = c >= 5 && c <= 17;
+        }
+      } else if (salaId === 11) {
+        if (row === "A") {
+          isSeat = c >= 3 && c <= 19;
+        } else if (row === "B" || row === "C" || row === "F" || row === "J" || row === "K") {
+          isSeat = c >= 2 && c <= 20;
+        } else if (row === "D" || row === "E" || row === "L" || row === "M" || row === "N") {
+          isSeat = true; // 1 to 21
+        } else if (row === "G" || row === "H" || row === "I") {
+          isSeat = (c >= 2 && c <= 4) || (c >= 18 && c <= 20) || (c >= 7 && c <= 16);
+          isDbox = c >= 7 && c <= 16;
+        } else if (row === "O") {
+          isSeat = c >= 6 && c <= 16;
+        }
+      } else if (salaId === 12) {
+        if (row === "A") {
+          isSeat = c >= 3 && c <= 19;
+        } else if (row === "B" || row === "C") {
+          isSeat = c >= 2 && c <= 20;
+        } else if (row === "M" || row === "N") {
+          isSeat = c >= 5 && c <= 17;
+        } else {
+          isSeat = true; // D to L: 1 to 21
+        }
+      }
+
+      rowSeats.push({
+        row,
+        number: c,
+        type: isSeat ? "seat" : "empty",
+        isDbox,
+      });
+    }
+    seats[row] = rowSeats;
+  }
+
+  return { rows, maxCol, aisles, seats };
+};
 
 export default function ControlSalasScreen() {
   const { cineId, user } = useAuthUser();
@@ -124,19 +250,11 @@ export default function ControlSalasScreen() {
   const [saving, setSaving] = useState<boolean>(false);
 
   // Modal editing seat state
-  const [editingSeat, setEditingSeat] = useState<{ row: string; num: number } | null>(null);
+  const [editingSeat, setEditingSeat] = useState<{ row: string; num: number; isDbox?: boolean } | null>(null);
   const [respaldoRoto, setRespaldoRoto] = useState(false);
   const [asientoRoto, setAsientoRoto] = useState(false);
   const [apoyabrazosRoto, setApoyabrazosRoto] = useState(false);
   const [extraDetails, setExtraDetails] = useState("");
-
-  // Manual input form state (for other salas without visual maps yet)
-  const [manualRow, setManualRow] = useState("");
-  const [manualNum, setManualNum] = useState("");
-  const [manualRespaldo, setManualRespaldo] = useState(false);
-  const [manualAsiento, setManualAsiento] = useState(false);
-  const [manualApoyabrazos, setManualApoyabrazos] = useState(false);
-  const [manualDetails, setManualDetails] = useState("");
 
   // Listen to Firestore active report
   useEffect(() => {
@@ -155,7 +273,6 @@ export default function ControlSalasScreen() {
             issues: data.issues || {},
           });
         } else {
-          // Initialize empty report if not present
           setReport({
             updatedAt: "",
             updatedBy: "",
@@ -194,12 +311,12 @@ export default function ControlSalasScreen() {
   };
 
   // Open editor modal for a specific seat
-  const handleSeatPress = (row: string, num: number) => {
+  const handleSeatPress = (row: string, num: number, isDbox?: boolean) => {
     const salaKey = String(selectedSala);
     const seatKey = `${row}-${num}`;
     const existing = report.issues[salaKey]?.[seatKey];
 
-    setEditingSeat({ row, num });
+    setEditingSeat({ row, num, isDbox });
     if (existing) {
       setRespaldoRoto(existing.respaldo);
       setAsientoRoto(existing.asiento);
@@ -235,7 +352,6 @@ export default function ControlSalasScreen() {
         detalles: extraDetails.trim(),
       };
     } else {
-      // If no issues checked and no comments, remove the seat entirely
       delete newReportIssues[salaKey][seatKey];
       if (Object.keys(newReportIssues[salaKey]).length === 0) {
         delete newReportIssues[salaKey];
@@ -258,54 +374,6 @@ export default function ControlSalasScreen() {
     if (Object.keys(newReportIssues[salaKey]).length === 0) {
       delete newReportIssues[salaKey];
     }
-    await saveReportToFirebase(newReportIssues);
-  };
-
-  // Manual submission handler for salas 2 to 12
-  const handleAddManualIssue = async () => {
-    if (!manualRow.trim() || !manualNum.trim()) {
-      Alert.alert("Campos incompletos", "Por favor, ingresá la fila (ej. A) y el número de butaca (ej. 15).");
-      return;
-    }
-
-    const row = manualRow.trim().toUpperCase();
-    const num = parseInt(manualNum.trim(), 10);
-
-    if (isNaN(num) || num <= 0) {
-      Alert.alert("Número inválido", "El número de butaca debe ser un número entero mayor a 0.");
-      return;
-    }
-
-    const hasAnyIssue = manualRespaldo || manualAsiento || manualApoyabrazos || manualDetails.trim().length > 0;
-
-    if (!hasAnyIssue) {
-      Alert.alert("Falta información", "Seleccioná al menos un daño (respaldo, asiento o apoyabrazos) o agregá detalles.");
-      return;
-    }
-
-    const salaKey = String(selectedSala);
-    const seatKey = `${row}-${num}`;
-
-    const newReportIssues = { ...report.issues };
-    if (!newReportIssues[salaKey]) {
-      newReportIssues[salaKey] = {};
-    }
-
-    newReportIssues[salaKey][seatKey] = {
-      respaldo: manualRespaldo,
-      asiento: manualAsiento,
-      apoyabrazos: manualApoyabrazos,
-      detalles: manualDetails.trim(),
-    };
-
-    // Reset manual form fields
-    setManualRow("");
-    setManualNum("");
-    setManualRespaldo(false);
-    setManualAsiento(false);
-    setManualApoyabrazos(false);
-    setManualDetails("");
-
     await saveReportToFirebase(newReportIssues);
   };
 
@@ -334,29 +402,37 @@ export default function ControlSalasScreen() {
 
   // Generate and export/print HTML report
   const handleExportPdf = async () => {
-    // Count total issues
     let totalDamagedSeats = 0;
-    const salaReportsList: { salaName: string; issues: { seat: string; desc: string; details: string }[] }[] = [];
+    const salaReportsList: { salaName: string; issues: { seat: string; desc: string; details: string; isDbox?: boolean }[] }[] = [];
 
-    // Sort room issues to build the PDF tables
     SALAS_INFO.forEach((sInfo) => {
       const salaKey = String(sInfo.id);
       const roomIssues = report.issues[salaKey];
       if (roomIssues && Object.keys(roomIssues).length > 0) {
+        // Load the room layout to verify if the seat is DBOX
+        const layoutObj = getRoomLayout(sInfo.id);
+
         const issuesSorted = Object.entries(roomIssues)
           .map(([key, val]) => {
-            const [row, num] = key.split("-");
+            const [row, numStr] = key.split("-");
+            const num = parseInt(numStr, 10);
             const parts: string[] = [];
             if (val.respaldo) parts.push("Respaldo");
             if (val.asiento) parts.push("Asiento");
             if (val.apoyabrazos) parts.push("Apoyabrazos");
 
+            // Look up seat in layout to verify Dbox status
+            const rowSeats = layoutObj.seats[row];
+            const seatLayout = rowSeats?.find((s) => s.number === num);
+            const isDbox = seatLayout?.isDbox || false;
+
             return {
               row,
-              num: parseInt(num, 10),
-              seat: `Fila ${row} - Butaca ${num}`,
+              num,
+              seat: `Fila ${row} - Butaca ${num}${isDbox ? " (D-BOX)" : ""}`,
               desc: parts.length > 0 ? parts.join(", ") : "Detalles manuales",
               details: val.detalles || "-",
+              isDbox,
             };
           })
           .sort((a, b) => {
@@ -386,7 +462,6 @@ export default function ControlSalasScreen() {
         minute: "2-digit",
       });
 
-      // Build rooms inspection results tables
       let roomsTablesHtml = "";
       salaReportsList.forEach((salaRep) => {
         roomsTablesHtml += `
@@ -395,9 +470,9 @@ export default function ControlSalasScreen() {
             <table>
               <thead>
                 <tr>
-                  <th style="width: 25%;">Butaca</th>
+                  <th style="width: 30%;">Butaca</th>
                   <th style="width: 35%;">Daño Reportado</th>
-                  <th style="width: 40%;">Detalles / Comentarios</th>
+                  <th style="width: 35%;">Detalles / Comentarios</th>
                 </tr>
               </thead>
               <tbody>
@@ -405,7 +480,10 @@ export default function ControlSalasScreen() {
                   .map(
                     (issue) => `
                   <tr>
-                    <td><strong>${issue.seat}</strong></td>
+                    <td>
+                      <strong>${issue.seat}</strong>
+                      ${issue.isDbox ? `<span class="dbox-tag">D-BOX</span>` : ""}
+                    </td>
                     <td><span class="badge">${issue.desc}</span></td>
                     <td>${issue.details}</td>
                   </tr>
@@ -527,6 +605,17 @@ export default function ControlSalasScreen() {
               font-weight: bold;
               display: inline-block;
             }
+            .dbox-tag {
+              background-color: #f3e8ff;
+              color: #6b21a8;
+              border: 1px solid #e9d5ff;
+              padding: 1px 4px;
+              border-radius: 3px;
+              font-size: 8px;
+              font-weight: bold;
+              margin-left: 4px;
+              vertical-align: middle;
+            }
             .footer-sig {
               margin-top: 50px;
               border-top: 1px solid #cbd5e1;
@@ -639,13 +728,23 @@ export default function ControlSalasScreen() {
     const roomIssues = report.issues[salaKey];
     if (!roomIssues) return [];
 
+    // Get layout to see if it is Dbox
+    const layoutObj = getRoomLayout(selectedSala);
+
     return Object.entries(roomIssues)
       .map(([key, val]) => {
-        const [row, num] = key.split("-");
+        const [row, numStr] = key.split("-");
+        const num = parseInt(numStr, 10);
+
+        const rowSeats = layoutObj.seats[row];
+        const seatLayout = rowSeats?.find((s) => s.number === num);
+        const isDbox = seatLayout?.isDbox || false;
+
         return {
           key,
           row,
-          num: parseInt(num, 10),
+          num,
+          isDbox,
           ...val,
         };
       })
@@ -658,10 +757,10 @@ export default function ControlSalasScreen() {
   const selectedSalaIssues = getSelectedSalaIssues();
   const selectedSalaCapacity = SALAS_INFO.find((s) => s.id === selectedSala)?.capacity || 0;
 
-  // Seating grid rendering logic for Sala 1
-  const renderSala1Grid = () => {
-    const salaKey = "1";
-    const rows = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"];
+  // Seating grid rendering logic for active Sala
+  const renderSeatingGrid = () => {
+    const salaKey = String(selectedSala);
+    const layout = getRoomLayout(selectedSala);
 
     const renderSeat = (seat: SeatInfo, index: number) => {
       if (seat.type === "empty") {
@@ -671,19 +770,27 @@ export default function ControlSalasScreen() {
       const seatKey = `${seat.row}-${seat.number}`;
       const hasIssue = !!report.issues[salaKey]?.[seatKey];
       const isSelected = editingSeat?.row === seat.row && editingSeat?.num === seat.number;
+      const isDbox = seat.isDbox;
 
       return (
         <TouchableOpacity
           key={seatKey}
           style={[
             styles.seat,
+            isDbox && styles.seatDbox,
             hasIssue && styles.seatDamaged,
             isSelected && styles.seatSelected,
           ]}
-          onPress={() => handleSeatPress(seat.row, seat.number)}
+          onPress={() => handleSeatPress(seat.row, seat.number, isDbox)}
           activeOpacity={0.8}
         >
-          <Text style={[styles.seatText, hasIssue && styles.seatTextDamaged]}>
+          <Text
+            style={[
+              styles.seatText,
+              isDbox && styles.seatTextDbox,
+              hasIssue && styles.seatTextDamaged,
+            ]}
+          >
             {seat.number}
           </Text>
         </TouchableOpacity>
@@ -692,8 +799,8 @@ export default function ControlSalasScreen() {
 
     return (
       <View style={styles.mapCard}>
-        <Text style={styles.mapTitle}>Mapa Interactivo de Sala 1</Text>
-        
+        <Text style={styles.mapTitle}>Mapa Interactivo de Sala {selectedSala}</Text>
+
         {/* Screen layout */}
         <View style={styles.screenIndicatorContainer}>
           <View style={styles.screenLine} />
@@ -703,11 +810,17 @@ export default function ControlSalasScreen() {
         {/* Scroll containers for layout safety on small mobile widths */}
         <ScrollView horizontal showsHorizontalScrollIndicator={true} contentContainerStyle={styles.horizontalMapScroll}>
           <View style={styles.gridContainer}>
-            {rows.map((rowName) => {
-              const rowSeats = SALA1_LAYOUT[rowName];
-              const leftSection = rowSeats.slice(0, 4);
-              const centerSection = rowSeats.slice(4, 17);
-              const rightSection = rowSeats.slice(17, 21);
+            {layout.rows.map((rowName) => {
+              const rowSeats = layout.seats[rowName];
+
+              // Slice row seats dynamically based on aisles definition
+              const sections: SeatInfo[][] = [];
+              let prev = 0;
+              layout.aisles.forEach((aisleIndex) => {
+                sections.push(rowSeats.slice(prev, aisleIndex));
+                prev = aisleIndex;
+              });
+              sections.push(rowSeats.slice(prev, layout.maxCol));
 
               return (
                 <View key={rowName} style={styles.rowContainer}>
@@ -716,26 +829,15 @@ export default function ControlSalasScreen() {
                     <Text style={styles.rowLetterText}>{rowName}</Text>
                   </View>
 
-                  {/* Left Column Section (seats 1-4) */}
-                  <View style={styles.sectionWrap}>
-                    {leftSection.map((seat, idx) => renderSeat(seat, idx))}
-                  </View>
-
-                  {/* Left Aisle */}
-                  <View style={styles.aisleSpace} />
-
-                  {/* Center Column Section (seats 5-17) */}
-                  <View style={styles.sectionWrap}>
-                    {centerSection.map((seat, idx) => renderSeat(seat, idx))}
-                  </View>
-
-                  {/* Right Aisle */}
-                  <View style={styles.aisleSpace} />
-
-                  {/* Right Column Section (seats 18-21) */}
-                  <View style={styles.sectionWrap}>
-                    {rightSection.map((seat, idx) => renderSeat(seat, idx))}
-                  </View>
+                  {/* Render sections separated by aisles */}
+                  {sections.map((section, idx) => (
+                    <React.Fragment key={idx}>
+                      {idx > 0 && <View style={styles.aisleSpace} />}
+                      <View style={styles.sectionWrap}>
+                        {section.map((seat, idxSeat) => renderSeat(seat, idxSeat))}
+                      </View>
+                    </React.Fragment>
+                  ))}
 
                   {/* Right row letter */}
                   <View style={styles.rowLetterWrap}>
@@ -754,6 +856,10 @@ export default function ControlSalasScreen() {
             <Text style={styles.legendText}>Buen estado</Text>
           </View>
           <View style={styles.legendItem}>
+            <View style={styles.legendDotDbox} />
+            <Text style={styles.legendText}>Butaca D-BOX</Text>
+          </View>
+          <View style={styles.legendItem}>
             <View style={styles.legendDotDamaged} />
             <Text style={styles.legendText}>Con daño reportado</Text>
           </View>
@@ -766,116 +872,6 @@ export default function ControlSalasScreen() {
         <Text style={styles.mapHint}>
           Hacé clic en cualquier butaca para informar un daño o ver detalles.
         </Text>
-      </View>
-    );
-  };
-
-  // Form rendering for salas 2 to 12
-  const renderManualForm = () => {
-    return (
-      <View style={styles.manualCard}>
-        <View style={styles.manualHeader}>
-          <MaterialCommunityIcons name="information-outline" size={20} color={COLORS.info} />
-          <Text style={styles.manualHeaderText}>
-            El mapa interactivo de la {SALAS_INFO.find((s) => s.id === selectedSala)?.name} se encuentra en desarrollo. 
-            Podés reportar incidencias usando este formulario:
-          </Text>
-        </View>
-
-        <View style={styles.formContainer}>
-          <View style={styles.formRow}>
-            <View style={styles.formCol}>
-              <Text style={styles.inputLabel}>Fila (A-Z)</Text>
-              <TextInput
-                value={manualRow}
-                onChangeText={setManualRow}
-                placeholder="Ej. B"
-                placeholderTextColor={COLORS.muted}
-                style={styles.textInput}
-                autoCapitalize="characters"
-                maxLength={2}
-              />
-            </View>
-
-            <View style={styles.formCol}>
-              <Text style={styles.inputLabel}>Número de Butaca</Text>
-              <TextInput
-                value={manualNum}
-                onChangeText={setManualNum}
-                placeholder="Ej. 14"
-                placeholderTextColor={COLORS.muted}
-                keyboardType="number-pad"
-                style={styles.textInput}
-              />
-            </View>
-          </View>
-
-          <Text style={styles.sectionSubTitle}>Seleccioná los componentes dañados:</Text>
-          <View style={styles.checkboxesRow}>
-            <TouchableOpacity
-              style={[styles.checkboxBtn, manualRespaldo && styles.checkboxBtnChecked]}
-              onPress={() => setManualRespaldo(!manualRespaldo)}
-              activeOpacity={0.8}
-            >
-              <MaterialCommunityIcons
-                name={manualRespaldo ? "checkbox-marked" : "checkbox-blank-outline"}
-                size={20}
-                color={manualRespaldo ? COLORS.primary : COLORS.muted}
-              />
-              <Text style={[styles.checkboxBtnText, manualRespaldo && styles.checkboxBtnTextChecked]}>
-                Respaldo roto
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.checkboxBtn, manualAsiento && styles.checkboxBtnChecked]}
-              onPress={() => setManualAsiento(!manualAsiento)}
-              activeOpacity={0.8}
-            >
-              <MaterialCommunityIcons
-                name={manualAsiento ? "checkbox-marked" : "checkbox-blank-outline"}
-                size={20}
-                color={manualAsiento ? COLORS.primary : COLORS.muted}
-              />
-              <Text style={[styles.checkboxBtnText, manualAsiento && styles.checkboxBtnTextChecked]}>
-                Asiento roto
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.checkboxBtn, manualApoyabrazos && styles.checkboxBtnChecked]}
-              onPress={() => setManualApoyabrazos(!manualApoyabrazos)}
-              activeOpacity={0.8}
-            >
-              <MaterialCommunityIcons
-                name={manualApoyabrazos ? "checkbox-marked" : "checkbox-blank-outline"}
-                size={20}
-                color={manualApoyabrazos ? COLORS.primary : COLORS.muted}
-              />
-              <Text style={[styles.checkboxBtnText, manualApoyabrazos && styles.checkboxBtnTextChecked]}>
-                Apoyabrazos roto
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.detailsInputContainer}>
-            <Text style={styles.inputLabel}>Detalles adicionales (Opcional)</Text>
-            <TextInput
-              value={manualDetails}
-              onChangeText={setManualDetails}
-              placeholder="Detallá el problema (ej: flojo, tela rajada, etc.)"
-              placeholderTextColor={COLORS.muted}
-              style={styles.detailsInput}
-              multiline
-              numberOfLines={2}
-            />
-          </View>
-
-          <TouchableOpacity style={styles.addManualBtn} onPress={handleAddManualIssue} activeOpacity={0.85}>
-            <MaterialCommunityIcons name="plus" size={20} color="#FFF" style={{ marginRight: 6 }} />
-            <Text style={styles.addManualBtnText}>Registrar Butaca Dañada</Text>
-          </TouchableOpacity>
-        </View>
       </View>
     );
   };
@@ -914,7 +910,7 @@ export default function ControlSalasScreen() {
         </ScrollView>
       </View>
 
-      {/* Main Panel grid or manual form */}
+      {/* Main Panel grid */}
       {loading ? (
         <View style={styles.loadingBox}>
           <ActivityIndicator size="large" color={COLORS.primary} />
@@ -946,7 +942,7 @@ export default function ControlSalasScreen() {
             )}
           </View>
 
-          {selectedSala === 1 ? renderSala1Grid() : renderManualForm()}
+          {renderSeatingGrid()}
 
           {/* List of reported issues in current room */}
           <View style={styles.listCard}>
@@ -959,7 +955,7 @@ export default function ControlSalasScreen() {
                 <MaterialCommunityIcons name="check-circle-outline" size={48} color={COLORS.success} />
                 <Text style={styles.emptyStateTitle}>Sala en óptimas condiciones</Text>
                 <Text style={styles.emptyStateSub}>
-                  No se registraron daños. Para agregar una butaca rota, hacela clic en el mapa superior o usá el formulario.
+                  No se registraron daños. Para agregar una butaca rota, hacela clic en el mapa superior.
                 </Text>
               </View>
             ) : (
@@ -968,8 +964,11 @@ export default function ControlSalasScreen() {
                   <View key={item.key} style={styles.issueItemCard}>
                     <View style={styles.issueItemHeader}>
                       <View style={styles.issueItemTitleWrap}>
-                        <MaterialCommunityIcons name="sofa-single" size={18} color={COLORS.danger} />
-                        <Text style={styles.issueSeatName}>Fila {item.row} - Butaca {item.num}</Text>
+                        <MaterialCommunityIcons name="sofa-single" size={18} color={item.isDbox ? COLORS.betaText : COLORS.danger} />
+                        <Text style={styles.issueSeatName}>
+                          Fila {item.row} - Butaca {item.num}
+                          {item.isDbox ? " (D-BOX)" : ""}
+                        </Text>
                       </View>
                       <TouchableOpacity
                         onPress={() => handleClearSeatReport(item.row, item.num)}
@@ -1006,7 +1005,7 @@ export default function ControlSalasScreen() {
                     ) : null}
 
                     <TouchableOpacity
-                      onPress={() => handleSeatPress(item.row, item.num)}
+                      onPress={() => handleSeatPress(item.row, item.num, item.isDbox)}
                       style={styles.editIssueBtn}
                       activeOpacity={0.7}
                     >
@@ -1045,6 +1044,7 @@ export default function ControlSalasScreen() {
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>
               Editar Butaca {editingSeat?.row}-{editingSeat?.num}
+              {editingSeat?.isDbox ? " (Premium D-BOX)" : ""}
             </Text>
             <Text style={styles.modalSubtitle}>Sala {selectedSala}</Text>
 
@@ -1325,6 +1325,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(0,0,0,0.1)",
   },
+  seatDbox: {
+    backgroundColor: COLORS.betaBorder,
+    borderColor: COLORS.betaText,
+  },
   seatDamaged: {
     backgroundColor: COLORS.danger,
     borderColor: COLORS.danger,
@@ -1341,6 +1345,10 @@ const styles = StyleSheet.create({
     fontSize: 8,
     fontWeight: "600",
     color: COLORS.textSoft,
+  },
+  seatTextDbox: {
+    color: "#FFF",
+    fontWeight: "700",
   },
   seatTextDamaged: {
     color: "#FFF",
@@ -1362,6 +1370,12 @@ const styles = StyleSheet.create({
     height: 12,
     borderRadius: 2,
     backgroundColor: COLORS.border,
+  },
+  legendDotDbox: {
+    width: 12,
+    height: 12,
+    borderRadius: 2,
+    backgroundColor: COLORS.betaBorder,
   },
   legendDotDamaged: {
     width: 12,
@@ -1388,122 +1402,6 @@ const styles = StyleSheet.create({
     color: COLORS.muted,
     marginTop: THEME.spacing.md,
     textAlign: "center",
-  },
-
-  // Manual Input Form styles (for non-mapped rooms)
-  manualCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: THEME.radius.lg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: THEME.spacing.lg,
-    marginBottom: THEME.spacing.md,
-    ...THEME.shadow.soft,
-  },
-  manualHeader: {
-    flexDirection: "row",
-    gap: 8,
-    backgroundColor: COLORS.info + "15",
-    borderColor: COLORS.info + "30",
-    borderWidth: 1,
-    borderRadius: THEME.radius.sm,
-    padding: 10,
-    marginBottom: THEME.spacing.md,
-  },
-  manualHeaderText: {
-    flex: 1,
-    fontSize: 12,
-    color: COLORS.text,
-    lineHeight: 16,
-  },
-  formContainer: {
-    gap: 12,
-  },
-  formRow: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  formCol: {
-    flex: 1,
-  },
-  inputLabel: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: COLORS.text,
-    marginBottom: 4,
-  },
-  textInput: {
-    backgroundColor: COLORS.bg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: THEME.radius.sm,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    color: COLORS.text,
-    fontSize: 14,
-  },
-  sectionSubTitle: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: COLORS.text,
-    marginTop: 4,
-  },
-  checkboxesRow: {
-    flexDirection: "row",
-    gap: 8,
-    flexWrap: "wrap",
-  },
-  checkboxBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: THEME.radius.sm,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.card,
-  },
-  checkboxBtnChecked: {
-    backgroundColor: COLORS.primarySoft,
-    borderColor: COLORS.primary,
-  },
-  checkboxBtnText: {
-    fontSize: 12,
-    color: COLORS.muted,
-    fontWeight: "600",
-  },
-  checkboxBtnTextChecked: {
-    color: COLORS.primary,
-    fontWeight: "700",
-  },
-  detailsInputContainer: {
-    gap: 4,
-  },
-  detailsInput: {
-    backgroundColor: COLORS.bg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: THEME.radius.sm,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    color: COLORS.text,
-    fontSize: 14,
-    textAlignVertical: "top",
-  },
-  addManualBtn: {
-    backgroundColor: COLORS.primary,
-    borderRadius: THEME.radius.sm,
-    paddingVertical: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-    marginTop: 6,
-  },
-  addManualBtnText: {
-    color: "#FFF",
-    fontWeight: "700",
-    fontSize: 14,
   },
 
   // Reported list Card styling
