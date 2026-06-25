@@ -590,6 +590,7 @@ export default function ControlSalasScreen() {
               width: 100%;
               border-collapse: collapse;
               margin-bottom: 6px;
+              table-layout: fixed;
             }
             th {
               background-color: #f1f5f9;
@@ -606,6 +607,8 @@ export default function ControlSalasScreen() {
               border: 1px solid #e2e8f0;
               font-size: 9px;
               vertical-align: top;
+              word-break: break-word;
+              white-space: normal;
             }
             tr:nth-child(even) td {
               background-color: #f8fafc;
@@ -618,6 +621,8 @@ export default function ControlSalasScreen() {
               font-size: 8px;
               font-weight: bold;
               display: inline-block;
+              word-break: break-word;
+              white-space: normal;
             }
             .dbox-tag {
               background-color: #f3e8ff;
@@ -909,12 +914,10 @@ export default function ControlSalasScreen() {
                 <Text style={[styles.salaTabText, isSel && styles.salaTabTextActive]}>
                   {sala.name}
                 </Text>
-                {damagedCount > 0 ? (
+                {damagedCount > 0 && (
                   <View style={styles.badgeContainer}>
                     <Text style={styles.badgeText}>{damagedCount}</Text>
                   </View>
-                ) : (
-                  <Text style={styles.salaTabCapacity}>{sala.capacity} cap.</Text>
                 )}
               </TouchableOpacity>
             );
@@ -1193,10 +1196,6 @@ const styles = StyleSheet.create({
   },
   salaTabTextActive: {
     color: COLORS.primary,
-  },
-  salaTabCapacity: {
-    fontSize: 10,
-    color: COLORS.muted,
   },
   badgeContainer: {
     backgroundColor: COLORS.danger,
