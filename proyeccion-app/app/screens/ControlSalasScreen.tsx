@@ -14,7 +14,7 @@ import {
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
-import { doc, onSnapshot, setDoc } from "firebase/firestore";
+import { doc, getDoc, onSnapshot, setDoc } from "firebase/firestore";
 
 import { db, CINES_COLLECTION } from "../../lib/firebaseConfig";
 import { COLORS, THEME } from "../../lib/theme";
@@ -69,7 +69,16 @@ interface RoomLayout {
   seats: { [row: string]: SeatInfo[] };
 }
 
-// Dynamic layout builder for all 12 rooms based on exact user specification
+interface FirestoreSalaLayout {
+  rows: string[];
+  maxCol: number;
+  aisles: number[];
+  customSeats: {
+    [seatKey: string]: "empty" | "dbox";
+  };
+}
+
+// Default layout builder for all 12 rooms based on exact user specification
 export const getRoomLayout = (salaId: number): RoomLayout => {
   let rows: string[] = [];
   let maxCol = 21;
@@ -235,6 +244,30 @@ export const getRoomLayout = (salaId: number): RoomLayout => {
   return { rows, maxCol, aisles, seats };
 };
 
+// Helper to convert getRoomLayout configuration to the Firestore layout schema
+const convertLayoutToFirestoreSchema = (salaId: number): FirestoreSalaLayout => {
+  const defaultLayout = getRoomLayout(salaId);
+  const customSeats: { [key: string]: "empty" | "dbox" } = {};
+
+  for (const row of defaultLayout.rows) {
+    for (const seat of defaultLayout.seats[row]) {
+      const key = `${row}-${seat.number}`;
+      if (seat.type === "empty") {
+        customSeats[key] = "empty";
+      } else if (seat.isDbox) {
+        customSeats[key] = "dbox";
+      }
+    }
+  }
+
+  return {
+    rows: defaultLayout.rows,
+    maxCol: defaultLayout.maxCol,
+    aisles: defaultLayout.aisles,
+    customSeats,
+  };
+};
+
 export default function ControlSalasScreen() {
   const { cineId, user, displayName } = useAuthUser();
   const userEmail = user?.email || "usuario.anonimo";
@@ -248,6 +281,9 @@ export default function ControlSalasScreen() {
     updatedBy: "",
     issues: {},
   });
+  
+  // Custom layouts state (from Firestore)
+  const [dbLayouts, setDbLayouts] = useState<{ [salaId: string]: FirestoreSalaLayout }>({});
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
 
@@ -258,7 +294,66 @@ export default function ControlSalasScreen() {
   const [apoyabrazosRoto, setApoyabrazosRoto] = useState(false);
   const [extraDetails, setExtraDetails] = useState("");
 
-  // Listen to Firestore active report
+  // Seating grid configuration editor state
+  const [isLayoutEditorMode, setIsLayoutEditorMode] = useState<boolean>(false);
+  const [editorRowsInput, setEditorRowsInput] = useState<string>("");
+  const [editorMaxColInput, setEditorMaxColInput] = useState<string>("");
+  const [editorAislesInput, setEditorAislesInput] = useState<string>("");
+  const [editorCustomSeats, setEditorCustomSeats] = useState<{ [seatKey: string]: "empty" | "dbox" }>({});
+  const [paintTool, setPaintTool] = useState<"seat" | "dbox" | "empty">("empty");
+
+  // Load custom layouts for all 12 rooms
+  useEffect(() => {
+    if (!cineId) return;
+
+    const unsubscribers = SALAS_INFO.map((sala) => {
+      const ref = doc(db, CINES_COLLECTION, cineId, "salas_layouts", String(sala.id));
+      return onSnapshot(
+        ref,
+        (snapshot) => {
+          if (snapshot.exists()) {
+            const data = snapshot.data() as FirestoreSalaLayout;
+            setDbLayouts((prev) => ({
+              ...prev,
+              [String(sala.id)]: data,
+            }));
+          }
+        },
+        (error) => {
+          console.error(`Error loading layout for Sala ${sala.id}:`, error);
+        }
+      );
+    });
+
+    return () => unsubscribers.forEach((unsub) => unsub());
+  }, [cineId]);
+
+  // Proactive Auto-Migration: If cinema is "abasto" and there are no custom layouts in Firestore, upload the default Abasto layouts automatically.
+  useEffect(() => {
+    if (!cineId || cineId !== "abasto") return;
+
+    const checkAndMigrate = async () => {
+      try {
+        const docRef = doc(db, CINES_COLLECTION, cineId, "salas_layouts", "1");
+        const docSnap = await getDoc(docRef);
+        if (!docSnap.exists()) {
+          console.log("Auto-migrating default layouts for Abasto...");
+          for (let sId = 1; sId <= 12; sId++) {
+            const schema = convertLayoutToFirestoreSchema(sId);
+            const ref = doc(db, CINES_COLLECTION, cineId, "salas_layouts", String(sId));
+            await setDoc(ref, schema);
+          }
+          console.log("Auto-migration complete.");
+        }
+      } catch (e) {
+        console.error("Auto-migration check error:", e);
+      }
+    };
+
+    checkAndMigrate();
+  }, [cineId]);
+
+  // Listen to Firestore active inspection report
   useEffect(() => {
     if (!cineId) return;
 
@@ -292,6 +387,49 @@ export default function ControlSalasScreen() {
     return () => unsubscribe();
   }, [cineId]);
 
+  // Get active layout for a sala (loads from DB if exists, otherwise falls back to hardcoded defaults)
+  const getActiveSalaLayout = (salaId: number): RoomLayout => {
+    const dbLayout = dbLayouts[String(salaId)];
+    if (!dbLayout) {
+      return getRoomLayout(salaId); // fallback to defaults
+    }
+
+    const seats: { [row: string]: SeatInfo[] } = {};
+    const customSeats = dbLayout.customSeats || {};
+
+    for (const row of dbLayout.rows) {
+      const rowSeats: SeatInfo[] = [];
+      for (let c = 1; c <= dbLayout.maxCol; c++) {
+        const key = `${row}-${c}`;
+        const exception = customSeats[key];
+        
+        let type: "seat" | "empty" = "seat";
+        let isDbox = false;
+
+        if (exception === "empty") {
+          type = "empty";
+        } else if (exception === "dbox") {
+          isDbox = true;
+        }
+
+        rowSeats.push({
+          row,
+          number: c,
+          type,
+          isDbox,
+        });
+      }
+      seats[row] = rowSeats;
+    }
+
+    return {
+      rows: dbLayout.rows,
+      maxCol: dbLayout.maxCol,
+      aisles: dbLayout.aisles || [],
+      seats,
+    };
+  };
+
   // Save report updates to Firestore helper
   const saveReportToFirebase = async (updatedIssues: { [salaId: string]: RoomIssues }) => {
     if (!cineId) return;
@@ -312,8 +450,14 @@ export default function ControlSalasScreen() {
     }
   };
 
-  // Open editor modal for a specific seat
+  // Open editor modal for a specific seat (Normal Inspection Mode)
   const handleSeatPress = (row: string, num: number, isDbox?: boolean) => {
+    if (isLayoutEditorMode) {
+      // If we are in layout configuration mode, clicking paints/modifies the seat layout!
+      handleGridSeatClickInEditorMode(row, num);
+      return;
+    }
+
     const salaKey = String(selectedSala);
     const seatKey = `${row}-${num}`;
     const existing = report.issues[salaKey]?.[seatKey];
@@ -332,7 +476,7 @@ export default function ControlSalasScreen() {
     }
   };
 
-  // Save seat edits
+  // Save seat edits (Normal Inspection Mode)
   const handleSaveSeat = async () => {
     if (!editingSeat) return;
     const { row, num } = editingSeat;
@@ -402,6 +546,122 @@ export default function ControlSalasScreen() {
     }
   };
 
+  // Toggle seat types on click during layout editor mode
+  const handleGridSeatClickInEditorMode = (row: string, colNum: number) => {
+    const key = `${row}-${colNum}`;
+    const newCustomSeats = { ...editorCustomSeats };
+
+    if (paintTool === "empty") {
+      newCustomSeats[key] = "empty";
+    } else if (paintTool === "dbox") {
+      newCustomSeats[key] = "dbox";
+    } else {
+      delete newCustomSeats[key]; // returns to normal seat
+    }
+    setEditorCustomSeats(newCustomSeats);
+  };
+
+  // Enter Layout Editor Mode for the active room
+  const handleStartLayoutEditor = () => {
+    const layout = getActiveSalaLayout(selectedSala);
+    const dbLayout = dbLayouts[String(selectedSala)];
+
+    setEditorRowsInput(layout.rows.join(","));
+    setEditorMaxColInput(String(layout.maxCol));
+    setEditorAislesInput(layout.aisles.join(","));
+    setEditorCustomSeats(dbLayout?.customSeats || convertLayoutToFirestoreSchema(selectedSala).customSeats || {});
+    setIsLayoutEditorMode(true);
+  };
+
+  // Save layout configurations in Firestore
+  const handleSaveLayoutEdits = async () => {
+    if (!cineId) return;
+
+    const rows = editorRowsInput
+      .split(",")
+      .map((r) => r.trim().toUpperCase())
+      .filter(Boolean);
+    const maxCol = parseInt(editorMaxColInput, 10);
+    const aisles = editorAislesInput
+      .split(",")
+      .map((a) => parseInt(a.trim(), 10))
+      .filter((num) => !isNaN(num));
+
+    if (rows.length === 0 || isNaN(maxCol) || maxCol <= 0) {
+      Alert.alert("Campos inválidos", "Por favor ingresá un listado de filas válido y un número de columnas mayor a 0.");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const ref = doc(db, CINES_COLLECTION, cineId, "salas_layouts", String(selectedSala));
+      const payload: FirestoreSalaLayout = {
+        rows,
+        maxCol,
+        aisles,
+        customSeats: editorCustomSeats,
+      };
+      await setDoc(ref, payload);
+      setIsLayoutEditorMode(false);
+      Alert.alert("Éxito", `Se guardó la distribución personalizada de la Sala ${selectedSala}.`);
+    } catch (e) {
+      console.error("Error saving custom layout:", e);
+      Alert.alert("Error", "No se pudo guardar el plano de la sala en la base de datos.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Exit layout editor mode without saving
+  const handleCancelLayoutEdits = () => {
+    setIsLayoutEditorMode(false);
+  };
+
+  // Load standard Abasto map template to current selected room layout editor fields
+  const handleLoadDefaultAbastoTemplate = () => {
+    const schema = convertLayoutToFirestoreSchema(selectedSala);
+    setEditorRowsInput(schema.rows.join(","));
+    setEditorMaxColInput(String(schema.maxCol));
+    setEditorAislesInput(schema.aisles.join(","));
+    setEditorCustomSeats(schema.customSeats);
+  };
+
+  // Upload/Migrate all 12 default Abasto layouts to Firestore for the current cinema
+  const handleMigrateAllDefaultLayouts = async () => {
+    if (!cineId) return;
+
+    const executeMigration = async () => {
+      setSaving(true);
+      try {
+        for (let sId = 1; sId <= 12; sId++) {
+          const schema = convertLayoutToFirestoreSchema(sId);
+          const ref = doc(db, CINES_COLLECTION, cineId, "salas_layouts", String(sId));
+          await setDoc(ref, schema);
+        }
+        Alert.alert("Carga Exitosa", `Se guardaron los 12 mapas por defecto en la base de datos de ${cineLabel}.`);
+      } catch (e) {
+        console.error("Migration error:", e);
+        Alert.alert("Error", "Ocurrió un error al cargar las salas por defecto.");
+      } finally {
+        setSaving(false);
+      }
+    };
+
+    if (Platform.OS === "web") {
+      const confirm = window.confirm(`¿Querés guardar los 12 planos de salas por defecto en la base de datos de ${cineLabel}? Esto sobreescribirá los planos guardados anteriormente en este cine.`);
+      if (confirm) executeMigration();
+    } else {
+      Alert.alert(
+        "Cargar planos por defecto",
+        `¿Querés guardar los 12 planos por defecto de Abasto en la base de datos de ${cineLabel}?`,
+        [
+          { text: "Cancelar", style: "cancel" },
+          { text: "Guardar Todo", onPress: executeMigration },
+        ]
+      );
+    }
+  };
+
   // Generate and export/print HTML report
   const handleExportPdf = async () => {
     let totalDamagedSeats = 0;
@@ -411,8 +671,8 @@ export default function ControlSalasScreen() {
       const salaKey = String(sInfo.id);
       const roomIssues = report.issues[salaKey];
       if (roomIssues && Object.keys(roomIssues).length > 0) {
-        // Load the room layout to verify if the seat is DBOX
-        const layoutObj = getRoomLayout(sInfo.id);
+        // Load layout parameters (from DB or default) to check DBOX exception
+        const layoutObj = getActiveSalaLayout(sInfo.id);
 
         const issuesSorted = Object.entries(roomIssues)
           .map(([key, val]) => {
@@ -745,8 +1005,7 @@ export default function ControlSalasScreen() {
     const roomIssues = report.issues[salaKey];
     if (!roomIssues) return [];
 
-    // Get layout to see if it is Dbox
-    const layoutObj = getRoomLayout(selectedSala);
+    const layoutObj = getActiveSalaLayout(selectedSala);
 
     return Object.entries(roomIssues)
       .map(([key, val]) => {
@@ -772,15 +1031,20 @@ export default function ControlSalasScreen() {
   };
 
   const selectedSalaIssues = getSelectedSalaIssues();
-  const selectedSalaCapacity = SALAS_INFO.find((s) => s.id === selectedSala)?.capacity || 0;
+  const activeLayout = getActiveSalaLayout(selectedSala);
+  const selectedSalaCapacity = activeLayout.rows.reduce((acc, row) => {
+    return acc + activeLayout.seats[row].filter((s) => s.type === "seat").length;
+  }, 0);
 
-  // Seating grid rendering logic for active Sala
+  // Seating grid rendering logic for active Sala (WYSIWYG layout compatible)
   const renderSeatingGrid = () => {
     const salaKey = String(selectedSala);
-    const layout = getRoomLayout(selectedSala);
+    
+    // In editor mode, we render the draft layout on screen. Otherwise, the saved layout.
+    const layout = isLayoutEditorMode ? getDraftLayout() : activeLayout;
 
     const renderSeat = (seat: SeatInfo, index: number) => {
-      if (seat.type === "empty") {
+      if (seat.type === "empty" && !isLayoutEditorMode) {
         return <View key={`empty-${seat.row}-${index}`} style={styles.seatEmpty} />;
       }
 
@@ -788,6 +1052,9 @@ export default function ControlSalasScreen() {
       const hasIssue = !!report.issues[salaKey]?.[seatKey];
       const isSelected = editingSeat?.row === seat.row && editingSeat?.num === seat.number;
       const isDbox = seat.isDbox;
+
+      // In editor mode, we show empty spaces as light dashed boxes so users can see/paint them!
+      const isEditorEmpty = isLayoutEditorMode && seat.type === "empty";
 
       return (
         <TouchableOpacity
@@ -797,26 +1064,52 @@ export default function ControlSalasScreen() {
             isDbox && styles.seatDbox,
             hasIssue && styles.seatDamaged,
             isSelected && styles.seatSelected,
+            isEditorEmpty && styles.seatEditorEmpty,
           ]}
           onPress={() => handleSeatPress(seat.row, seat.number, isDbox)}
           activeOpacity={0.8}
         >
-          <Text
-            style={[
-              styles.seatText,
-              isDbox && styles.seatTextDbox,
-              hasIssue && styles.seatTextDamaged,
-            ]}
-          >
-            {seat.number}
-          </Text>
+          {isEditorEmpty ? (
+            <MaterialCommunityIcons name="plus" size={10} color={COLORS.muted} />
+          ) : (
+            <Text
+              style={[
+                styles.seatText,
+                isDbox && styles.seatTextDbox,
+                hasIssue && styles.seatTextDamaged,
+              ]}
+            >
+              {seat.number}
+            </Text>
+          )}
         </TouchableOpacity>
       );
     };
 
     return (
       <View style={styles.mapCard}>
-        <Text style={styles.mapTitle}>Mapa Interactivo de Sala {selectedSala}</Text>
+        <View style={styles.mapHeaderRow}>
+          <Text style={styles.mapTitle}>
+            {isLayoutEditorMode ? "⚙️ Diseñador de Sala en Vivo" : "Mapa de Sala"}
+          </Text>
+          <TouchableOpacity
+            style={[styles.editorModeBtn, isLayoutEditorMode && styles.editorModeBtnActive]}
+            onPress={isLayoutEditorMode ? handleCancelLayoutEdits : handleStartLayoutEditor}
+            activeOpacity={0.8}
+          >
+            <MaterialCommunityIcons
+              name={isLayoutEditorMode ? "close" : "pencil-ruler"}
+              size={16}
+              color={isLayoutEditorMode ? COLORS.danger : COLORS.primary}
+              style={{ marginRight: 6 }}
+            />
+            <Text style={[styles.editorModeBtnText, isLayoutEditorMode && { color: COLORS.danger }]}>
+              {isLayoutEditorMode ? "Salir del Editor" : "Editar Plano"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {isLayoutEditorMode && renderLayoutEditorPanel()}
 
         {/* Screen layout */}
         <View style={styles.screenIndicatorContainer}>
@@ -833,7 +1126,8 @@ export default function ControlSalasScreen() {
         >
           <View style={styles.gridContainer}>
             {layout.rows.map((rowName) => {
-              const rowSeats = [...layout.seats[rowName]].reverse();
+              const rowSeats = layout.seats[rowName];
+              if (!rowSeats) return null;
 
               // Slice row seats dynamically based on aisles definition
               const sections: SeatInfo[][] = [];
@@ -879,30 +1173,190 @@ export default function ControlSalasScreen() {
           </View>
           <View style={styles.legendItem}>
             <View style={styles.legendDotDbox} />
-            <Text style={styles.legendText}>Butaca D-BOX</Text>
+            <Text style={styles.legendText}>D-BOX</Text>
           </View>
-          <View style={styles.legendItem}>
-            <View style={styles.legendDotDamaged} />
-            <Text style={styles.legendText}>Con daño reportado</Text>
-          </View>
-          <View style={styles.legendItem}>
-            <View style={styles.legendDotSelected} />
-            <Text style={styles.legendText}>Seleccionado</Text>
-          </View>
+          {isLayoutEditorMode ? (
+            <View style={styles.legendItem}>
+              <View style={styles.legendDotEditorEmpty} />
+              <Text style={styles.legendText}>Espacio Vacío</Text>
+            </View>
+          ) : (
+            <View style={styles.legendItem}>
+              <View style={styles.legendDotDamaged} />
+              <Text style={styles.legendText}>Daño reportado</Text>
+            </View>
+          )}
         </View>
 
         <Text style={styles.mapHint}>
-          Hacé clic en cualquier butaca para informar un daño o ver detalles.
+          {isLayoutEditorMode
+            ? "Seleccioná una herramienta arriba y pintá las butacas haciendo clic en ellas."
+            : "Hacé clic en cualquier butaca para informar un daño o ver detalles."}
         </Text>
       </View>
     );
   };
 
+  // Render WYSIWYG parameters editing panel
+  const renderLayoutEditorPanel = () => {
+    return (
+      <View style={styles.editorPanelCard}>
+        <Text style={styles.editorPanelSectionTitle}>Herramientas de Configuración:</Text>
+        <View style={styles.editorFormGrid}>
+          <View style={styles.editorFormRow}>
+            <View style={styles.editorFormCol}>
+              <Text style={styles.editorLabel}>Letras de Fila (Fila superior a inferior, separadas por coma)</Text>
+              <TextInput
+                value={editorRowsInput}
+                onChangeText={setEditorRowsInput}
+                style={styles.editorTextInput}
+                placeholder="Ej. A,B,C,D,E,F"
+                placeholderTextColor={COLORS.muted}
+                autoCapitalize="characters"
+              />
+            </View>
+          </View>
+
+          <View style={styles.editorFormRow}>
+            <View style={styles.editorFormCol}>
+              <Text style={styles.editorLabel}>Cantidad Máxima Columnas</Text>
+              <TextInput
+                value={editorMaxColInput}
+                onChangeText={setEditorMaxColInput}
+                style={styles.editorTextInput}
+                placeholder="Ej. 21"
+                placeholderTextColor={COLORS.muted}
+                keyboardType="number-pad"
+              />
+            </View>
+            <View style={styles.editorFormCol}>
+              <Text style={styles.editorLabel}>Pasillos (después de columna, separados por coma)</Text>
+              <TextInput
+                value={editorAislesInput}
+                onChangeText={setEditorAislesInput}
+                style={styles.editorTextInput}
+                placeholder="Ej. 4,17"
+                placeholderTextColor={COLORS.muted}
+              />
+            </View>
+          </View>
+        </View>
+
+        <Text style={styles.editorPanelSectionTitle}>Pincel para el Mapa:</Text>
+        <View style={styles.paintToolsRow}>
+          <TouchableOpacity
+            style={[styles.paintToolBtn, paintTool === "seat" && styles.paintToolBtnActive]}
+            onPress={() => setPaintTool("seat")}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.legendDotNormal, { backgroundColor: COLORS.border }]} />
+            <Text style={[styles.paintToolText, paintTool === "seat" && styles.paintToolTextActive]}>
+              Pintar Butaca Normal
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.paintToolBtn, paintTool === "dbox" && styles.paintToolBtnActive]}
+            onPress={() => setPaintTool("dbox")}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.legendDotNormal, { backgroundColor: COLORS.betaBorder }]} />
+            <Text style={[styles.paintToolText, paintTool === "dbox" && styles.paintToolTextActive]}>
+              Pintar Butaca D-BOX
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.paintToolBtn, paintTool === "empty" && styles.paintToolBtnActive]}
+            onPress={() => setPaintTool("empty")}
+            activeOpacity={0.8}
+          >
+            <View style={styles.legendDotEditorEmpty} />
+            <Text style={[styles.paintToolText, paintTool === "empty" && styles.paintToolTextActive]}>
+              Pintar Vacío (Espacio)
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.editorBtnRow}>
+          <TouchableOpacity style={styles.btnLoadTemplate} onPress={handleLoadDefaultAbastoTemplate} activeOpacity={0.8}>
+            <MaterialCommunityIcons name="history" size={16} color={COLORS.muted} />
+            <Text style={styles.btnLoadTemplateText}>Cargar default de Abasto</Text>
+          </TouchableOpacity>
+
+          <View style={styles.editorMainActions}>
+            <TouchableOpacity style={styles.btnEditorCancel} onPress={handleCancelLayoutEdits} activeOpacity={0.7}>
+              <Text style={styles.btnEditorCancelText}>Descartar</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.btnEditorSave} onPress={handleSaveLayoutEdits} activeOpacity={0.85}>
+              <MaterialCommunityIcons name="content-save" size={16} color="#FFF" style={{ marginRight: 4 }} />
+              <Text style={styles.btnEditorSaveText}>Guardar Plano</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    );
+  };
+
+  // Convert current input editor parameters to a preview layout in real-time
+  const getDraftLayout = (): RoomLayout => {
+    const rows = editorRowsInput
+      .split(",")
+      .map((r) => r.trim().toUpperCase())
+      .filter(Boolean);
+    const maxCol = parseInt(editorMaxColInput, 10) || 1;
+    const aisles = editorAislesInput
+      .split(",")
+      .map((a) => parseInt(a.trim(), 10))
+      .filter((num) => !isNaN(num));
+
+    const seats: { [row: string]: SeatInfo[] } = {};
+    for (const row of rows) {
+      const rowSeats: SeatInfo[] = [];
+      for (let c = 1; c <= maxCol; c++) {
+        const key = `${row}-${c}`;
+        const exception = editorCustomSeats[key];
+        
+        let type: "seat" | "empty" = "seat";
+        let isDbox = false;
+
+        if (exception === "empty") {
+          type = "empty";
+        } else if (exception === "dbox") {
+          isDbox = true;
+        }
+
+        rowSeats.push({
+          row,
+          number: c,
+          type,
+          isDbox,
+        });
+      }
+      seats[row] = rowSeats;
+    }
+
+    return { rows, maxCol, aisles, seats };
+  };
+
   return (
     <View style={styles.container}>
-      {/* Rooms Horizontal Tab Selector */}
+      {/* Rooms Tab Selector */}
       <View style={styles.tabsCard}>
-        <Text style={styles.cardHeaderTitle}>Control de Estado Físico de Salas</Text>
+        <View style={styles.cardHeaderRow}>
+          <Text style={styles.cardHeaderTitle}>Control de Estado Físico de Salas</Text>
+          
+          <TouchableOpacity
+            style={styles.adminMigrationBtn}
+            onPress={handleMigrateAllDefaultLayouts}
+            activeOpacity={0.8}
+          >
+            <MaterialCommunityIcons name="database-import" size={16} color={COLORS.primary} style={{ marginRight: 4 }} />
+            <Text style={styles.adminMigrationBtnText}>Guardar Plantillas Abasto en BD</Text>
+          </TouchableOpacity>
+        </View>
+
         <View style={styles.roomsGridContainer}>
           {SALAS_INFO.map((sala) => {
             const isSel = selectedSala === sala.id;
@@ -913,7 +1367,10 @@ export default function ControlSalasScreen() {
               <TouchableOpacity
                 key={sala.id}
                 style={[styles.salaTabBtn, isSel && styles.salaTabBtnActive]}
-                onPress={() => setSelectedSala(sala.id)}
+                onPress={() => {
+                  setSelectedSala(sala.id);
+                  setIsLayoutEditorMode(false); // reset layout editor on room toggle
+                }}
                 activeOpacity={0.7}
               >
                 <Text style={[styles.salaTabText, isSel && styles.salaTabTextActive]}>
@@ -957,7 +1414,7 @@ export default function ControlSalasScreen() {
             {saving && (
               <View style={styles.syncingCard}>
                 <ActivityIndicator size="small" color={COLORS.primary} style={{ marginRight: 6 }} />
-                <Text style={styles.syncingText}>Guardando...</Text>
+                <Text style={styles.syncingText}>Sincronizando...</Text>
               </View>
             )}
           </View>
@@ -1168,11 +1625,33 @@ const styles = StyleSheet.create({
     marginBottom: THEME.spacing.md,
     ...THEME.shadow.soft,
   },
+  cardHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: THEME.spacing.sm,
+    flexWrap: "wrap",
+    gap: 8,
+  },
   cardHeaderTitle: {
     fontSize: THEME.fontSize.md,
     fontWeight: "700",
     color: COLORS.text,
-    marginBottom: THEME.spacing.sm,
+  },
+  adminMigrationBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.primarySoft,
+    borderColor: "rgba(137, 4, 4, 0.2)",
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+  },
+  adminMigrationBtnText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: COLORS.primary,
   },
   roomsGridContainer: {
     flexDirection: "row",
@@ -1278,11 +1757,39 @@ const styles = StyleSheet.create({
     alignItems: "center",
     ...THEME.shadow.soft,
   },
+  mapHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    width: "100%",
+    marginBottom: THEME.spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    paddingBottom: 8,
+  },
   mapTitle: {
     fontSize: THEME.fontSize.md,
     fontWeight: "700",
     color: COLORS.text,
-    marginBottom: THEME.spacing.lg,
+  },
+  editorModeBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: THEME.radius.sm,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.bg,
+  },
+  editorModeBtnActive: {
+    backgroundColor: COLORS.dangerSoft,
+    borderColor: COLORS.danger,
+  },
+  editorModeBtnText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: COLORS.primary,
   },
   screenIndicatorContainer: {
     width: "100%",
@@ -1304,13 +1811,13 @@ const styles = StyleSheet.create({
     color: COLORS.muted,
     letterSpacing: 2,
   },
-  mapScrollView: {
-    width: "100%",
-  },
   horizontalMapScroll: {
     paddingVertical: 10,
     minWidth: "100%",
     justifyContent: "center",
+  },
+  mapScrollView: {
+    width: "100%",
   },
   gridContainer: {
     alignItems: "center",
@@ -1363,6 +1870,12 @@ const styles = StyleSheet.create({
     width: 19,
     height: 19,
   },
+  seatEditorEmpty: {
+    backgroundColor: "transparent",
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: COLORS.border,
+  },
   seatText: {
     fontSize: 8,
     fontWeight: "600",
@@ -1413,6 +1926,14 @@ const styles = StyleSheet.create({
     borderColor: "#EAB308",
     backgroundColor: COLORS.border,
   },
+  legendDotEditorEmpty: {
+    width: 12,
+    height: 12,
+    borderRadius: 2,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: COLORS.muted,
+  },
   legendText: {
     fontSize: 11,
     color: COLORS.muted,
@@ -1424,6 +1945,130 @@ const styles = StyleSheet.create({
     color: COLORS.muted,
     marginTop: THEME.spacing.md,
     textAlign: "center",
+  },
+
+  // WYSIWYG Layout Editor Panel styles
+  editorPanelCard: {
+    width: "100%",
+    backgroundColor: COLORS.bg,
+    borderRadius: THEME.radius.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: THEME.spacing.md,
+    marginBottom: THEME.spacing.lg,
+  },
+  editorPanelSectionTitle: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: COLORS.text,
+    marginBottom: 8,
+  },
+  editorFormGrid: {
+    gap: 8,
+    marginBottom: 12,
+  },
+  editorFormRow: {
+    flexDirection: "row",
+    gap: 12,
+    flexWrap: "wrap",
+  },
+  editorFormCol: {
+    flex: 1,
+    minWidth: 150,
+  },
+  editorLabel: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: COLORS.muted,
+    marginBottom: 4,
+  },
+  editorTextInput: {
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    color: COLORS.text,
+    fontSize: 12,
+  },
+  paintToolsRow: {
+    flexDirection: "row",
+    gap: 8,
+    flexWrap: "wrap",
+    marginBottom: 16,
+  },
+  paintToolBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.card,
+  },
+  paintToolBtnActive: {
+    backgroundColor: COLORS.primarySoft,
+    borderColor: COLORS.primary,
+  },
+  paintToolText: {
+    fontSize: 11,
+    color: COLORS.muted,
+    fontWeight: "600",
+  },
+  paintToolTextActive: {
+    color: COLORS.primary,
+    fontWeight: "700",
+  },
+  editorBtnRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    paddingTop: 12,
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  btnLoadTemplate: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  btnLoadTemplateText: {
+    fontSize: 11,
+    color: COLORS.muted,
+    fontWeight: "600",
+  },
+  editorMainActions: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  btnEditorCancel: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 4,
+    backgroundColor: COLORS.border,
+  },
+  btnEditorCancelText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: COLORS.text,
+  },
+  btnEditorSave: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 4,
+    backgroundColor: COLORS.primary,
+  },
+  btnEditorSaveText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#FFF",
   },
 
   // Reported list Card styling
