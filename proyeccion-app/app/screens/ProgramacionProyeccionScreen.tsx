@@ -60,7 +60,7 @@ const DAY_CYCLE_INDEX: Record<WeekdayKey, number> = {
 const MINUTE_WIDTH = 2; // px per minute
 const HOUR_WIDTH = 60 * MINUTE_WIDTH; // 120px per hour
 const ROW_HEIGHT = 54; // height of each room row (perfect middle-ground)
-const HEADER_HEIGHT = 54; // height of timeline hours header (matched to ROW_HEIGHT for alignment)
+const HEADER_HEIGHT = 34; // height of timeline hours header
 const ROOM_COL_WIDTH = 72; // width of rooms left column
 const SCROLLBAR_HEIGHT = Platform.OS === "web" ? 16 : 0;
 
@@ -534,21 +534,11 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
               {/* Corner intersection block */}
               <View style={[styles.cornerHeaderCell, { width: currentRoomColWidth }]}>
                 {isCollapsed ? (
-                  <View style={styles.cornerCollapsedContent}>
-                    <MaterialCommunityIcons name="theater" size={12} color={COLORS.textSoft} />
-                    <MaterialCommunityIcons name="clock-outline" size={12} color={COLORS.textSoft} style={{ marginTop: 2 }} />
-                  </View>
+                  <MaterialCommunityIcons name="theater" size={14} color={COLORS.textSoft} />
                 ) : (
-                  <View style={styles.cornerExpandedContent}>
-                    <View style={styles.cornerRow}>
-                      <MaterialCommunityIcons name="clock-outline" size={12} color={COLORS.textSoft} />
-                      <Text style={styles.cornerText}>HORA</Text>
-                    </View>
-                    <View style={styles.cornerLine} />
-                    <View style={styles.cornerRow}>
-                      <MaterialCommunityIcons name="theater" size={12} color={COLORS.textSoft} />
-                      <Text style={styles.cornerText}>SALAS</Text>
-                    </View>
+                  <View style={styles.cornerContent}>
+                    <MaterialCommunityIcons name="theater" size={14} color={COLORS.textSoft} />
+                    <Text style={styles.cornerText}>Salas</Text>
                   </View>
                 )}
               </View>
@@ -734,15 +724,15 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                   })}
                 </View>
 
-                {/* Cinema Opening Line (zIndex: 10, sits on top of cards, starts from top of hours) */}
+                {/* Cinema Opening Line (zIndex: 10, sits on top of cards, starts from top of Sala 1) */}
                 {openingLeft !== null && (
                   <View
                     style={[
                       styles.openingLine,
                       {
                         left: openingLeft,
-                        height: HEADER_HEIGHT + rooms.length * ROW_HEIGHT,
-                        top: 0,
+                        height: rooms.length * ROW_HEIGHT,
+                        top: HEADER_HEIGHT,
                       },
                     ]}
                   >
@@ -754,15 +744,15 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                   </View>
                 )}
 
-                {/* Current Time Line (zIndex: 11, sits on top of cards, starts from top of hours) */}
+                {/* Current Time Line (zIndex: 11, sits on top of cards, starts from top of Sala 1) */}
                 {showCurrentTimeLine && (
                   <View
                     style={[
                       styles.currentTimeLine,
                       {
                         left: currentTimeLeft,
-                        height: HEADER_HEIGHT + rooms.length * ROW_HEIGHT,
-                        top: 0,
+                        height: rooms.length * ROW_HEIGHT,
+                        top: HEADER_HEIGHT,
                       },
                     ]}
                   >
@@ -1020,10 +1010,9 @@ const styles = StyleSheet.create({
   },
   hourHeaderCell: {
     height: HEADER_HEIGHT,
-    justifyContent: "flex-end",
+    justifyContent: "center",
     alignItems: "flex-start",
     paddingLeft: THEME.spacing.xs,
-    paddingBottom: 6,
   },
   hourHeaderText: {
     fontSize: 10.5,
@@ -1100,34 +1089,15 @@ const styles = StyleSheet.create({
     fontSize: 9.5,
     fontWeight: "bold",
   },
-  cornerCollapsedContent: {
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  cornerExpandedContent: {
-    flex: 1,
-    width: "100%",
-    paddingVertical: 4,
-    paddingHorizontal: 6,
-    justifyContent: "space-between",
-    alignItems: "stretch",
-  },
-  cornerRow: {
+  cornerContent: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
   },
   cornerText: {
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: "bold",
     color: COLORS.textSoft,
-    letterSpacing: 0.5,
-  },
-  cornerLine: {
-    height: 1,
-    backgroundColor: COLORS.border,
-    marginVertical: 2,
-    opacity: 0.6,
   },
   timelineRow: {
     position: "absolute",
