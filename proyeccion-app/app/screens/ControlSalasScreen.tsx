@@ -825,7 +825,12 @@ export default function ControlSalasScreen() {
         </View>
 
         {/* Scroll containers for layout safety on small mobile widths */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={true} contentContainerStyle={styles.horizontalMapScroll}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={true}
+          style={styles.mapScrollView}
+          contentContainerStyle={styles.horizontalMapScroll}
+        >
           <View style={styles.gridContainer}>
             {layout.rows.map((rowName) => {
               const rowSeats = layout.seats[rowName];
@@ -1299,8 +1304,13 @@ const styles = StyleSheet.create({
     color: COLORS.muted,
     letterSpacing: 2,
   },
+  mapScrollView: {
+    width: "100%",
+  },
   horizontalMapScroll: {
     paddingVertical: 10,
+    minWidth: "100%",
+    justifyContent: "center",
   },
   gridContainer: {
     alignItems: "center",
