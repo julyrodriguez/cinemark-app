@@ -1,6 +1,6 @@
 // app/screens/ProgramacionProyeccionScreen.tsx
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   ActivityIndicator,
   Modal,
@@ -47,9 +47,9 @@ const DAYS_OF_WEEK: { key: WeekdayKey; label: string }[] = [
 
 const MINUTE_WIDTH = 2; // px per minute
 const HOUR_WIDTH = 60 * MINUTE_WIDTH; // 120px per hour
-const ROW_HEIGHT = 72; // height of each room row
-const HEADER_HEIGHT = 44; // height of timeline hours header
-const ROOM_COL_WIDTH = 80; // width of rooms left column
+const ROW_HEIGHT = 48; // height of each room row (compact)
+const HEADER_HEIGHT = 32; // height of timeline hours header (compact)
+const ROOM_COL_WIDTH = 70; // width of rooms left column (compact)
 
 // Helper to convert time "HH:MM" to minutes from midnight
 function timeToMinutes(timeStr: string): number {
@@ -93,6 +93,8 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
   const [selectedDay, setSelectedDay] = useState<WeekdayKey>("jueves");
   const [selectedShow, setSelectedShow] = useState<DailyShow | null>(null);
 
+  const timelineScrollRef = useRef<any>(null);
+
   // Subscribe to weekly programming saved in database under "Servicios Programacion"
   useEffect(() => {
     if (!cineId) {
@@ -124,6 +126,65 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
     return () => unsubscribe();
   }, [cineId]);
+
+  // Mouse drag-to-scroll on web
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    // Delay slightly to ensure scrollNode is rendered
+    const timer = setTimeout(() => {
+      const scrollNode = timelineScrollRef.current?.getScrollableNode
+        ? timelineScrollRef.current.getScrollableNode()
+        : timelineScrollRef.current;
+
+      if (!scrollNode) return;
+
+      let isDown = false;
+      let startX: number;
+      let scrollLeft: number;
+
+      const onMouseDown = (e: MouseEvent) => {
+        isDown = true;
+        scrollNode.style.cursor = "grabbing";
+        startX = e.pageX - scrollNode.offsetLeft;
+        scrollLeft = scrollNode.scrollLeft;
+      };
+
+      const onMouseLeave = () => {
+        isDown = false;
+        scrollNode.style.cursor = "grab";
+      };
+
+      const onMouseUp = () => {
+        isDown = false;
+        scrollNode.style.cursor = "grab";
+      };
+
+      const onMouseMove = (e: MouseEvent) => {
+        if (!isDown) return;
+        e.preventDefault();
+        const x = e.pageX - scrollNode.offsetLeft;
+        const walk = (x - startX) * 1.5;
+        scrollNode.scrollLeft = scrollLeft - walk;
+      };
+
+      scrollNode.style.cursor = "grab";
+      scrollNode.style.userSelect = "none";
+
+      scrollNode.addEventListener("mousedown", onMouseDown);
+      scrollNode.addEventListener("mouseleave", onMouseLeave);
+      scrollNode.addEventListener("mouseup", onMouseUp);
+      scrollNode.addEventListener("mousemove", onMouseMove);
+
+      return () => {
+        scrollNode.removeEventListener("mousedown", onMouseDown);
+        scrollNode.removeEventListener("mouseleave", onMouseLeave);
+        scrollNode.removeEventListener("mouseup", onMouseUp);
+        scrollNode.removeEventListener("mousemove", onMouseMove);
+      };
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, [loading, selectedDay]);
 
   // Extract all unique room numbers
   const rooms = useMemo(() => {
@@ -230,7 +291,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
     return {
       left: (tStart - timelineStartMins) * MINUTE_WIDTH,
-      width: Math.max(duration * MINUTE_WIDTH, 50),
+      width: Math.max(duration * MINUTE_WIDTH, 40),
     };
   };
 
@@ -292,7 +353,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
         <View style={styles.headerInfo}>
           <Text style={styles.headerTitle}>{formattedWeekLabel}</Text>
           <Text style={styles.headerSubtitle}>
-            Línea de tiempo dinámica adaptada a las funciones de cada día (6:00 AM a 6:00 AM)
+            La programación se obtiene a partir del reporte cargado y guardado en la sección de Servicios &gt; Programación.
           </Text>
         </View>
       </View>
@@ -336,6 +397,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
             {/* Scrollable Timeline */}
             <ScrollView
+              ref={timelineScrollRef}
               horizontal
               bounces={false}
               showsHorizontalScrollIndicator={true}
@@ -392,7 +454,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                         {
                           left: openingLeft,
                           height: rooms.length * ROW_HEIGHT,
-                          top: 0,
+                          top: HEADER_HEIGHT,
                         },
                       ]}
                     >
@@ -422,7 +484,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                           const { left, width } = getPositionAndWidth(show);
                           const movieAccentColor = getMovieColor(show.pelicula);
                           const is3D = /3d/i.test(show.pelicula);
-                          const showAds = width > 75; // show ads prefix block if card is wide enough
+                          const showAds = width > 50; // show ads prefix block if card is wide enough
 
                           return (
                             <TouchableOpacity
@@ -460,7 +522,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                               )}
 
                               {/* Card Content */}
-                              <View style={[styles.movieCardContent, showAds && { paddingLeft: 12 * MINUTE_WIDTH + 6 }]}>
+                              <View style={[styles.movieCardContent, showAds && { paddingLeft: 12 * MINUTE_WIDTH + 4 }]}>
                                 <Text
                                   style={[styles.movieCardTitle, is3D && { color: "#FFFFFF" }]}
                                   numberOfLines={1}
@@ -622,19 +684,25 @@ const styles = StyleSheet.create({
     paddingBottom: THEME.spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
+    alignItems: "center",
+    justifyContent: "center",
   },
   headerInfo: {
     flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
   },
   headerTitle: {
-    fontSize: THEME.fontSize.xl,
+    fontSize: 16,
     fontWeight: "900",
     color: COLORS.text,
+    textAlign: "center",
   },
   headerSubtitle: {
-    fontSize: THEME.fontSize.sm,
+    fontSize: 11,
     color: COLORS.textSoft,
     marginTop: 2,
+    textAlign: "center",
   },
   tabBarContainer: {
     borderBottomWidth: 1,
@@ -643,12 +711,14 @@ const styles = StyleSheet.create({
   },
   tabBar: {
     paddingHorizontal: THEME.spacing.lg,
-    paddingVertical: THEME.spacing.sm,
+    paddingVertical: 6,
     gap: THEME.spacing.sm,
+    justifyContent: "center",
+    flexGrow: 1,
   },
   tabButton: {
-    paddingHorizontal: THEME.spacing.md,
-    paddingVertical: THEME.spacing.sm,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderRadius: THEME.radius.full,
     backgroundColor: Platform.OS === "web" ? "var(--bg, #F1F5F9)" : "#F1F5F9",
     borderWidth: 1,
@@ -659,7 +729,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.primary,
   },
   tabButtonText: {
-    fontSize: THEME.fontSize.sm,
+    fontSize: 12,
     fontWeight: "bold",
     color: COLORS.text,
   },
@@ -703,7 +773,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.card,
   },
   roomLabelText: {
-    fontSize: THEME.fontSize.md,
+    fontSize: 12,
     fontWeight: "bold",
     color: COLORS.text,
   },
@@ -724,7 +794,7 @@ const styles = StyleSheet.create({
     paddingLeft: THEME.spacing.xs,
   },
   hourHeaderText: {
-    fontSize: THEME.fontSize.xs,
+    fontSize: 10,
     fontWeight: "bold",
     color: COLORS.textSoft,
   },
@@ -745,12 +815,12 @@ const styles = StyleSheet.create({
   },
   openingLineBadge: {
     position: "absolute",
-    top: 4,
+    top: 2,
     backgroundColor: COLORS.primary,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
     borderRadius: 4,
-    width: 104,
+    width: 92,
     alignItems: "center",
     ...Platform.select({
       web: {
@@ -760,7 +830,7 @@ const styles = StyleSheet.create({
   },
   openingLineBadgeText: {
     color: "#FFFFFF",
-    fontSize: 9,
+    fontSize: 8,
     fontWeight: "bold",
   },
   timelineRow: {
@@ -774,7 +844,7 @@ const styles = StyleSheet.create({
   },
   movieCard: {
     position: "absolute",
-    height: ROW_HEIGHT - 16,
+    height: ROW_HEIGHT - 10, // 38px height (vertical spacing)
     borderWidth: 1,
     borderColor: COLORS.border,
     borderLeftWidth: 4,
@@ -803,12 +873,12 @@ const styles = StyleSheet.create({
   },
   movieCardContent: {
     flex: 1,
-    paddingHorizontal: THEME.spacing.sm,
-    paddingVertical: THEME.spacing.xs,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
     justifyContent: "space-between",
   },
   movieCardTitle: {
-    fontSize: THEME.fontSize.xs + 1,
+    fontSize: 10,
     fontWeight: "bold",
     color: COLORS.text,
   },
@@ -818,20 +888,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   movieCardTime: {
-    fontSize: THEME.fontSize.xs - 1,
+    fontSize: 8,
     color: COLORS.textSoft,
     fontWeight: "500",
   },
   ratingBadge: {
     backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F1F5F9)" : "#F1F5F9",
     paddingHorizontal: THEME.spacing.xs,
-    paddingVertical: 1,
+    paddingVertical: 0,
     borderRadius: 4,
     borderWidth: 0.5,
     borderColor: COLORS.border,
   },
   ratingBadgeText: {
-    fontSize: 9,
+    fontSize: 8,
     fontWeight: "bold",
     color: COLORS.muted,
   },
