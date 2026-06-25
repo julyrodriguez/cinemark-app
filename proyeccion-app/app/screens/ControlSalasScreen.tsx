@@ -335,16 +335,16 @@ export default function ControlSalasScreen() {
     return () => unsubscribers.forEach((unsub) => unsub());
   }, [cineId]);
 
-  // Proactive Auto-Migration: If cinema is "abasto" and there are no custom layouts in Firestore, upload the default Abasto layouts automatically.
+  // Proactive Auto-Migration: If there are no custom layouts in Firestore for the active cinema, upload the default layouts automatically.
   useEffect(() => {
-    if (!cineId || cineId !== "abasto") return;
+    if (!cineId) return;
 
     const checkAndMigrate = async () => {
       try {
         const docRef = doc(db, CINES_COLLECTION, cineId, "salas_layouts", "1");
         const docSnap = await getDoc(docRef);
         if (!docSnap.exists()) {
-          console.log("Auto-migrating default layouts for Abasto...");
+          console.log(`Auto-migrating default layouts for ${cineId}...`);
           for (let sId = 1; sId <= 12; sId++) {
             const schema = convertLayoutToFirestoreSchema(sId);
             const ref = doc(db, CINES_COLLECTION, cineId, "salas_layouts", String(sId));
@@ -560,15 +560,31 @@ export default function ControlSalasScreen() {
 
   // Toggle seat types on click during layout editor mode
   const handleGridSeatClickInEditorMode = (row: string, colNum: number) => {
-    const key = `${row}-${colNum}`;
-    const newCustomSeats = { ...editorCustomSeats };
+    const currentMaxCol = parseInt(editorMaxColInput, 10) || 1;
+    if (colNum > currentMaxCol) {
+      setEditorMaxColInput(String(colNum));
+    }
 
-    if (paintTool === "empty") {
-      newCustomSeats[key] = "empty";
-    } else if (paintTool === "dbox") {
-      newCustomSeats[key] = "dbox";
+    const newCustomSeats = { ...editorCustomSeats };
+    const key = `${row}-${colNum}`;
+    const current = newCustomSeats[key];
+
+    // If it is the new expanded virtual column, paint it with the current paintTool
+    if (colNum > currentMaxCol) {
+      if (paintTool === "seat") {
+        delete newCustomSeats[key];
+      } else {
+        newCustomSeats[key] = paintTool;
+      }
     } else {
-      delete newCustomSeats[key]; // returns to normal seat
+      // Toggle logic for existing seats
+      if (!current) {
+        newCustomSeats[key] = "empty";
+      } else if (current === "empty") {
+        newCustomSeats[key] = "dbox";
+      } else {
+        delete newCustomSeats[key];
+      }
     }
     setEditorCustomSeats(newCustomSeats);
   };
@@ -667,7 +683,7 @@ export default function ControlSalasScreen() {
     } else {
       Alert.alert(
         "Cargar planos por defecto",
-        `¿Querés guardar los 12 planos por defecto de Abasto en la base de datos de ${cineLabel}?`,
+        `¿Querés guardar los 12 planos de salas por defecto en la base de datos de ${cineLabel}?`,
         [
           { text: "Cancelar", style: "cancel" },
           { text: "Guardar Todo", onPress: executeMigration },
@@ -1327,7 +1343,7 @@ export default function ControlSalasScreen() {
         <View style={styles.editorBtnRow}>
           <TouchableOpacity style={styles.btnLoadTemplate} onPress={handleLoadDefaultAbastoTemplate} activeOpacity={0.8}>
             <MaterialCommunityIcons name="history" size={16} color={COLORS.muted} />
-            <Text style={styles.btnLoadTemplateText}>Cargar default de Abasto</Text>
+            <Text style={styles.btnLoadTemplateText}>Cargar Plantilla por Defecto</Text>
           </TouchableOpacity>
 
           <View style={styles.editorMainActions}>
@@ -1358,22 +1374,26 @@ export default function ControlSalasScreen() {
       .filter((num) => !isNaN(num));
 
     const seats: { [row: string]: SeatInfo[] } = {};
+    const colsToRender = maxCol + 1; // Always show one extra column on the right for expanding in editor mode!
+
     for (const row of rows) {
       const rowSeats: SeatInfo[] = [];
-      for (let c = 1; c <= maxCol; c++) {
+      for (let c = 1; c <= colsToRender; c++) {
         const key = `${row}-${c}`;
         const exception = editorCustomSeats[key];
         
         let type: "seat" | "empty" = "seat";
         let isDbox = false;
 
-        if (exception === "empty") {
+        if (c > maxCol) {
+          type = "empty";
+        } else if (exception === "empty") {
           type = "empty";
         } else if (exception === "dbox") {
           isDbox = true;
         }
 
-        const seatNumber = editorInvertSeats ? (maxCol - c + 1) : c;
+        const seatNumber = editorInvertSeats ? (colsToRender - c + 1) : c;
 
         rowSeats.push({
           row,
@@ -1386,7 +1406,7 @@ export default function ControlSalasScreen() {
       seats[row] = rowSeats;
     }
 
-    return { rows, maxCol, aisles, seats, invertSeats: editorInvertSeats };
+    return { rows, maxCol: colsToRender, aisles, seats, invertSeats: editorInvertSeats };
   };
 
   return (
@@ -1403,7 +1423,7 @@ export default function ControlSalasScreen() {
               activeOpacity={0.8}
             >
               <MaterialCommunityIcons name="database-import" size={16} color={COLORS.primary} style={{ marginRight: 4 }} />
-              <Text style={styles.adminMigrationBtnText}>Guardar Plantillas Abasto en BD</Text>
+              <Text style={styles.adminMigrationBtnText}>Guardar Plantillas por Defecto</Text>
             </TouchableOpacity>
           )}
         </View>
