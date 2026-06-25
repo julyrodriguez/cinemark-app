@@ -44,9 +44,10 @@ import ChequeoCopiasScreen from "./screens/ChequeoCopiasScreen";
 import LamparasScreen from "./screens/LamparasScreen";
 import CierreMesScreen from "./screens/CierreMesScreen";
 import MantenimientosScreen from "./screens/MantenimientosScreen";
+import ProgramacionProyeccionScreen from "./screens/ProgramacionProyeccionScreen";
 
 type MainTab = "CALENDARIO" | "EVENTOS" | "PROYECCIÓN" | "SERVICIOS" | "COORDINADORES";
-type ProyeccionTab = "RMA" | "MANTENIMIENTOS" | "CREDITOS" | "DCP" | "TRAILERS_SEMANALES" | "CHEQUEO_COPIAS" | "CONTROL_SEMANAL" | "LAMPARAS" | "CIERRE_MES";
+type ProyeccionTab = "PROGRAMACION_PROY" | "RMA" | "MANTENIMIENTOS" | "CREDITOS" | "DCP" | "TRAILERS_SEMANALES" | "CHEQUEO_COPIAS" | "CONTROL_SEMANAL" | "LAMPARAS" | "CIERRE_MES";
 type MarketingSubTab = "MKT" | "PROGRAMACION";
 type CoordinadoresSubTab = "QUIMICOS" | "LENTES_3D" | "PROXIMAMENTE";
 
@@ -60,6 +61,7 @@ const MAIN_TAB_META = {
 
 const SUB_TABS = {
   PROYECCIÓN: [
+    { key: "PROGRAMACION_PROY", label: "Programación", icon: "calendar-clock" },
     { key: "LAMPARAS", label: "Lámparas", icon: "lightbulb-on-outline" },
     { key: "DCP", label: "DCP", icon: "disc" },
     { key: "CREDITOS", label: "Créditos", icon: "lightbulb-outline" },
@@ -163,7 +165,7 @@ export default function Home() {
   } = useAuthUser();
 
   const [mainTab, setMainTab] = useState<MainTab>("CALENDARIO");
-  const [proyeccionTab, setProyeccionTab] = useState<ProyeccionTab>("LAMPARAS");
+  const [proyeccionTab, setProyeccionTab] = useState<ProyeccionTab>("PROGRAMACION_PROY");
   const [marketingTab, setMarketingTab] = useState<MarketingSubTab>("PROGRAMACION");
   const [coordinadoresTab, setCoordinadoresTab] = useState<CoordinadoresSubTab>("QUIMICOS");
 
@@ -589,7 +591,7 @@ export default function Home() {
                   onPress={() => {
                     setMainTab(tab);
                     // Auto-seleccionar primer subtab
-                    if (tab === "PROYECCIÓN") setProyeccionTab("LAMPARAS");
+                    if (tab === "PROYECCIÓN") setProyeccionTab("PROGRAMACION_PROY");
                     if (tab === "SERVICIOS") setMarketingTab("PROGRAMACION");
                     if (tab === "COORDINADORES") setCoordinadoresTab("QUIMICOS");
 
@@ -770,6 +772,7 @@ export default function Home() {
         <View style={styles.screenWrap}>
           {renderProjectionLockBanner()}
           <View style={styles.subContent}>
+            {proyeccionTab === "PROGRAMACION_PROY" && <ProgramacionProyeccionScreen readOnly={!isProjectionUnlocked} />}
             {proyeccionTab === "DCP" && <DcpTab readOnly={!isProjectionUnlocked} />}
             {proyeccionTab === "CREDITOS" && <CreditosScreen readOnly={!isProjectionUnlocked} />}
             {proyeccionTab === "RMA" && <RmaTab readOnly={!isProjectionUnlocked} />}
