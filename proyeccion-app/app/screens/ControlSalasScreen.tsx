@@ -236,8 +236,10 @@ export const getRoomLayout = (salaId: number): RoomLayout => {
 };
 
 export default function ControlSalasScreen() {
-  const { cineId, user } = useAuthUser();
+  const { cineId, user, displayName } = useAuthUser();
   const userEmail = user?.email || "usuario.anonimo";
+  const cineLabelRaw = displayName || cineId || "Cine";
+  const cineLabel = cineLabelRaw ? cineLabelRaw.charAt(0).toUpperCase() + cineLabelRaw.slice(1) : "Cine";
 
   // Component state
   const [selectedSala, setSelectedSala] = useState<number>(1);
@@ -403,7 +405,7 @@ export default function ControlSalasScreen() {
   // Generate and export/print HTML report
   const handleExportPdf = async () => {
     let totalDamagedSeats = 0;
-    const salaReportsList: { salaName: string; issues: { seat: string; desc: string; details: string; isDbox?: boolean }[] }[] = [];
+    const salaReportsList: { salaName: string; issues: { row: string; num: number; seat: string; desc: string; details: string; isDbox?: boolean }[] }[] = [];
 
     SALAS_INFO.forEach((sInfo) => {
       const salaKey = String(sInfo.id);
@@ -442,7 +444,7 @@ export default function ControlSalasScreen() {
 
         totalDamagedSeats += issuesSorted.length;
         salaReportsList.push({
-          salaName: `${sInfo.name} (${sInfo.capacity} butacas)`,
+          salaName: sInfo.name,
           issues: issuesSorted,
         });
       }
@@ -462,7 +464,7 @@ export default function ControlSalasScreen() {
         minute: "2-digit",
       });
 
-      let roomsTablesHtml = "";
+      let roomsTablesHtml = `<div class="rooms-grid">`;
       salaReportsList.forEach((salaRep) => {
         roomsTablesHtml += `
           <div class="room-section">
@@ -471,8 +473,8 @@ export default function ControlSalasScreen() {
               <thead>
                 <tr>
                   <th style="width: 30%;">Butaca</th>
-                  <th style="width: 35%;">Daño Reportado</th>
-                  <th style="width: 35%;">Detalles / Comentarios</th>
+                  <th style="width: 35%;">Daño</th>
+                  <th style="width: 35%;">Detalles</th>
                 </tr>
               </thead>
               <tbody>
@@ -481,7 +483,7 @@ export default function ControlSalasScreen() {
                     (issue) => `
                   <tr>
                     <td>
-                      <strong>${issue.seat}</strong>
+                      <strong>${issue.row}-${issue.num}</strong>
                       ${issue.isDbox ? `<span class="dbox-tag">D-BOX</span>` : ""}
                     </td>
                     <td><span class="badge">${issue.desc}</span></td>
@@ -495,6 +497,7 @@ export default function ControlSalasScreen() {
           </div>
         `;
       });
+      roomsTablesHtml += `</div>`;
 
       const html = `
         <!doctype html>
@@ -505,7 +508,7 @@ export default function ControlSalasScreen() {
           <style>
             @page {
               size: A4;
-              margin: 15mm;
+              margin: 10mm;
             }
             body {
               font-family: Arial, sans-serif;
@@ -514,83 +517,94 @@ export default function ControlSalasScreen() {
               padding: 0;
               -webkit-print-color-adjust: exact;
               print-color-adjust: exact;
-              font-size: 11px;
-              line-height: 1.4;
+              font-size: 9px;
+              line-height: 1.3;
             }
             .header {
               border-bottom: 2px solid #890404;
-              padding-bottom: 12px;
-              margin-bottom: 20px;
+              padding-bottom: 6px;
+              margin-bottom: 12px;
               display: flex;
               justify-content: space-between;
               align-items: flex-end;
             }
             .header-title h1 {
               color: #890404;
-              margin: 0 0 4px 0;
-              font-size: 20px;
+              margin: 0 0 2px 0;
+              font-size: 16px;
               font-weight: bold;
               text-transform: uppercase;
             }
             .header-title p {
               margin: 0;
               color: #666;
-              font-size: 11px;
+              font-size: 9px;
             }
             .header-meta {
               text-align: right;
-              font-size: 10px;
+              font-size: 9px;
               color: #555;
             }
             .summary {
               background-color: #f8fafc;
               border: 1px solid #e2e8f0;
               border-radius: 6px;
-              padding: 12px 16px;
-              margin-bottom: 24px;
+              padding: 8px 12px;
+              margin-bottom: 16px;
               display: flex;
               justify-content: space-between;
             }
             .summary-item {
               flex: 1;
             }
+            .summary-item span {
+              font-size: 9px;
+              color: #64748b;
+            }
             .summary-item strong {
               display: block;
-              font-size: 16px;
+              font-size: 13px;
               color: #890404;
-              margin-top: 4px;
+              margin-top: 2px;
+            }
+            .rooms-grid {
+              display: flex;
+              flex-wrap: wrap;
+              gap: 12px;
             }
             .room-section {
-              margin-bottom: 24px;
+              width: calc(50% - 6px);
+              box-sizing: border-box;
+              margin-bottom: 12px;
               break-inside: avoid;
               page-break-inside: avoid;
             }
             .room-section h2 {
-              font-size: 14px;
-              margin: 0 0 8px 0;
+              font-size: 11px;
+              margin: 0 0 6px 0;
               color: #1e293b;
               border-bottom: 1px solid #cbd5e1;
-              padding-bottom: 4px;
+              padding-bottom: 2px;
             }
             table {
               width: 100%;
               border-collapse: collapse;
-              margin-bottom: 10px;
+              margin-bottom: 6px;
             }
             th {
               background-color: #f1f5f9;
               color: #475569;
               font-weight: bold;
               text-align: left;
-              padding: 8px 10px;
+              padding: 4px 6px;
               border: 1px solid #cbd5e1;
-              font-size: 10px;
+              font-size: 8px;
               text-transform: uppercase;
             }
             td {
-              padding: 8px 10px;
+              padding: 4px 6px;
               border: 1px solid #e2e8f0;
-              font-size: 11px;
+              font-size: 9px;
               vertical-align: top;
             }
             tr:nth-child(even) td {
@@ -599,9 +613,9 @@ export default function ControlSalasScreen() {
             .badge {
               background-color: #fee2e2;
               color: #991b1b;
-              padding: 2px 6px;
-              border-radius: 4px;
-              font-size: 9.5px;
+              padding: 1px 4px;
+              border-radius: 3px;
+              font-size: 8px;
               font-weight: bold;
               display: inline-block;
             }
@@ -617,20 +631,22 @@ export default function ControlSalasScreen() {
               vertical-align: middle;
             }
             .footer-sig {
-              margin-top: 50px;
+              margin-top: 20px;
               border-top: 1px solid #cbd5e1;
-              padding-top: 12px;
+              padding-top: 8px;
               display: flex;
-              justify-content: space-between;
-              font-size: 10px;
+              justify-content: flex-end;
+              font-size: 9px;
               color: #666;
+              break-inside: avoid;
+              page-break-inside: avoid;
             }
             .sig-line {
-              width: 200px;
+              width: 180px;
               border-top: 1px dashed #94a3b8;
-              margin-top: 30px;
+              margin-top: 25px;
               text-align: center;
-              padding-top: 4px;
+              padding-top: 3px;
             }
             @media print {
               .room-section {
@@ -644,11 +660,11 @@ export default function ControlSalasScreen() {
           <div class="header">
             <div class="header-title">
               <h1>Control de Estado de Salas</h1>
-              <p>Cinemark Hoyts App - Módulo de Control Físico</p>
+              <p>Reporte de Auditoría Física de Butacas</p>
             </div>
             <div class="header-meta">
-              <strong>Fecha de Emisión:</strong> ${formattedDate}<br />
-              <strong>Generado por:</strong> ${userEmail}
+              <strong>Fecha:</strong> ${formattedDate}<br />
+              <strong>Cine:</strong> ${cineLabel}
             </div>
           </div>
 
@@ -658,8 +674,8 @@ export default function ControlSalasScreen() {
               <strong>${salaReportsList.length} de ${SALAS_INFO.length}</strong>
             </div>
             <div class="summary-item">
-              <span>Total Butacas Rotas/Dañadas</span>
-              <strong>${totalDamagedSeats} butacas</strong>
+              <span>Total Butacas Dañadas</span>
+              <strong>${totalDamagedSeats}</strong>
             </div>
             <div class="summary-item">
               <span>Estado General</span>
@@ -670,10 +686,6 @@ export default function ControlSalasScreen() {
           ${roomsTablesHtml}
 
           <div class="footer-sig">
-            <div>
-              <p>Generado automáticamente desde Cinemark Proyeccion App.</p>
-              <p>ID Reporte: CS-${cineId}-${Date.now().toString().slice(-6)}</p>
-            </div>
             <div class="sig-line">
               Firma y Aclaración Responsable
             </div>
