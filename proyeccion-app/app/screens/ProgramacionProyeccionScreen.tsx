@@ -60,8 +60,9 @@ const DAY_CYCLE_INDEX: Record<WeekdayKey, number> = {
 const MINUTE_WIDTH = 2; // px per minute
 const HOUR_WIDTH = 60 * MINUTE_WIDTH; // 120px per hour
 const ROW_HEIGHT = 54; // height of each room row (perfect middle-ground)
-const HEADER_HEIGHT = 34; // height of timeline hours header
+const HEADER_HEIGHT = 54; // height of timeline hours header (matched to ROW_HEIGHT for alignment)
 const ROOM_COL_WIDTH = 72; // width of rooms left column
+const SCROLLBAR_HEIGHT = Platform.OS === "web" ? 16 : 0;
 
 // Helper to convert time "HH:MM" to minutes from midnight
 function timeToMinutes(timeStr: string): number {
@@ -130,7 +131,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
   const [selectedShow, setSelectedShow] = useState<DailyShow | null>(null);
 
   const [currentTimeMins, setCurrentTimeMins] = useState(getCurrentTimeMins());
-  const timelineScrollRef = useRef<any>(null);
+  const [scrollEl, setScrollEl] = useState<any>(null);
 
   const { width: windowWidth } = useWindowDimensions();
   const isMobile = windowWidth < 768;
@@ -142,6 +143,15 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
   const handleScroll = (event: any) => {
     const x = event.nativeEvent.contentOffset.x;
     setIsScrolled(x > 5);
+  };
+
+  const handleScrollRef = (el: any) => {
+    if (!el) return;
+    const scrollNode = el.getScrollableNode ? el.getScrollableNode() : el;
+    if (!scrollNode) return;
+    if (scrollNode !== scrollEl) {
+      setScrollEl(scrollNode);
+    }
   };
 
   // Subscribe to weekly programming saved in database under "Servicios Programacion"
@@ -184,103 +194,87 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
     return () => clearInterval(timer);
   }, []);
 
-  // Inject scrollbar styles for web
+  // Web Scroll setup: Custom scrollbar styles, class addition, and drag-to-scroll listeners
   useEffect(() => {
-    if (Platform.OS !== "web") return;
-    const styleElement = document.createElement("style");
-    styleElement.id = "programacion-scrollbar-style";
+    if (Platform.OS !== "web" || !scrollEl) return;
+
+    // 1. Inject custom scrollbar style rules
+    let styleElement = document.getElementById("programacion-scrollbar-style") as HTMLStyleElement;
+    if (!styleElement) {
+      styleElement = document.createElement("style");
+      styleElement.id = "programacion-scrollbar-style";
+      document.head.appendChild(styleElement);
+    }
     styleElement.innerHTML = `
       .programacion-scroll-area {
         scrollbar-width: auto !important;
-        scrollbar-color: var(--muted, #94A3B8) var(--border, #E2E8F0) !important;
+        -ms-overflow-style: auto !important;
+        overflow-x: auto !important;
       }
       .programacion-scroll-area::-webkit-scrollbar {
-        height: 10px !important;
+        height: 12px !important;
+        width: 12px !important;
         display: block !important;
       }
       .programacion-scroll-area::-webkit-scrollbar-track {
-        background: var(--border, #E2E8F0) !important;
-        border-radius: 5px !important;
+        background: #F1F5F9 !important;
+        border-radius: 6px !important;
       }
       .programacion-scroll-area::-webkit-scrollbar-thumb {
-        background: var(--muted, #94A3B8) !important;
-        border-radius: 5px !important;
-        border: 2px solid var(--border, #E2E8F0) !important;
+        background: #CBD5E1 !important;
+        border-radius: 6px !important;
+        border: 3px solid #F1F5F9 !important;
       }
       .programacion-scroll-area::-webkit-scrollbar-thumb:hover {
-        background: var(--primary, #E11D48) !important;
+        background: #94A3B8 !important;
       }
     `;
-    document.head.appendChild(styleElement);
 
-    return () => {
-      const existing = document.getElementById("programacion-scrollbar-style");
-      if (existing) {
-        existing.remove();
+    // 2. Add classes to the scroll node
+    scrollEl.classList.add("programacion-scroll-area");
+    scrollEl.style.overflowX = "scroll";
+
+    // 3. Attach drag-to-scroll event listeners
+    let isDown = false;
+    let startX: number;
+    let scrollLeft: number;
+
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button !== 0) return; // only left click
+      isDown = true;
+      scrollEl.style.cursor = "grabbing";
+      startX = e.clientX;
+      scrollLeft = scrollEl.scrollLeft;
+    };
+
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isDown) return;
+      e.preventDefault();
+      const x = e.clientX;
+      const walk = (startX - x) * 1.5;
+      scrollEl.scrollLeft = scrollLeft + walk;
+    };
+
+    const onMouseUp = () => {
+      if (isDown) {
+        isDown = false;
+        scrollEl.style.cursor = "grab";
       }
     };
-  }, []);
 
-  // Mouse drag-to-scroll on web
-  useEffect(() => {
-    if (Platform.OS !== "web") return;
-    const timer = setTimeout(() => {
-      const scrollNode = timelineScrollRef.current?.getScrollableNode
-        ? timelineScrollRef.current.getScrollableNode()
-        : timelineScrollRef.current;
+    scrollEl.style.cursor = "grab";
+    scrollEl.style.userSelect = "none";
 
-      if (!scrollNode) return;
+    scrollEl.addEventListener("mousedown", onMouseDown);
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
 
-      // Add scrollbar custom class
-      scrollNode.classList.add("programacion-scroll-area");
-
-      let isDown = false;
-      let startX: number;
-      let scrollLeft: number;
-
-      const onMouseDown = (e: MouseEvent) => {
-        isDown = true;
-        scrollNode.style.cursor = "grabbing";
-        startX = e.pageX - scrollNode.offsetLeft;
-        scrollLeft = scrollNode.scrollLeft;
-      };
-
-      const onMouseLeave = () => {
-        isDown = false;
-        scrollNode.style.cursor = "grab";
-      };
-
-      const onMouseUp = () => {
-        isDown = false;
-        scrollNode.style.cursor = "grab";
-      };
-
-      const onMouseMove = (e: MouseEvent) => {
-        if (!isDown) return;
-        e.preventDefault();
-        const x = e.pageX - scrollNode.offsetLeft;
-        const walk = (x - startX) * 1.5;
-        scrollNode.scrollLeft = scrollLeft - walk;
-      };
-
-      scrollNode.style.cursor = "grab";
-      scrollNode.style.userSelect = "none";
-
-      scrollNode.addEventListener("mousedown", onMouseDown);
-      scrollNode.addEventListener("mouseleave", onMouseLeave);
-      scrollNode.addEventListener("mouseup", onMouseUp);
-      scrollNode.addEventListener("mousemove", onMouseMove);
-
-      return () => {
-        scrollNode.removeEventListener("mousedown", onMouseDown);
-        scrollNode.removeEventListener("mouseleave", onMouseLeave);
-        scrollNode.removeEventListener("mouseup", onMouseUp);
-        scrollNode.removeEventListener("mousemove", onMouseMove);
-      };
-    }, 100);
-
-    return () => clearTimeout(timer);
-  }, [loading, selectedDay]);
+    return () => {
+      scrollEl.removeEventListener("mousedown", onMouseDown);
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+  }, [scrollEl]);
 
   // Extract all unique room numbers
   const rooms = useMemo(() => {
@@ -383,6 +377,13 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
   const currentTimeLeft = useMemo(() => {
     return (currentTimeMins - timelineStartMins) * MINUTE_WIDTH;
   }, [currentTimeMins, timelineStartMins]);
+
+  // Check if badges will overlap (distance < 110px)
+  const badgesOverlap = useMemo(() => {
+    if (openingLeft === null || !showCurrentTimeLine) return false;
+    const distance = Math.abs(currentTimeLeft - openingLeft);
+    return distance < 110;
+  }, [openingLeft, showCurrentTimeLine, currentTimeLeft]);
 
   // Determine status (PAST, PLAYING, FUTURE) of a show
   const getShowStatus = (show: DailyShow) => {
@@ -528,8 +529,29 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
       <View style={styles.gridContainer}>
         <ScrollView style={styles.verticalScrollView} bounces={false}>
           <View style={styles.mainLayoutRow}>
-            {/* Rooms fixed left column */}
-            <View style={[styles.roomsColumn, { width: currentRoomColWidth, marginTop: HEADER_HEIGHT }]}>
+            {/* Rooms fixed left column starting from top header */}
+            <View style={[styles.roomsColumn, { width: currentRoomColWidth }]}>
+              {/* Corner intersection block */}
+              <View style={[styles.cornerHeaderCell, { width: currentRoomColWidth }]}>
+                {isCollapsed ? (
+                  <View style={styles.cornerCollapsedContent}>
+                    <MaterialCommunityIcons name="theater" size={12} color={COLORS.textSoft} />
+                    <MaterialCommunityIcons name="clock-outline" size={12} color={COLORS.textSoft} style={{ marginTop: 2 }} />
+                  </View>
+                ) : (
+                  <View style={styles.cornerExpandedContent}>
+                    <View style={styles.cornerRow}>
+                      <MaterialCommunityIcons name="clock-outline" size={12} color={COLORS.textSoft} />
+                      <Text style={styles.cornerText}>HORA</Text>
+                    </View>
+                    <View style={styles.cornerLine} />
+                    <View style={styles.cornerRow}>
+                      <MaterialCommunityIcons name="theater" size={12} color={COLORS.textSoft} />
+                      <Text style={styles.cornerText}>SALAS</Text>
+                    </View>
+                  </View>
+                )}
+              </View>
               {rooms.map((salaNum) => (
                 <View key={salaNum} style={[styles.roomLabelCell, { width: currentRoomColWidth }]}>
                   <Text style={styles.roomLabelText}>
@@ -537,19 +559,24 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                   </Text>
                 </View>
               ))}
+              {/* Bottom spacer to align with scrollbar space */}
+              {SCROLLBAR_HEIGHT > 0 && (
+                <View style={{ height: SCROLLBAR_HEIGHT, backgroundColor: COLORS.card }} />
+              )}
             </View>
 
             {/* Scrollable Timeline */}
             <ScrollView
-              ref={timelineScrollRef}
+              ref={handleScrollRef}
               horizontal
               bounces={false}
               showsHorizontalScrollIndicator={true}
               style={styles.timelineHorizontalScroll}
+              contentContainerStyle={{ paddingBottom: SCROLLBAR_HEIGHT }}
               onScroll={handleScroll}
               scrollEventThrottle={16}
             >
-              <View style={{ width: timelineWidth }}>
+              <View style={{ width: timelineWidth, position: "relative" }}>
                 {/* Timeline Hour Header */}
                 <View style={styles.hourHeaderRow}>
                   {dynamicHoursArray.map((hourText, idx) => (
@@ -560,7 +587,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                 </View>
 
                 {/* Timeline Grid & Cards */}
-                <View style={[styles.gridAndCardsContainer, { height: rooms.length * ROW_HEIGHT + 14 }]}>
+                <View style={[styles.gridAndCardsContainer, { height: rooms.length * ROW_HEIGHT }]}>
                   {/* Grid Lines Background */}
                   <View style={StyleSheet.absoluteFill}>
                     {dynamicHoursArray.map((_, idx) => (
@@ -591,46 +618,6 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                       }}
                     />
                   </View>
-
-                  {/* Cinema Opening Line (zIndex: 1, sits under cards but above grid) */}
-                  {openingLeft !== null && (
-                    <View
-                      style={[
-                        styles.openingLine,
-                        {
-                          left: openingLeft,
-                          height: rooms.length * ROW_HEIGHT,
-                          top: HEADER_HEIGHT,
-                        },
-                      ]}
-                    >
-                      <View style={styles.openingLineBadge}>
-                        <Text style={styles.openingLineBadgeText} numberOfLines={1}>
-                          Apertura: {formatMinutesToTime(minStartMins - 30)}
-                        </Text>
-                      </View>
-                    </View>
-                  )}
-
-                  {/* Current Time Line (zIndex: 4, sits on top of cards) */}
-                  {showCurrentTimeLine && (
-                    <View
-                      style={[
-                        styles.currentTimeLine,
-                        {
-                          left: currentTimeLeft,
-                          height: rooms.length * ROW_HEIGHT,
-                          top: HEADER_HEIGHT,
-                        },
-                      ]}
-                    >
-                      <View style={styles.currentTimeBadge}>
-                        <Text style={styles.currentTimeBadgeText} numberOfLines={1}>
-                          Ahora: {formatMinutesToTime(currentTimeMins)}
-                        </Text>
-                      </View>
-                    </View>
-                  )}
 
                   {/* Rows containing the movie cards (zIndex: 2) */}
                   {rooms.map((salaNum, roomIndex) => {
@@ -746,6 +733,46 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                     );
                   })}
                 </View>
+
+                {/* Cinema Opening Line (zIndex: 10, sits on top of cards, starts from top of hours) */}
+                {openingLeft !== null && (
+                  <View
+                    style={[
+                      styles.openingLine,
+                      {
+                        left: openingLeft,
+                        height: HEADER_HEIGHT + rooms.length * ROW_HEIGHT,
+                        top: 0,
+                      },
+                    ]}
+                  >
+                    <View style={styles.openingLineBadge}>
+                      <Text style={styles.openingLineBadgeText} numberOfLines={1}>
+                        Apertura: {formatMinutesToTime(minStartMins - 30)}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+
+                {/* Current Time Line (zIndex: 11, sits on top of cards, starts from top of hours) */}
+                {showCurrentTimeLine && (
+                  <View
+                    style={[
+                      styles.currentTimeLine,
+                      {
+                        left: currentTimeLeft,
+                        height: HEADER_HEIGHT + rooms.length * ROW_HEIGHT,
+                        top: 0,
+                      },
+                    ]}
+                  >
+                    <View style={[styles.currentTimeBadge, badgesOverlap && { top: 26 }]}>
+                      <Text style={styles.currentTimeBadgeText} numberOfLines={1}>
+                        Ahora: {formatMinutesToTime(currentTimeMins)}
+                      </Text>
+                    </View>
+                  </View>
+                )}
               </View>
             </ScrollView>
           </View>
@@ -948,6 +975,20 @@ const styles = StyleSheet.create({
       },
     }),
   },
+  cornerHeaderCell: {
+    height: HEADER_HEIGHT,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: COLORS.card,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    ...Platform.select({
+      web: {
+        transitionProperty: "width",
+        transitionDuration: "0.2s",
+      },
+    }),
+  },
   roomLabelCell: {
     height: ROW_HEIGHT,
     justifyContent: "center",
@@ -979,9 +1020,10 @@ const styles = StyleSheet.create({
   },
   hourHeaderCell: {
     height: HEADER_HEIGHT,
-    justifyContent: "center",
+    justifyContent: "flex-end",
     alignItems: "flex-start",
     paddingLeft: THEME.spacing.xs,
+    paddingBottom: 6,
   },
   hourHeaderText: {
     fontSize: 10.5,
@@ -996,19 +1038,20 @@ const styles = StyleSheet.create({
   },
   openingLine: {
     position: "absolute",
-    width: 2,
+    width: 0,
+    borderLeftWidth: 2,
+    borderLeftColor: COLORS.primary,
     borderStyle: "dashed",
-    borderWidth: 1,
-    borderColor: COLORS.primary,
-    zIndex: 1,
+    zIndex: 10,
     alignItems: "center",
   },
   openingLineBadge: {
     position: "absolute",
-    top: 2,
+    top: 4,
+    left: -52,
     backgroundColor: COLORS.primary,
     paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingVertical: 2,
     borderRadius: 6,
     borderWidth: 1,
     borderColor: "#FFFFFF",
@@ -1027,19 +1070,20 @@ const styles = StyleSheet.create({
   },
   currentTimeLine: {
     position: "absolute",
-    width: 2,
+    width: 0,
+    borderLeftWidth: 2,
+    borderLeftColor: "#10B981", // Emerald green
     borderStyle: "dashed",
-    borderWidth: 1,
-    borderColor: "#10B981", // Emerald green
-    zIndex: 4,
+    zIndex: 11,
     alignItems: "center",
   },
   currentTimeBadge: {
     position: "absolute",
-    top: 2,
+    top: 4,
+    left: -52,
     backgroundColor: "#10B981",
     paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingVertical: 2,
     borderRadius: 6,
     borderWidth: 1,
     borderColor: "#FFFFFF",
@@ -1055,6 +1099,35 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 9.5,
     fontWeight: "bold",
+  },
+  cornerCollapsedContent: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cornerExpandedContent: {
+    flex: 1,
+    width: "100%",
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+    justifyContent: "space-between",
+    alignItems: "stretch",
+  },
+  cornerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  cornerText: {
+    fontSize: 9,
+    fontWeight: "bold",
+    color: COLORS.textSoft,
+    letterSpacing: 0.5,
+  },
+  cornerLine: {
+    height: 1,
+    backgroundColor: COLORS.border,
+    marginVertical: 2,
+    opacity: 0.6,
   },
   timelineRow: {
     position: "absolute",
