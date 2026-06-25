@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -20,6 +20,7 @@ import { doc, getDoc, onSnapshot, setDoc } from "firebase/firestore";
 import { db, CINES_COLLECTION } from "../../lib/firebaseConfig";
 import { COLORS, THEME } from "../../lib/theme";
 import { useAuthUser } from "../../lib/useAuthUser";
+import { getCineConfig } from "../../lib/cineConfig";
 
 // Sala capacity metadata as provided by user
 const SALAS_INFO = [
@@ -309,11 +310,40 @@ export default function ControlSalasScreen() {
   const [editorInvertSeats, setEditorInvertSeats] = useState<boolean>(false);
   const [paintTool, setPaintTool] = useState<"seat" | "dbox" | "empty">("empty");
 
-  // Load custom layouts for all 12 rooms
+  const [salasCount, setSalasCount] = useState<number>(12);
+
+  // Load cinema configuration (salas count)
   useEffect(() => {
     if (!cineId) return;
 
-    const unsubscribers = SALAS_INFO.map((sala) => {
+    getCineConfig(cineId)
+      .then((cfg) => {
+        if (cfg?.salasCount && Number.isFinite(cfg.salasCount) && cfg.salasCount > 0) {
+          setSalasCount(Math.floor(cfg.salasCount));
+        }
+      })
+      .catch((e) => console.error("Error loading cine config in ControlSalasScreen:", e));
+  }, [cineId]);
+
+  const salasInfoList = useMemo(() => {
+    const list = [];
+    for (let i = 1; i <= salasCount; i++) {
+      const staticInfo = SALAS_INFO.find((s) => s.id === i);
+      list.push({
+        id: i,
+        name: `Sala ${i}`,
+        capacity: staticInfo ? staticInfo.capacity : 200,
+      });
+    }
+    return list;
+  }, [salasCount]);
+
+  // Load custom layouts for all rooms dynamically
+  useEffect(() => {
+    if (!cineId) return;
+
+    let loadedCount = 0;
+    const unsubscribers = salasInfoList.map((sala) => {
       const ref = doc(db, CINES_COLLECTION, cineId, "salas_layouts", String(sala.id));
       return onSnapshot(
         ref,
@@ -324,16 +354,35 @@ export default function ControlSalasScreen() {
               ...prev,
               [String(sala.id)]: data,
             }));
+          } else {
+            // Remove from dbLayouts if deleted from firestore
+            setDbLayouts((prev) => {
+              const copy = { ...prev };
+              delete copy[String(sala.id)];
+              return copy;
+            });
+          }
+          loadedCount++;
+          if (loadedCount >= salasInfoList.length) {
+            setLoading(false);
           }
         },
         (error) => {
           console.error(`Error loading layout for Sala ${sala.id}:`, error);
+          loadedCount++;
+          if (loadedCount >= salasInfoList.length) {
+            setLoading(false);
+          }
         }
       );
     });
 
+    if (salasInfoList.length === 0) {
+      setLoading(false);
+    }
+
     return () => unsubscribers.forEach((unsub) => unsub());
-  }, [cineId]);
+  }, [cineId, salasInfoList]);
 
   // Proactive Auto-Migration: If there are no custom layouts in Firestore for the active cinema, upload the default layouts automatically.
   useEffect(() => {
@@ -345,7 +394,7 @@ export default function ControlSalasScreen() {
         const docSnap = await getDoc(docRef);
         if (!docSnap.exists()) {
           console.log(`Auto-migrating default layouts for ${cineId}...`);
-          for (let sId = 1; sId <= 12; sId++) {
+          for (let sId = 1; sId <= salasCount; sId++) {
             const schema = convertLayoutToFirestoreSchema(sId);
             const ref = doc(db, CINES_COLLECTION, cineId, "salas_layouts", String(sId));
             await setDoc(ref, schema);
@@ -656,19 +705,19 @@ export default function ControlSalasScreen() {
     setEditorInvertSeats(schema.invertSeats || false);
   };
 
-  // Upload/Migrate all 12 default Abasto layouts to Firestore for the current cinema
+  // Upload/Migrate default layouts to Firestore for the current cinema
   const handleMigrateAllDefaultLayouts = async () => {
     if (!cineId) return;
 
     const executeMigration = async () => {
       setSaving(true);
       try {
-        for (let sId = 1; sId <= 12; sId++) {
+        for (let sId = 1; sId <= salasCount; sId++) {
           const schema = convertLayoutToFirestoreSchema(sId);
           const ref = doc(db, CINES_COLLECTION, cineId, "salas_layouts", String(sId));
           await setDoc(ref, schema);
         }
-        Alert.alert("Carga Exitosa", `Se guardaron los 12 mapas por defecto en la base de datos de ${cineLabel}.`);
+        Alert.alert("Carga Exitosa", `Se guardaron los ${salasCount} mapas por defecto en la base de datos de ${cineLabel}.`);
       } catch (e) {
         console.error("Migration error:", e);
         Alert.alert("Error", "Ocurrió un error al cargar las salas por defecto.");
@@ -678,12 +727,12 @@ export default function ControlSalasScreen() {
     };
 
     if (Platform.OS === "web") {
-      const confirm = window.confirm(`¿Querés guardar los 12 planos de salas por defecto en la base de datos de ${cineLabel}? Esto sobreescribirá los planos guardados anteriormente en este cine.`);
+      const confirm = window.confirm(`¿Querés guardar los ${salasCount} planos de salas por defecto en la base de datos de ${cineLabel}? Esto sobreescribirá los planos guardados anteriormente en este cine.`);
       if (confirm) executeMigration();
     } else {
       Alert.alert(
         "Cargar planos por defecto",
-        `¿Querés guardar los 12 planos de salas por defecto en la base de datos de ${cineLabel}?`,
+        `¿Querés guardar los ${salasCount} planos de salas por defecto en la base de datos de ${cineLabel}?`,
         [
           { text: "Cancelar", style: "cancel" },
           { text: "Guardar Todo", onPress: executeMigration },
@@ -697,7 +746,7 @@ export default function ControlSalasScreen() {
     let totalDamagedSeats = 0;
     const salaReportsList: { salaName: string; issues: { row: string; num: number; seat: string; desc: string; details: string; isDbox?: boolean }[] }[] = [];
 
-    SALAS_INFO.forEach((sInfo) => {
+    salasInfoList.forEach((sInfo) => {
       const salaKey = String(sInfo.id);
       const roomIssues = report.issues[salaKey];
       if (roomIssues && Object.keys(roomIssues).length > 0) {
@@ -966,7 +1015,7 @@ export default function ControlSalasScreen() {
           <div class="summary">
             <div class="summary-item">
               <span>Salas con Incidencias</span>
-              <strong>${salaReportsList.length} de ${SALAS_INFO.length}</strong>
+              <strong>${salaReportsList.length} de ${salasInfoList.length}</strong>
             </div>
             <div class="summary-item">
               <span>Total Butacas Dañadas</span>
@@ -1393,7 +1442,9 @@ export default function ControlSalasScreen() {
           isDbox = true;
         }
 
-        const seatNumber = editorInvertSeats ? (colsToRender - c + 1) : c;
+        const seatNumber = c > maxCol
+          ? (editorInvertSeats ? 0 : c)
+          : (editorInvertSeats ? (maxCol - c + 1) : c);
 
         rowSeats.push({
           row,
@@ -1429,7 +1480,7 @@ export default function ControlSalasScreen() {
         </View>
 
         <View style={styles.roomsGridContainer}>
-          {SALAS_INFO.map((sala) => {
+          {salasInfoList.map((sala) => {
             const isSel = selectedSala === sala.id;
             const salaKey = String(sala.id);
             const damagedCount = Object.keys(report.issues[salaKey] || {}).length;
