@@ -127,12 +127,14 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
   const { cineId } = useAuthUser();
   const [loading, setLoading] = useState(true);
   const [savedWeekly, setSavedWeekly] = useState<SavedWeekly | null>(null);
-  const [selectedDay, setSelectedDay] = useState<WeekdayKey>("jueves");
+  const [selectedDay, setSelectedDay] = useState<WeekdayKey>(getCurrentWeekdayKey());
   const [selectedShow, setSelectedShow] = useState<DailyShow | null>(null);
 
   const [currentTimeMins, setCurrentTimeMins] = useState(getCurrentTimeMins());
   const [scrollEl, setScrollEl] = useState<any>(null);
   const headerScrollRef = useRef<ScrollView>(null);
+  const timelineScrollRef = useRef<ScrollView>(null);
+  const lastScrolledDay = useRef<string | null>(null);
 
   const { width: windowWidth } = useWindowDimensions();
   const isMobile = windowWidth < 768;
@@ -197,6 +199,8 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
     }, 15000);
     return () => clearInterval(timer);
   }, []);
+
+
 
   // Web Scroll setup: Custom scrollbar styles, class addition, and drag-to-scroll listeners
   useEffect(() => {
@@ -373,10 +377,11 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
     const today = getCurrentWeekdayKey();
     return (
       selectedDay === today &&
+      shows.length > 0 &&
       currentTimeMins >= timelineStartMins &&
       currentTimeMins <= timelineEndMins
     );
-  }, [selectedDay, currentTimeMins, timelineStartMins, timelineEndMins]);
+  }, [selectedDay, shows.length, currentTimeMins, timelineStartMins, timelineEndMins]);
 
   const currentTimeLeft = useMemo(() => {
     return (currentTimeMins - timelineStartMins) * MINUTE_WIDTH;
@@ -467,6 +472,46 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
     }
     return tEnd - tStart;
   };
+
+  // Auto-scroll to center the "Ahora" (current time) line if it is visible
+  useEffect(() => {
+    if (!showCurrentTimeLine) {
+      lastScrolledDay.current = null;
+      return;
+    }
+
+    if (!loading && scrollEl && lastScrolledDay.current !== selectedDay) {
+      lastScrolledDay.current = selectedDay;
+      const viewportWidth = windowWidth - currentRoomColWidth;
+      const targetScrollX = Math.max(
+        0,
+        Math.min(timelineWidth - viewportWidth, currentTimeLeft - viewportWidth / 2)
+      );
+
+      const timer = setTimeout(() => {
+        if (timelineScrollRef.current) {
+          timelineScrollRef.current.scrollTo({ x: targetScrollX, animated: false });
+        } else if (scrollEl) {
+          if (typeof scrollEl.scrollTo === "function") {
+            scrollEl.scrollTo({ left: targetScrollX, behavior: "auto" });
+          } else {
+            scrollEl.scrollLeft = targetScrollX;
+          }
+        }
+      }, 100);
+
+      return () => clearTimeout(timer);
+    }
+  }, [
+    loading,
+    scrollEl,
+    showCurrentTimeLine,
+    selectedDay,
+    currentTimeLeft,
+    windowWidth,
+    currentRoomColWidth,
+    timelineWidth,
+  ]);
 
   if (loading) {
     return (
@@ -590,7 +635,10 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
             {/* Scrollable Timeline */}
             <ScrollView
-              ref={handleScrollRef}
+              ref={(el) => {
+                timelineScrollRef.current = el;
+                handleScrollRef(el);
+              }}
               horizontal
               bounces={false}
               showsHorizontalScrollIndicator={true}
