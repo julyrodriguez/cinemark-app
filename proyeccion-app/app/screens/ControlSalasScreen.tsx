@@ -10,6 +10,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Switch,
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Print from "expo-print";
@@ -58,6 +59,7 @@ interface ActiveReport {
 interface SeatInfo {
   row: string;
   number: number;
+  colIndex: number;
   type: "seat" | "empty";
   isDbox?: boolean;
 }
@@ -67,6 +69,7 @@ interface RoomLayout {
   maxCol: number;
   aisles: number[];
   seats: { [row: string]: SeatInfo[] };
+  invertSeats?: boolean;
 }
 
 interface FirestoreSalaLayout {
@@ -76,6 +79,7 @@ interface FirestoreSalaLayout {
   customSeats: {
     [seatKey: string]: "empty" | "dbox";
   };
+  invertSeats?: boolean;
 }
 
 // Default layout builder for all 12 rooms based on exact user specification
@@ -234,6 +238,7 @@ export const getRoomLayout = (salaId: number): RoomLayout => {
       rowSeats.push({
         row,
         number: c,
+        colIndex: c,
         type: isSeat ? "seat" : "empty",
         isDbox,
       });
@@ -251,7 +256,7 @@ const convertLayoutToFirestoreSchema = (salaId: number): FirestoreSalaLayout => 
 
   for (const row of defaultLayout.rows) {
     for (const seat of defaultLayout.seats[row]) {
-      const key = `${row}-${seat.number}`;
+      const key = `${row}-${seat.colIndex}`;
       if (seat.type === "empty") {
         customSeats[key] = "empty";
       } else if (seat.isDbox) {
@@ -265,6 +270,7 @@ const convertLayoutToFirestoreSchema = (salaId: number): FirestoreSalaLayout => 
     maxCol: defaultLayout.maxCol,
     aisles: defaultLayout.aisles,
     customSeats,
+    invertSeats: defaultLayout.invertSeats || false,
   };
 };
 
@@ -300,6 +306,7 @@ export default function ControlSalasScreen() {
   const [editorMaxColInput, setEditorMaxColInput] = useState<string>("");
   const [editorAislesInput, setEditorAislesInput] = useState<string>("");
   const [editorCustomSeats, setEditorCustomSeats] = useState<{ [seatKey: string]: "empty" | "dbox" }>({});
+  const [editorInvertSeats, setEditorInvertSeats] = useState<boolean>(false);
   const [paintTool, setPaintTool] = useState<"seat" | "dbox" | "empty">("empty");
 
   // Load custom layouts for all 12 rooms
@@ -396,6 +403,7 @@ export default function ControlSalasScreen() {
 
     const seats: { [row: string]: SeatInfo[] } = {};
     const customSeats = dbLayout.customSeats || {};
+    const invertSeats = dbLayout.invertSeats || false;
 
     for (const row of dbLayout.rows) {
       const rowSeats: SeatInfo[] = [];
@@ -412,9 +420,12 @@ export default function ControlSalasScreen() {
           isDbox = true;
         }
 
+        const seatNumber = invertSeats ? (dbLayout.maxCol - c + 1) : c;
+
         rowSeats.push({
           row,
-          number: c,
+          number: seatNumber,
+          colIndex: c,
           type,
           isDbox,
         });
@@ -427,6 +438,7 @@ export default function ControlSalasScreen() {
       maxCol: dbLayout.maxCol,
       aisles: dbLayout.aisles || [],
       seats,
+      invertSeats,
     };
   };
 
@@ -451,10 +463,10 @@ export default function ControlSalasScreen() {
   };
 
   // Open editor modal for a specific seat (Normal Inspection Mode)
-  const handleSeatPress = (row: string, num: number, isDbox?: boolean) => {
+  const handleSeatPress = (row: string, num: number, isDbox?: boolean, colIndex?: number) => {
     if (isLayoutEditorMode) {
       // If we are in layout configuration mode, clicking paints/modifies the seat layout!
-      handleGridSeatClickInEditorMode(row, num);
+      handleGridSeatClickInEditorMode(row, colIndex || num);
       return;
     }
 
@@ -565,11 +577,11 @@ export default function ControlSalasScreen() {
   const handleStartLayoutEditor = () => {
     const layout = getActiveSalaLayout(selectedSala);
     const dbLayout = dbLayouts[String(selectedSala)];
-
     setEditorRowsInput(layout.rows.join(","));
     setEditorMaxColInput(String(layout.maxCol));
     setEditorAislesInput(layout.aisles.join(","));
     setEditorCustomSeats(dbLayout?.customSeats || convertLayoutToFirestoreSchema(selectedSala).customSeats || {});
+    setEditorInvertSeats(layout.invertSeats || false);
     setIsLayoutEditorMode(true);
   };
 
@@ -600,6 +612,7 @@ export default function ControlSalasScreen() {
         maxCol,
         aisles,
         customSeats: editorCustomSeats,
+        invertSeats: editorInvertSeats,
       };
       await setDoc(ref, payload);
       setIsLayoutEditorMode(false);
@@ -624,6 +637,7 @@ export default function ControlSalasScreen() {
     setEditorMaxColInput(String(schema.maxCol));
     setEditorAislesInput(schema.aisles.join(","));
     setEditorCustomSeats(schema.customSeats);
+    setEditorInvertSeats(schema.invertSeats || false);
   };
 
   // Upload/Migrate all 12 default Abasto layouts to Firestore for the current cinema
@@ -1066,7 +1080,7 @@ export default function ControlSalasScreen() {
             isSelected && styles.seatSelected,
             isEditorEmpty && styles.seatEditorEmpty,
           ]}
-          onPress={() => handleSeatPress(seat.row, seat.number, isDbox)}
+          onPress={() => handleSeatPress(seat.row, seat.number, isDbox, seat.colIndex)}
           activeOpacity={0.8}
         >
           {isEditorEmpty ? (
@@ -1240,6 +1254,38 @@ export default function ControlSalasScreen() {
               />
             </View>
           </View>
+
+          <View style={styles.editorFormRow}>
+            <TouchableOpacity 
+              style={[
+                styles.editorFormCol, 
+                { 
+                  flexDirection: "row", 
+                  alignItems: "center", 
+                  justifyContent: "space-between", 
+                  backgroundColor: COLORS.bg, 
+                  padding: 12, 
+                  borderRadius: 10, 
+                  borderWidth: 1, 
+                  borderColor: COLORS.border,
+                  marginTop: 8
+                }
+              ]}
+              onPress={() => setEditorInvertSeats(!editorInvertSeats)}
+              activeOpacity={0.8}
+            >
+              <View style={{ flex: 1, marginRight: 12 }}>
+                <Text style={{ fontSize: 13, fontWeight: "bold", color: COLORS.text }}>Invertir numeración de butacas</Text>
+                <Text style={{ fontSize: 11, color: COLORS.muted, marginTop: 2 }}>Si se activa, el número más bajo (butaca 1) comenzará desde el lado derecho.</Text>
+              </View>
+              <Switch
+                value={editorInvertSeats}
+                onValueChange={setEditorInvertSeats}
+                trackColor={{ false: COLORS.border, true: COLORS.primary }}
+                thumbColor="#FFFFFF"
+              />
+            </TouchableOpacity>
+          </View>
         </View>
 
         <Text style={styles.editorPanelSectionTitle}>Pincel para el Mapa:</Text>
@@ -1327,9 +1373,12 @@ export default function ControlSalasScreen() {
           isDbox = true;
         }
 
+        const seatNumber = editorInvertSeats ? (maxCol - c + 1) : c;
+
         rowSeats.push({
           row,
-          number: c,
+          number: seatNumber,
+          colIndex: c,
           type,
           isDbox,
         });
@@ -1337,7 +1386,7 @@ export default function ControlSalasScreen() {
       seats[row] = rowSeats;
     }
 
-    return { rows, maxCol, aisles, seats };
+    return { rows, maxCol, aisles, seats, invertSeats: editorInvertSeats };
   };
 
   return (
