@@ -177,6 +177,10 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
     const styleElement = document.createElement("style");
     styleElement.id = "programacion-scrollbar-style";
     styleElement.innerHTML = `
+      .programacion-scroll-area {
+        scrollbar-width: auto !important;
+        scrollbar-color: var(--muted, #94A3B8) var(--border, #E2E8F0) !important;
+      }
       .programacion-scroll-area::-webkit-scrollbar {
         height: 10px !important;
         display: block !important;
@@ -539,7 +543,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                 </View>
 
                 {/* Timeline Grid & Cards */}
-                <View style={[styles.gridAndCardsContainer, { height: rooms.length * ROW_HEIGHT }]}>
+                <View style={[styles.gridAndCardsContainer, { height: rooms.length * ROW_HEIGHT + 14 }]}>
                   {/* Grid Lines Background */}
                   <View style={StyleSheet.absoluteFill}>
                     {dynamicHoursArray.map((_, idx) => (
