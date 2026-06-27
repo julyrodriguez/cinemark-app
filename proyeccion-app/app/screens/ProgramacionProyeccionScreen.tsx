@@ -91,7 +91,12 @@ function formatMinutesToTime(minsFrom6AM: number): string {
 
 // Helper to get current weekday key
 function getCurrentWeekdayKey(): WeekdayKey {
-  const dayNum = dayjs().day(); // 0 = Sunday, 1 = Monday, etc.
+  let now = dayjs();
+  // Si es antes de las 6:00 AM, seguimos en el día cinematográfico anterior
+  if (now.hour() < 6) {
+    now = now.subtract(1, "day");
+  }
+  const dayNum = now.day(); // 0 = Sunday, 1 = Monday, etc.
   const map: Record<number, WeekdayKey> = {
     0: "domingo",
     1: "lunes",
@@ -192,13 +197,26 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
     return () => unsubscribe();
   }, [cineId]);
 
-  // Keep track of current time dynamically (every 15 seconds)
+  const prevTodayRef = useRef<WeekdayKey>(getCurrentWeekdayKey());
+
+  // Keep track of current time and automatically update day on roll-over (every 15 seconds)
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentTimeMins(getCurrentTimeMins());
+
+      const newToday = getCurrentWeekdayKey();
+      const oldToday = prevTodayRef.current;
+
+      if (newToday !== oldToday) {
+        prevTodayRef.current = newToday;
+        // Si el usuario está visualizando el día actual, actualizamos su vista al nuevo día
+        if (selectedDay === oldToday) {
+          setSelectedDay(newToday);
+        }
+      }
     }, 15000);
     return () => clearInterval(timer);
-  }, []);
+  }, [selectedDay]);
 
 
 
