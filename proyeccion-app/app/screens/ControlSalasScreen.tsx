@@ -521,7 +521,7 @@ export default function ControlSalasScreen() {
 
     const salaKey = String(selectedSala);
     const seatKey = `${row}-${num}`;
-    const existing = report.issues[salaKey]?.[seatKey];
+    const existing = report?.issues?.[salaKey]?.[seatKey];
 
     setEditingSeat({ row, num, isDbox });
     if (existing) {
@@ -544,7 +544,7 @@ export default function ControlSalasScreen() {
     const salaKey = String(selectedSala);
     const seatKey = `${row}-${num}`;
 
-    const newReportIssues = { ...report.issues };
+    const newReportIssues = { ...report?.issues };
     if (!newReportIssues[salaKey]) {
       newReportIssues[salaKey] = {};
     }
@@ -574,9 +574,9 @@ export default function ControlSalasScreen() {
     const salaKey = String(selectedSala);
     const seatKey = `${row}-${num}`;
 
-    if (!report.issues[salaKey]?.[seatKey]) return;
+    if (!report?.issues?.[salaKey]?.[seatKey]) return;
 
-    const newReportIssues = { ...report.issues };
+    const newReportIssues = { ...report?.issues };
     delete newReportIssues[salaKey][seatKey];
     if (Object.keys(newReportIssues[salaKey]).length === 0) {
       delete newReportIssues[salaKey];
@@ -748,7 +748,7 @@ export default function ControlSalasScreen() {
 
     salasInfoList.forEach((sInfo) => {
       const salaKey = String(sInfo.id);
-      const roomIssues = report.issues[salaKey];
+      const roomIssues = report?.issues?.[salaKey];
       if (roomIssues && Object.keys(roomIssues).length > 0) {
         // Load layout parameters (from DB or default) to check DBOX exception
         const layoutObj = getActiveSalaLayout(sInfo.id);
@@ -1081,7 +1081,7 @@ export default function ControlSalasScreen() {
   // Build the list of active issues in the currently selected sala
   const getSelectedSalaIssues = () => {
     const salaKey = String(selectedSala);
-    const roomIssues = report.issues[salaKey];
+    const roomIssues = report?.issues?.[salaKey];
     if (!roomIssues) return [];
 
     const layoutObj = getActiveSalaLayout(selectedSala);
@@ -1128,7 +1128,7 @@ export default function ControlSalasScreen() {
       }
 
       const seatKey = `${seat.row}-${seat.number}`;
-      const hasIssue = !!report.issues[salaKey]?.[seatKey];
+      const hasIssue = !!report?.issues?.[salaKey]?.[seatKey];
       const isSelected = editingSeat?.row === seat.row && editingSeat?.num === seat.number;
       const isDbox = seat.isDbox;
 
@@ -1483,7 +1483,7 @@ export default function ControlSalasScreen() {
           {salasInfoList.map((sala) => {
             const isSel = selectedSala === sala.id;
             const salaKey = String(sala.id);
-            const damagedCount = Object.keys(report.issues[salaKey] || {}).length;
+            const damagedCount = Object.keys(report?.issues?.[salaKey] || {}).length;
 
             return (
               <TouchableOpacity
@@ -1639,94 +1639,99 @@ export default function ControlSalasScreen() {
         animationType="fade"
         onRequestClose={() => setEditingSeat(null)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>
-              Editar Butaca {editingSeat?.row}-{editingSeat?.num}
-              {editingSeat?.isDbox ? " (Premium D-BOX)" : ""}
-            </Text>
-            <Text style={styles.modalSubtitle}>Sala {selectedSala}</Text>
+        {editingSeat !== null && (
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalCard}>
+              <Text style={styles.modalTitle}>
+                Editar Butaca {editingSeat.row}-{editingSeat.num}
+                {editingSeat.isDbox ? " (Premium D-BOX)" : ""}
+              </Text>
+              <Text style={styles.modalSubtitle}>Sala {selectedSala}</Text>
 
-            <Text style={styles.modalSectionTitle}>Informar Componentes Dañados:</Text>
-            <View style={styles.modalCheckboxes}>
-              <TouchableOpacity
-                style={[styles.modalCheckbox, respaldoRoto && styles.modalCheckboxChecked]}
-                onPress={() => setRespaldoRoto(!respaldoRoto)}
-                activeOpacity={0.8}
-              >
-                <MaterialCommunityIcons
-                  name={respaldoRoto ? "checkbox-marked" : "checkbox-blank-outline"}
-                  size={24}
-                  color={respaldoRoto ? COLORS.primary : COLORS.muted}
+              <Text style={styles.modalSectionTitle}>Informar Componentes Dañados:</Text>
+              <View style={styles.modalCheckboxes}>
+                <TouchableOpacity
+                  style={[styles.modalCheckbox, respaldoRoto && styles.modalCheckboxChecked]}
+                  onPress={() => setRespaldoRoto(!respaldoRoto)}
+                  activeOpacity={0.8}
+                >
+                  <MaterialCommunityIcons
+                    name={respaldoRoto ? "checkbox-marked" : "checkbox-blank-outline"}
+                    size={24}
+                    color={respaldoRoto ? COLORS.primary : COLORS.muted}
+                    style={{ marginRight: 8 }}
+                  />
+                  <Text style={[styles.modalCheckboxLabel, respaldoRoto && styles.modalCheckboxLabelChecked]}>
+                    Respaldo roto
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.modalCheckbox, asientoRoto && styles.modalCheckboxChecked]}
+                  onPress={() => setAsientoRoto(!asientoRoto)}
+                  activeOpacity={0.8}
+                >
+                  <MaterialCommunityIcons
+                    name={asientoRoto ? "checkbox-marked" : "checkbox-blank-outline"}
+                    size={24}
+                    color={asientoRoto ? COLORS.primary : COLORS.muted}
+                    style={{ marginRight: 8 }}
+                  />
+                  <Text style={[styles.modalCheckboxLabel, asientoRoto && styles.modalCheckboxLabelChecked]}>
+                    Asiento roto
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.modalCheckbox, apoyabrazosRoto && styles.modalCheckboxChecked]}
+                  onPress={() => setApoyabrazosRoto(!apoyabrazosRoto)}
+                  activeOpacity={0.8}
+                >
+                  <MaterialCommunityIcons
+                    name={apoyabrazosRoto ? "checkbox-marked" : "checkbox-blank-outline"}
+                    size={24}
+                    color={apoyabrazosRoto ? COLORS.primary : COLORS.muted}
+                    style={{ marginRight: 8 }}
+                  />
+                  <Text style={[styles.modalCheckboxLabel, apoyabrazosRoto && styles.modalCheckboxLabelChecked]}>
+                    Apoyabrazos roto
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.modalInputBlock}>
+                <Text style={styles.modalInputLabel}>Detalles adicionales / Comentarios</Text>
+                <TextInput
+                  value={extraDetails}
+                  onChangeText={setExtraDetails}
+                  placeholder="Ej. costura rota, falta tornillo de base, chicle pegado"
+                  placeholderTextColor={COLORS.muted}
+                  style={styles.modalDetailsInput}
+                  multiline
+                  numberOfLines={3}
                 />
-                <Text style={[styles.modalCheckboxLabel, respaldoRoto && styles.modalCheckboxLabelChecked]}>
-                  Respaldo roto
-                </Text>
-              </TouchableOpacity>
+              </View>
 
-              <TouchableOpacity
-                style={[styles.modalCheckbox, asientoRoto && styles.modalCheckboxChecked]}
-                onPress={() => setAsientoRoto(!asientoRoto)}
-                activeOpacity={0.8}
-              >
-                <MaterialCommunityIcons
-                  name={asientoRoto ? "checkbox-marked" : "checkbox-blank-outline"}
-                  size={24}
-                  color={asientoRoto ? COLORS.primary : COLORS.muted}
-                />
-                <Text style={[styles.modalCheckboxLabel, asientoRoto && styles.modalCheckboxLabelChecked]}>
-                  Asiento roto
-                </Text>
-              </TouchableOpacity>
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  style={[styles.modalBtn, styles.modalBtnCancel, { marginRight: 12 }]}
+                  onPress={() => setEditingSeat(null)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.modalBtnCancelText}>Cancelar</Text>
+                </TouchableOpacity>
 
-              <TouchableOpacity
-                style={[styles.modalCheckbox, apoyabrazosRoto && styles.modalCheckboxChecked]}
-                onPress={() => setApoyabrazosRoto(!apoyabrazosRoto)}
-                activeOpacity={0.8}
-              >
-                <MaterialCommunityIcons
-                  name={apoyabrazosRoto ? "checkbox-marked" : "checkbox-blank-outline"}
-                  size={24}
-                  color={apoyabrazosRoto ? COLORS.primary : COLORS.muted}
-                />
-                <Text style={[styles.modalCheckboxLabel, apoyabrazosRoto && styles.modalCheckboxLabelChecked]}>
-                  Apoyabrazos roto
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.modalInputBlock}>
-              <Text style={styles.modalInputLabel}>Detalles adicionales / Comentarios</Text>
-              <TextInput
-                value={extraDetails}
-                onChangeText={setExtraDetails}
-                placeholder="Ej. costura rota, falta tornillo de base, chicle pegado"
-                placeholderTextColor={COLORS.muted}
-                style={styles.modalDetailsInput}
-                multiline
-                numberOfLines={3}
-              />
-            </View>
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={[styles.modalBtn, styles.modalBtnCancel]}
-                onPress={() => setEditingSeat(null)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.modalBtnCancelText}>Cancelar</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.modalBtn, styles.modalBtnPrimary]}
-                onPress={handleSaveSeat}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.modalBtnPrimaryText}>Guardar</Text>
-              </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalBtn, styles.modalBtnPrimary]}
+                  onPress={handleSaveSeat}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.modalBtnPrimaryText}>Guardar</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
-        </View>
+        )}
       </Modal>
     </View>
   );
@@ -2384,17 +2389,16 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   modalCheckboxes: {
-    gap: 8,
     marginBottom: THEME.spacing.lg,
   },
   modalCheckbox: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
     padding: 10,
     borderRadius: THEME.radius.md,
     borderWidth: 1,
     borderColor: COLORS.border,
+    marginBottom: 8,
   },
   modalCheckboxChecked: {
     backgroundColor: COLORS.primarySoft,
@@ -2410,13 +2414,13 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   modalInputBlock: {
-    gap: 6,
     marginBottom: THEME.spacing.xl,
   },
   modalInputLabel: {
     fontSize: 12,
     fontWeight: "700",
     color: COLORS.text,
+    marginBottom: 6,
   },
   modalDetailsInput: {
     backgroundColor: COLORS.bg,
@@ -2430,7 +2434,6 @@ const styles = StyleSheet.create({
   },
   modalActions: {
     flexDirection: "row",
-    gap: 12,
   },
   modalBtn: {
     flex: 1,
