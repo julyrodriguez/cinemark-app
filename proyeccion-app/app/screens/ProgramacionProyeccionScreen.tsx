@@ -1188,7 +1188,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                                     style={[styles.movieCardTitle, is3D && { color: "#FFFFFF" }]}
                                     numberOfLines={1}
                                   >
-                                    {show.pelicula}
+                                    {show.pelicula}{is3D && !/3d/i.test(show.pelicula) ? " (3D)" : ""}
                                   </Text>
                                 </View>
                                 <View style={styles.movieCardFooter}>
