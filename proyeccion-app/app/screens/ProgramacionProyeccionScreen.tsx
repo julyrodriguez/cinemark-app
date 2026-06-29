@@ -323,7 +323,11 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                     return (
                       <View key={colNum} style={[styles.seatBase, seatStyle]}>
                         {iconName ? (
-                          <MaterialCommunityIcons name={iconName as any} size={10} color="#FFF" />
+                          <MaterialCommunityIcons 
+                            name={iconName as any} 
+                            size={Platform.select({ web: 14, default: 10 })} 
+                            color="#FFF" 
+                          />
                         ) : null}
                       </View>
                     );
@@ -1665,7 +1669,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
         onRequestClose={() => { setSelectedShow(null); setShowSeatMap(false); setSeatMapData(null); }}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, showSeatMap && styles.modalContentLarge]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalHeaderTitle}>Detalle de Función</Text>
               <TouchableOpacity onPress={() => { setSelectedShow(null); setShowSeatMap(false); setSeatMapData(null); }} style={styles.modalCloseButton}>
@@ -2253,6 +2257,10 @@ const styles = StyleSheet.create({
       },
     }),
   },
+  modalContentLarge: {
+    maxWidth: 800,
+    width: Platform.OS === "web" ? "90%" : "98%",
+  },
   modalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -2684,30 +2692,30 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   colNumberText: {
-    width: 16,
+    width: Platform.select({ web: 22, default: 16 }),
     textAlign: "center",
-    fontSize: 8,
+    fontSize: Platform.select({ web: 10, default: 8 }),
     color: COLORS.textSoft,
-    marginHorizontal: 1,
+    marginHorizontal: Platform.select({ web: 2, default: 1 }),
   },
   rowLabelText: {
-    width: 18,
+    width: Platform.select({ web: 26, default: 18 }),
     textAlign: "center",
-    fontSize: 10,
+    fontSize: Platform.select({ web: 12, default: 10 }),
     fontWeight: "bold",
     color: COLORS.textSoft,
   },
   seatSpacer: {
-    width: 16,
-    height: 16,
-    marginHorizontal: 1,
+    width: Platform.select({ web: 22, default: 16 }),
+    height: Platform.select({ web: 22, default: 16 }),
+    marginHorizontal: Platform.select({ web: 2, default: 1 }),
     backgroundColor: "transparent",
   },
   seatBase: {
-    width: 16,
-    height: 16,
-    borderRadius: 3,
-    marginHorizontal: 1,
+    width: Platform.select({ web: 22, default: 16 }),
+    height: Platform.select({ web: 22, default: 16 }),
+    borderRadius: Platform.select({ web: 5, default: 3 }),
+    marginHorizontal: Platform.select({ web: 2, default: 1 }),
     justifyContent: "center",
     alignItems: "center",
   },
