@@ -39,6 +39,8 @@ interface DailyShow {
   sessionFormat?: string;
   language?: string;
   premiere?: boolean;
+  corporateId?: string;
+  movieId?: string;
   
   capacity?: number;
   availableSeats?: number;
@@ -223,6 +225,117 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
   const [apiError, setApiError] = useState<string | null>(null);
   const [selectedWeekStart, setSelectedWeekStart] = useState<string>("");
   const [showStatsPanel, setShowStatsPanel] = useState(false);
+
+  // Seat Map Integration
+  const [seatMapData, setSeatMapData] = useState<any | null>(null);
+  const [loadingSeatMap, setLoadingSeatMap] = useState<boolean>(false);
+  const [seatMapError, setSeatMapError] = useState<string | null>(null);
+  const [showSeatMap, setShowSeatMap] = useState<boolean>(false);
+
+  const fetchSeatMap = async (show: DailyShow) => {
+    if (!show || !cineId) return;
+    setLoadingSeatMap(true);
+    setSeatMapError(null);
+    setSeatMapData(null);
+    setShowSeatMap(true);
+
+    try {
+      const getSeatMapFunc = httpsCallable(functions, "getCinemarkSeatMap");
+      const res = await getSeatMapFunc({
+        cinemaId: getTheaterId(cineId),
+        sessionId: show.sessionId,
+        corporateFilmId: show.corporateId || show.movieId || ""
+      });
+
+      const responseData = res.data as any;
+      if (responseData && responseData.Code === 0) {
+        setSeatMapData(responseData.Data);
+      } else {
+        setSeatMapError(responseData?.Message || "Error al obtener el mapa de asientos.");
+      }
+    } catch (err: any) {
+      console.error("Error fetching seat map:", err);
+      setSeatMapError(err?.message || "Error al conectar con el servidor.");
+    } finally {
+      setLoadingSeatMap(false);
+    }
+  };
+
+  const renderSeatGrid = (data: any) => {
+    if (!data) return null;
+    const area = data.areas ? data.areas[0] : data;
+    const cols = area.areaLayoutColumns || 24;
+    const rows = area.rows || [];
+
+    // Sort rows by seatGridRowId descending (A to N)
+    const rowsSorted = [...rows].sort((a, b) => b.seatGridRowId - a.seatGridRowId);
+
+    return (
+      <View style={styles.seatGridContainer}>
+        <View style={styles.screenIndicator}>
+          <View style={styles.screenLine} />
+          <Text style={styles.screenText}>PANTALLA</Text>
+        </View>
+
+        <ScrollView horizontal={true} showsHorizontalScrollIndicator={true} contentContainerStyle={styles.horizontalGridScroll}>
+          <View style={{ flexDirection: "column" }}>
+            <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 6 }}>
+              <View style={{ width: 24 }} />
+              {Array.from({ length: cols }, (_, i) => i + 1).map((colNum) => (
+                <Text key={colNum} style={styles.colNumberText}>
+                  {colNum}
+                </Text>
+              ))}
+            </View>
+
+            {rowsSorted.map((row: any) => {
+              const rowId = row.rowPhysicalId;
+              const rowSeats: any = {};
+              row.seats.forEach((s: any) => {
+                rowSeats[s.gridSeatNumber] = s;
+              });
+
+              return (
+                <View key={rowId} style={{ flexDirection: "row", alignItems: "center", marginVertical: 2 }}>
+                  <Text style={styles.rowLabelText}>{rowId}</Text>
+                  {Array.from({ length: cols }, (_, i) => i + 1).map((colNum) => {
+                    const seat = rowSeats[colNum];
+                    if (!seat) {
+                      return <View key={colNum} style={styles.seatSpacer} />;
+                    }
+
+                    const status = seat.seatStatus;
+                    let seatStyle = styles.seatAvailable;
+                    let iconName = "";
+
+                    if (status === 1 || status === 6 || status === 7) {
+                      seatStyle = styles.seatOccupied;
+                    } else if (status === 4) {
+                      seatStyle = styles.seatWheelchair;
+                      iconName = "wheelchair-accessibility";
+                    } else if (status === 5) {
+                      seatStyle = styles.seatAutoAssigned;
+                    } else if (status === 8) {
+                      seatStyle = styles.seatBlocked;
+                    }
+
+                    return (
+                      <View key={colNum} style={[styles.seatBase, seatStyle]}>
+                        {iconName ? (
+                          <MaterialCommunityIcons name={iconName as any} size={10} color="#FFF" />
+                        ) : null}
+                      </View>
+                    );
+                  })}
+                  <Text style={[styles.rowLabelText, { marginLeft: 6 }]}>{rowId}</Text>
+                </View>
+              );
+            })}
+          </View>
+        </ScrollView>
+      </View>
+    );
+  };
 
   const handleGridScroll = (event: any) => {
     const x = event.nativeEvent.contentOffset.x;
@@ -614,6 +727,8 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
             sessionFormat: Array.from(new Set(formats)).join(" / "),
             language: first.language.name,
             premiere: isPremiere,
+            corporateId: first.corporateId,
+            movieId: first.movieId,
 
             capacity: totalCapacity,
             availableSeats: totalAvailable,
@@ -742,6 +857,8 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
               show.sessionFormat = Array.from(new Set(formats)).join(" / ");
               show.language = matchingSessions[0].language.name;
               show.premiere = isPremiere;
+              show.corporateId = matchingSessions[0].corporateId;
+              show.movieId = matchingSessions[0].movieId;
 
               show.capacity = totalCapacity;
               show.availableSeats = totalAvailable;
@@ -1542,151 +1659,221 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
         visible={selectedShow !== null}
         transparent={true}
         animationType="fade"
-        onRequestClose={() => setSelectedShow(null)}
+        onRequestClose={() => { setSelectedShow(null); setShowSeatMap(false); setSeatMapData(null); }}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalHeaderTitle}>Detalle de Función</Text>
-              <TouchableOpacity onPress={() => setSelectedShow(null)} style={styles.modalCloseButton}>
+              <TouchableOpacity onPress={() => { setSelectedShow(null); setShowSeatMap(false); setSeatMapData(null); }} style={styles.modalCloseButton}>
                 <MaterialCommunityIcons name="close" size={24} color={COLORS.text} />
               </TouchableOpacity>
             </View>
 
             {selectedShow && (
               <View style={styles.modalBody}>
-                {/* Movie Title */}
-                <Text style={styles.modalMovieTitle}>{selectedShow.pelicula}</Text>
-
-                {/* Details list */}
-                <View style={styles.detailRow}>
-                  <MaterialCommunityIcons name="door-open" size={22} color={COLORS.muted} style={styles.detailIcon} />
-                  <View>
-                    <Text style={styles.detailLabel}>Sala</Text>
-                    <Text style={styles.detailValue}>Sala {selectedShow.sala}</Text>
-                  </View>
-                </View>
-
-                {/* API Info / Format & Language */}
-                {selectedShow.isSimulated && (
-                  <View style={styles.detailRow}>
-                    <MaterialCommunityIcons name="movie-filter-outline" size={22} color={COLORS.muted} style={styles.detailIcon} />
-                    <View>
-                      <Text style={styles.detailLabel}>Formato e Idioma (API)</Text>
-                      <Text style={styles.detailValue}>
-                        {selectedShow.sessionFormat} | {selectedShow.language}
-                      </Text>
+                {showSeatMap ? (
+                  <View style={{ flex: 1, minHeight: 350 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}>
+                      <TouchableOpacity 
+                        onPress={() => { setShowSeatMap(false); setSeatMapData(null); }} 
+                        style={{ flexDirection: "row", alignItems: "center", paddingVertical: 4 }}
+                      >
+                        <MaterialCommunityIcons name="arrow-left" size={20} color={COLORS.primary} />
+                        <Text style={{ color: COLORS.primary, fontWeight: "bold", marginLeft: 4, fontSize: 14 }}>Volver a detalles</Text>
+                      </TouchableOpacity>
                     </View>
-                  </View>
-                )}
 
-                {/* Sales Breakdown / Ocupación */}
-                {selectedShow.isSimulated && (
-                  <View style={styles.detailRow}>
-                    <MaterialCommunityIcons name="ticket-confirmation-outline" size={22} color={COLORS.muted} style={styles.detailIcon} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.detailLabel}>Ventas / Ocupación</Text>
-                      <View style={styles.occupancyContainer}>
-                        {selectedShow.hasDbox ? (
-                          <>
-                            <View style={styles.occupancySubRow}>
-                              <Text style={styles.occupancyLabel}>Butacas Comunes:</Text>
-                              <Text style={styles.occupancyVal}>
-                                <Text style={{ fontWeight: "bold" }}>{selectedShow.normalSold}</Text> vendidas de {selectedShow.normalCapacity} ({selectedShow.normalAvailable} disp.)
-                              </Text>
-                            </View>
-                            <View style={styles.occupancySubRow}>
-                              <Text style={styles.occupancyLabel}>Butacas D-BOX:</Text>
-                              <Text style={styles.occupancyVal}>
-                                <Text style={{ fontWeight: "bold" }}>{selectedShow.dboxSold}</Text> vendidas de {selectedShow.dboxCapacity} ({selectedShow.dboxAvailable} disp.)
-                              </Text>
-                            </View>
-                            <View style={[styles.occupancySubRow, { borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: 4, marginTop: 4 }]}>
-                              <Text style={[styles.occupancyLabel, { fontWeight: "bold" }]}>Total Sala:</Text>
-                              <Text style={[styles.occupancyVal, { fontWeight: "bold", color: COLORS.primary }]}>
-                                {selectedShow.soldSeats} vendidas de {selectedShow.capacity} ({selectedShow.availableSeats} disp.)
-                              </Text>
-                            </View>
-                          </>
-                        ) : (
-                          <View style={styles.occupancySubRow}>
-                            <Text style={styles.occupancyLabel}>Butacas:</Text>
-                            <Text style={styles.occupancyVal}>
-                              <Text style={{ fontWeight: "bold" }}>{selectedShow.soldSeats}</Text> vendidas de {selectedShow.capacity} ({selectedShow.availableSeats} disp.)
-                            </Text>
+                    <Text style={[styles.modalMovieTitle, { marginBottom: 4 }]}>{selectedShow.pelicula}</Text>
+                    <Text style={{ color: COLORS.textSoft, fontSize: 13, marginBottom: 12 }}>
+                      Sala {selectedShow.sala} | {selectedShow.sessionFormat || "2D"} | {selectedShow.inicio} hs
+                    </Text>
+
+                    {loadingSeatMap ? (
+                      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", paddingVertical: 60 }}>
+                        <ActivityIndicator size="large" color={COLORS.primary} />
+                        <Text style={{ color: COLORS.textSoft, marginTop: 12, fontSize: 13 }}>Cargando mapa de asientos...</Text>
+                      </View>
+                    ) : seatMapError ? (
+                      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", paddingVertical: 40 }}>
+                        <MaterialCommunityIcons name="alert-circle-outline" size={40} color="#EF4444" />
+                        <Text style={{ color: "#EF4444", fontWeight: "bold", marginTop: 8, fontSize: 14 }}>Error al cargar mapa</Text>
+                        <Text style={{ color: COLORS.textSoft, textAlign: "center", marginTop: 4, paddingHorizontal: 16, fontSize: 12 }}>{seatMapError}</Text>
+                      </View>
+                    ) : seatMapData ? (
+                      <>
+                        <View style={styles.legendContainer}>
+                          <View style={styles.legendItem}>
+                            <View style={[styles.seatBase, styles.seatAvailable]} />
+                            <Text style={styles.legendText}>Disp.</Text>
                           </View>
-                        )}
+                          <View style={styles.legendItem}>
+                            <View style={[styles.seatBase, styles.seatOccupied]} />
+                            <Text style={styles.legendText}>Ocup.</Text>
+                          </View>
+                          <View style={styles.legendItem}>
+                            <View style={[styles.seatBase, styles.seatAutoAssigned]} />
+                            <Text style={styles.legendText}>Mi Reserva</Text>
+                          </View>
+                          <View style={styles.legendItem}>
+                            <View style={[styles.seatBase, styles.seatWheelchair, { justifyContent: 'center', alignItems: 'center' }]}>
+                              <MaterialCommunityIcons name="wheelchair-accessibility" size={10} color="#FFF" />
+                            </View>
+                            <Text style={styles.legendText}>Silla</Text>
+                          </View>
+                        </View>
+
+                        {renderSeatGrid(seatMapData)}
+                      </>
+                    ) : null}
+                  </View>
+                ) : (
+                  <>
+                    {/* Movie Title */}
+                    <Text style={styles.modalMovieTitle}>{selectedShow.pelicula}</Text>
+
+                    {/* Details list */}
+                    <View style={styles.detailRow}>
+                      <MaterialCommunityIcons name="door-open" size={22} color={COLORS.muted} style={styles.detailIcon} />
+                      <View>
+                        <Text style={styles.detailLabel}>Sala</Text>
+                        <Text style={styles.detailValue}>Sala {selectedShow.sala}</Text>
                       </View>
                     </View>
-                  </View>
+
+                    {/* API Info / Format & Language */}
+                    {selectedShow.isSimulated && (
+                      <View style={styles.detailRow}>
+                        <MaterialCommunityIcons name="movie-filter-outline" size={22} color={COLORS.muted} style={styles.detailIcon} />
+                        <View>
+                          <Text style={styles.detailLabel}>Formato e Idioma (API)</Text>
+                          <Text style={styles.detailValue}>
+                            {selectedShow.sessionFormat} | {selectedShow.language}
+                          </Text>
+                        </View>
+                      </View>
+                    )}
+
+                    {/* Sales Breakdown / Ocupación */}
+                    {selectedShow.isSimulated && (
+                      <View style={styles.detailRow}>
+                        <MaterialCommunityIcons name="ticket-confirmation-outline" size={22} color={COLORS.muted} style={styles.detailIcon} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.detailLabel}>Ventas / Ocupación</Text>
+                          <View style={styles.occupancyContainer}>
+                            {selectedShow.hasDbox ? (
+                              <>
+                                <View style={styles.occupancySubRow}>
+                                  <Text style={styles.occupancyLabel}>Butacas Comunes:</Text>
+                                  <Text style={styles.occupancyVal}>
+                                    <Text style={{ fontWeight: "bold" }}>{selectedShow.normalSold}</Text> vendidas de {selectedShow.normalCapacity} ({selectedShow.normalAvailable} disp.)
+                                  </Text>
+                                </View>
+                                <View style={styles.occupancySubRow}>
+                                  <Text style={styles.occupancyLabel}>Butacas D-BOX:</Text>
+                                  <Text style={styles.occupancyVal}>
+                                    <Text style={{ fontWeight: "bold" }}>{selectedShow.dboxSold}</Text> vendidas de {selectedShow.dboxCapacity} ({selectedShow.dboxAvailable} disp.)
+                                  </Text>
+                                </View>
+                                <View style={[styles.occupancySubRow, { borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: 4, marginTop: 4 }]}>
+                                  <Text style={[styles.occupancyLabel, { fontWeight: "bold" }]}>Total Sala:</Text>
+                                  <Text style={[styles.occupancyVal, { fontWeight: "bold", color: COLORS.primary }]}>
+                                    {selectedShow.soldSeats} vendidas de {selectedShow.capacity} ({selectedShow.availableSeats} disp.)
+                                  </Text>
+                                </View>
+                              </>
+                            ) : (
+                              <View style={styles.occupancySubRow}>
+                                <Text style={styles.occupancyLabel}>Butacas:</Text>
+                                <Text style={styles.occupancyVal}>
+                                  <Text style={{ fontWeight: "bold" }}>{selectedShow.soldSeats}</Text> vendidas de {selectedShow.capacity} ({selectedShow.availableSeats} disp.)
+                                </Text>
+                              </View>
+                            )}
+                          </View>
+                        </View>
+                      </View>
+                    )}
+
+                    {/* Dynamic alert block */}
+                    {selectedShow.isSimulated && (() => {
+                      const rate = selectedShow.capacity !== undefined && selectedShow.capacity > 0 && selectedShow.soldSeats !== undefined ? selectedShow.soldSeats / selectedShow.capacity : 0;
+                      if (rate < 0.02) {
+                        return (
+                          <View style={[styles.detailRow, { backgroundColor: "rgba(239, 68, 68, 0.08)", borderRadius: 8, padding: 8, marginTop: 4, marginBottom: 8 }]}>
+                            <MaterialCommunityIcons name="alert-circle-outline" size={22} color="#EF4444" style={styles.detailIcon} />
+                            <View style={{ flex: 1 }}>
+                              <Text style={[styles.detailLabel, { color: "#EF4444", fontWeight: "bold" }]}>Alerta de Seguridad</Text>
+                              <Text style={[styles.detailValue, { color: "#EF4444" }]}>⚠️ Riesgo de grabación (Ocupación menor al 2%)</Text>
+                            </View>
+                          </View>
+                        );
+                      }
+                      if (rate > 0.60) {
+                        return (
+                          <View style={[styles.detailRow, { backgroundColor: "rgba(16, 185, 129, 0.08)", borderRadius: 8, padding: 8, marginTop: 4, marginBottom: 8 }]}>
+                            <MaterialCommunityIcons name="account-group" size={22} color="#10B981" style={styles.detailIcon} />
+                            <View style={{ flex: 1 }}>
+                              <Text style={[styles.detailLabel, { color: "#10B981", fontWeight: "bold" }]}>Operación de Sala</Text>
+                              <Text style={[styles.detailValue, { color: "#10B981" }]}>👤 Necesario guía de sala (Ocupación mayor al 60%)</Text>
+                            </View>
+                          </View>
+                        );
+                      }
+                      return null;
+                    })()}
+
+                    {/* Ads / Film Startup detail breakdown */}
+                    <View style={styles.detailRow}>
+                      <MaterialCommunityIcons name="projector" size={22} color={COLORS.muted} style={styles.detailIcon} />
+                      <View>
+                        <Text style={styles.detailLabel}>Cronograma de Proyección</Text>
+                        <Text style={styles.detailValueSub}>
+                          • Encendido / Publicidad (12 min): <Text style={styles.detailHighlight}>{selectedShow.inicio} hs</Text>
+                        </Text>
+                        <Text style={styles.detailValueSub}>
+                          • Inicio de Película: <Text style={styles.detailHighlight}>{addMinutesToTimeStr(selectedShow.inicio, 12)} hs</Text>
+                        </Text>
+                        <Text style={styles.detailValueSub}>
+                          • Finalización de Función: <Text style={styles.detailHighlight}>{selectedShow.fin} hs</Text>
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.detailRow}>
+                      <MaterialCommunityIcons name="timer-outline" size={22} color={COLORS.muted} style={styles.detailIcon} />
+                      <View>
+                        <Text style={styles.detailLabel}>Duración Total del Bloque</Text>
+                        <Text style={styles.detailValue}>{getShowDuration(selectedShow)} minutos (incluye publicidad)</Text>
+                      </View>
+                    </View>
+
+                    {selectedShow.calificacion ? (
+                      <View style={styles.detailRow}>
+                        <MaterialCommunityIcons name="account-alert-outline" size={22} color={COLORS.muted} style={styles.detailIcon} />
+                        <View>
+                          <Text style={styles.detailLabel}>Calificación</Text>
+                          <Text style={styles.detailValue}>{selectedShow.calificacion}</Text>
+                        </View>
+                      </View>
+                    ) : null}
+
+                    {/* View Seat Map Button */}
+                    {selectedShow.isSimulated && (
+                      <TouchableOpacity 
+                        onPress={() => fetchSeatMap(selectedShow)} 
+                        style={styles.viewSeatMapButton}
+                      >
+                        <MaterialCommunityIcons name="seat-recline-normal" size={20} color="#FFF" style={{ marginRight: 6 }} />
+                        <Text style={styles.viewSeatMapButtonText}>Ver Mapa de Asientos en Vivo</Text>
+                      </TouchableOpacity>
+                    )}
+                  </>
                 )}
-
-                {/* Dynamic alert block */}
-                {selectedShow.isSimulated && (() => {
-                  const rate = selectedShow.capacity !== undefined && selectedShow.capacity > 0 && selectedShow.soldSeats !== undefined ? selectedShow.soldSeats / selectedShow.capacity : 0;
-                  if (rate < 0.02) {
-                    return (
-                      <View style={[styles.detailRow, { backgroundColor: "rgba(239, 68, 68, 0.08)", borderRadius: 8, padding: 8, marginTop: 4, marginBottom: 8 }]}>
-                        <MaterialCommunityIcons name="alert-circle-outline" size={22} color="#EF4444" style={styles.detailIcon} />
-                        <View style={{ flex: 1 }}>
-                          <Text style={[styles.detailLabel, { color: "#EF4444", fontWeight: "bold" }]}>Alerta de Seguridad</Text>
-                          <Text style={[styles.detailValue, { color: "#EF4444" }]}>⚠️ Riesgo de grabación (Ocupación menor al 2%)</Text>
-                        </View>
-                      </View>
-                    );
-                  }
-                  if (rate > 0.60) {
-                    return (
-                      <View style={[styles.detailRow, { backgroundColor: "rgba(16, 185, 129, 0.08)", borderRadius: 8, padding: 8, marginTop: 4, marginBottom: 8 }]}>
-                        <MaterialCommunityIcons name="account-group" size={22} color="#10B981" style={styles.detailIcon} />
-                        <View style={{ flex: 1 }}>
-                          <Text style={[styles.detailLabel, { color: "#10B981", fontWeight: "bold" }]}>Operación de Sala</Text>
-                          <Text style={[styles.detailValue, { color: "#10B981" }]}>👤 Necesario guía de sala (Ocupación mayor al 60%)</Text>
-                        </View>
-                      </View>
-                    );
-                  }
-                  return null;
-                })()}
-
-                {/* Ads / Film Startup detail breakdown */}
-                <View style={styles.detailRow}>
-                  <MaterialCommunityIcons name="projector" size={22} color={COLORS.muted} style={styles.detailIcon} />
-                  <View>
-                    <Text style={styles.detailLabel}>Cronograma de Proyección</Text>
-                    <Text style={styles.detailValueSub}>
-                      • Encendido / Publicidad (12 min): <Text style={styles.detailHighlight}>{selectedShow.inicio} hs</Text>
-                    </Text>
-                    <Text style={styles.detailValueSub}>
-                      • Inicio de Película: <Text style={styles.detailHighlight}>{addMinutesToTimeStr(selectedShow.inicio, 12)} hs</Text>
-                    </Text>
-                    <Text style={styles.detailValueSub}>
-                      • Finalización de Función: <Text style={styles.detailHighlight}>{selectedShow.fin} hs</Text>
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.detailRow}>
-                  <MaterialCommunityIcons name="timer-outline" size={22} color={COLORS.muted} style={styles.detailIcon} />
-                  <View>
-                    <Text style={styles.detailLabel}>Duración Total del Bloque</Text>
-                    <Text style={styles.detailValue}>{getShowDuration(selectedShow)} minutos (incluye publicidad)</Text>
-                  </View>
-                </View>
-
-                {selectedShow.calificacion ? (
-                  <View style={styles.detailRow}>
-                    <MaterialCommunityIcons name="account-alert-outline" size={22} color={COLORS.muted} style={styles.detailIcon} />
-                    <View>
-                      <Text style={styles.detailLabel}>Calificación</Text>
-                      <Text style={styles.detailValue}>{selectedShow.calificacion}</Text>
-                    </View>
-                  </View>
-                ) : null}
               </View>
             )}
 
-            <TouchableOpacity onPress={() => setSelectedShow(null)} style={styles.modalButton}>
+            <TouchableOpacity onPress={() => { setSelectedShow(null); setShowSeatMap(false); setSeatMapData(null); }} style={styles.modalButton}>
               <Text style={styles.modalButtonText}>Cerrar</Text>
             </TouchableOpacity>
           </View>
@@ -2461,5 +2648,112 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.textSoft,
     textAlign: "center",
+  },
+  seatGridContainer: {
+    marginTop: 8,
+    padding: 12,
+    borderRadius: 8,
+    backgroundColor: "rgba(30, 41, 59, 0.5)",
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: "center",
+  },
+  screenIndicator: {
+    width: "80%",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  screenLine: {
+    width: "100%",
+    height: 4,
+    backgroundColor: COLORS.textSoft,
+    borderRadius: 2,
+    opacity: 0.3,
+  },
+  screenText: {
+    fontSize: 9,
+    color: COLORS.textSoft,
+    fontWeight: "bold",
+    letterSpacing: 2,
+    marginTop: 2,
+  },
+  horizontalGridScroll: {
+    paddingBottom: 8,
+  },
+  colNumberText: {
+    width: 16,
+    textAlign: "center",
+    fontSize: 8,
+    color: COLORS.textSoft,
+    marginHorizontal: 1,
+  },
+  rowLabelText: {
+    width: 18,
+    textAlign: "center",
+    fontSize: 10,
+    fontWeight: "bold",
+    color: COLORS.textSoft,
+  },
+  seatSpacer: {
+    width: 16,
+    height: 16,
+    marginHorizontal: 1,
+    backgroundColor: "transparent",
+  },
+  seatBase: {
+    width: 16,
+    height: 16,
+    borderRadius: 3,
+    marginHorizontal: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  seatAvailable: {
+    backgroundColor: "#10B981",
+  },
+  seatOccupied: {
+    backgroundColor: "#EF4444",
+  },
+  seatWheelchair: {
+    backgroundColor: "#3B82F6",
+  },
+  seatAutoAssigned: {
+    backgroundColor: "#F59E0B",
+  },
+  seatBlocked: {
+    backgroundColor: "#6B7280",
+  },
+  legendContainer: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    alignItems: "center",
+    marginBottom: 16,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  legendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  legendText: {
+    fontSize: 10,
+    color: COLORS.textSoft,
+    marginLeft: 4,
+  },
+  viewSeatMapButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.primary,
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  viewSeatMapButtonText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "bold",
   },
 });

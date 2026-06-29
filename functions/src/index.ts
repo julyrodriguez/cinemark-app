@@ -1650,3 +1650,116 @@ export const forceSyncShowtimes = onCall({ cors: true }, async (request) => {
   return { success: true };
 });
 
+// Get seat map for a specific showtime session
+export const getCinemarkSeatMap = onCall({ cors: true }, async (request) => {
+  const cinemaId = Number(request.data?.cinemaId || 103);
+  const sessionId = Number(request.data?.sessionId);
+  const corporateFilmId = String(request.data?.corporateFilmId || "");
+
+  if (!sessionId) {
+    throw new HttpsError("invalid-argument", "Missing sessionId");
+  }
+
+  const urlOrder = "https://bff.cinemark.com.ar/api/order-tickets";
+  const headers = {
+    "accept": "application/json",
+    "content-type": "application/json",
+    "country": "AR",
+    "member-session-id": "dc2a9a5a-3239-4ff9-8b97-142882f08a43",
+    "origin": "https://www.cinemark.com.ar",
+    "referer": "https://www.cinemark.com.ar/",
+    "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+  };
+
+  const payload = {
+    "cinemaId": cinemaId,
+    "feature": 0,
+    "isMobile": false,
+    "movie": {
+      "cinemaAddress": "Aguero 665, Abasto Shopping",
+      "cinemaCity": "CABA",
+      "cinemaName": "Abasto",
+      "corporateFilmId": corporateFilmId,
+      "rating": "R-13",
+      "ratingDescription": "Apto para todo Público"
+    },
+    "salesChannelToken": "d792f0f7def937524c47b6e5036b70085302d9df18a7dfc48478ce3d2de4bef9",
+    "sessionId": sessionId,
+    "ticketList": [
+      {
+        "areaCategoryCode": "",
+        "hOCode": "1005",
+        "recogId": 0,
+        "promoId": 0,
+        "voucher": "",
+        "quantity": 1,
+        "buyOptions": [
+          {
+            "recogId": 0,
+            "promoId": 0,
+            "cssClass": "ticket-price-reg",
+            "value": 2320000,
+            "valueWithoutTax": 1770900,
+            "balances": [],
+            "buttonQty": 1,
+            "level": 0,
+            "maxQty": 6,
+            "service": 105000,
+            "type": 3
+          }
+        ],
+        "isPaymentByCreditCardOnly": false,
+        "isVoucher": false,
+        "partnershipName": "",
+        "price": 2320000,
+        "ticketsQty": 1
+      }
+    ],
+    "user": {
+      "fullName": "Julian Rodríguez",
+      "email": "julian180@live.com",
+      "phone": "1130510126",
+      "memberId": "5215241",
+      "customerType": 0
+    }
+  };
+
+  try {
+    // 1. Initialize order to get transIdTemp
+    const orderRes = await fetch(urlOrder, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload)
+    });
+
+    if (!orderRes.ok) {
+      throw new HttpsError("failed-precondition", `Order initialization failed with status ${orderRes.status}`);
+    }
+
+    const orderJson = await orderRes.json() as any;
+    if (orderJson.code !== 0 || !orderJson.data?.transIdTemp) {
+      throw new HttpsError("failed-precondition", orderJson.message || "Failed to generate transIdTemp");
+    }
+
+    const transIdTemp = orderJson.data.transIdTemp;
+
+    // 2. Fetch the map
+    const urlMap = `https://bff.cinemark.com.ar/api/order-get-map?cinemaId=${cinemaId}&transIdTemp=${transIdTemp}&sessionId=${sessionId}`;
+    const mapRes = await fetch(urlMap, {
+      method: "GET",
+      headers
+    });
+
+    if (!mapRes.ok) {
+      throw new HttpsError("failed-precondition", `Seat map request failed with status ${mapRes.status}`);
+    }
+
+    const mapJson = await mapRes.json();
+    return mapJson;
+  } catch (error: any) {
+    console.error("Error in getCinemarkSeatMap:", error);
+    throw new HttpsError("internal", error?.message || "Error fetching seat map");
+  }
+});
+
+
