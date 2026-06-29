@@ -1553,7 +1553,7 @@ export const verificarVencimientosProductos = onSchedule(
   }
 );
 
-export const getCinemarkShowtimes = onCall(async (request) => {
+export const getCinemarkShowtimes = onCall({ cors: true }, async (request) => {
   const theaterId = String(request.data?.theaterId || "103");
   const url = `https://bff.cinemark.com.ar/api/cinema/showtimes?theater=${theaterId}&_t=${Date.now()}`;
   
@@ -1693,7 +1693,7 @@ export const cronUpdateShowtimes = onSchedule("every 20 minutes", async () => {
 });
 
 // Force sync callable function for manual refresh
-export const forceSyncShowtimes = onCall(async (request) => {
+export const forceSyncShowtimes = onCall({ cors: true }, async (request) => {
   const targetCineId = String(request.data?.cineId || request.auth?.token?.cineId || "");
   if (!targetCineId) {
     throw new HttpsError("invalid-argument", "Missing cineId");
