@@ -1539,6 +1539,11 @@ async function syncShowtimesForCine(cineId: string, theaterId: string) {
     // Group new sessions by weekStart
     const sessionsByWeek: Record<string, any[]> = {};
     sessions.forEach((s: any) => {
+      // Shift sessionDateTime by +3 hours to correct the timezone offset at the base level
+      const originalDate = new Date(s.sessionDateTime);
+      const adjustedDate = new Date(originalDate.getTime() + 3 * 60 * 60 * 1000);
+      s.sessionDateTime = adjustedDate.toISOString();
+
       const utcDate = new Date(s.sessionDateTime);
       const weekStart = getMovieWeekStartForFunction(utcDate);
       if (!sessionsByWeek[weekStart]) {
