@@ -14,7 +14,8 @@ import {
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { doc, onSnapshot } from "firebase/firestore";
-import { db, CINES_COLLECTION } from "../../lib/firebaseConfig";
+import { db, CINES_COLLECTION, functions } from "../../lib/firebaseConfig";
+import { httpsCallable } from "firebase/functions";
 import { useAuthUser } from "../../lib/useAuthUser";
 import { COLORS, THEME } from "../../lib/theme";
 import { WeekdayKey } from "../../lib/programacion/types";
@@ -240,23 +241,16 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
     let isMounted = true;
     const theaterId = getTheaterId(cineId);
-    const url = `https://bff.cinemark.com.ar/api/cinema/showtimes?theater=${theaterId}&_t=${Date.now()}`;
 
     setLoading(true);
     setApiError(null);
 
-    fetch(url, {
-      headers: {
-        "country": "AR",
-        "Accept": "application/json, text/plain, */*"
-      }
-    })
-      .then(res => {
-        if (!res.ok) throw new Error("API response error");
-        return res.json();
-      })
-      .then(json => {
+    const getShowtimesFunc = httpsCallable(functions, "getCinemarkShowtimes");
+
+    getShowtimesFunc({ theaterId })
+      .then((res: any) => {
         if (isMounted) {
+          const json = res.data;
           if (json && json.data) {
             setApiData(json.data);
             setApiError(null);
@@ -266,11 +260,11 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
           setLoading(false);
         }
       })
-      .catch(err => {
+      .catch((err: any) => {
         console.warn("Live API fetch failed, falling back to mockShowtimesData:", err);
         if (isMounted) {
           setApiData(mockShowtimesData.data || []);
-          setApiError("CORS/Red: Usando datos de simulación locales.");
+          setApiError("Error de Red/API: Usando datos de simulación locales.");
           setLoading(false);
         }
       });

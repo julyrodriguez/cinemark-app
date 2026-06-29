@@ -1553,3 +1553,29 @@ export const verificarVencimientosProductos = onSchedule(
   }
 );
 
+export const getCinemarkShowtimes = onCall(async (request) => {
+  const theaterId = String(request.data?.theaterId || "103");
+  const url = `https://bff.cinemark.com.ar/api/cinema/showtimes?theater=${theaterId}&_t=${Date.now()}`;
+  
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "country": "AR",
+        "Accept": "application/json, text/plain, */*",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+      }
+    });
+
+    if (!response.ok) {
+      throw new HttpsError("failed-precondition", `Cinemark API returned status ${response.status}`);
+    }
+
+    const json = await response.json();
+    return json;
+  } catch (error: any) {
+    console.error("Error fetching Cinemark showtimes:", error);
+    throw new HttpsError("internal", error?.message || "Error fetching Cinemark showtimes");
+  }
+});
+
