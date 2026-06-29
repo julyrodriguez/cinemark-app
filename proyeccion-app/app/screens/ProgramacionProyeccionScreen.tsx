@@ -222,6 +222,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
   const [apiData, setApiData] = useState<any[] | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
   const [selectedWeekStart, setSelectedWeekStart] = useState<string>("");
+  const [showStatsPanel, setShowStatsPanel] = useState(false);
 
   const handleGridScroll = (event: any) => {
     const x = event.nativeEvent.contentOffset.x;
@@ -764,6 +765,65 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
     return list;
   }, [savedWeekly, selectedDay, useApiData, apiData, selectedWeekStart]);
 
+  // Compute daily and weekly statistics and operational alerts
+  const stats = useMemo(() => {
+    if (!useApiData || !apiData || !selectedWeekStart) {
+      return null;
+    }
+
+    // 1. Weekly Stats (for the entire selectedWeekStart)
+    let weeklyTotalSold = 0;
+    let weekly3DSold = 0;
+
+    apiData.forEach((session) => {
+      const utcDate = new Date(session.sessionDateTime);
+      const weekStart = getMovieWeekStart(utcDate);
+      if (weekStart !== selectedWeekStart) return;
+
+      const sold = session.occupation.capacity - session.occupation.availableSeats;
+      weeklyTotalSold += sold;
+
+      const is3D = /3d/i.test(session.movieName) || /3d/i.test(session.sessionFormat || "");
+      if (is3D) {
+        weekly3DSold += sold;
+      }
+    });
+
+    // 2. Daily Stats (for the current shows list of the selected day)
+    let dailyTotalSold = 0;
+    let daily3DSold = 0;
+    const recordingRiskShows: DailyShow[] = [];
+    const guideNeededShows: DailyShow[] = [];
+
+    shows.forEach((show) => {
+      if (show.isSimulated && show.capacity !== undefined && show.capacity > 0) {
+        const sold = show.soldSeats ?? 0;
+        dailyTotalSold += sold;
+
+        const is3D = /3d/i.test(show.pelicula) || /3d/i.test(show.sessionFormat || "");
+        if (is3D) {
+          daily3DSold += sold;
+        }
+
+        const rate = sold / show.capacity;
+        if (rate < 0.02) {
+          recordingRiskShows.push(show);
+        } else if (rate > 0.60) {
+          guideNeededShows.push(show);
+        }
+      }
+    });
+
+    return {
+      weeklyTotalSold,
+      weekly3DSold,
+      dailyTotalSold,
+      daily3DSold,
+      recordingRiskShows,
+      guideNeededShows,
+    };
+  }, [useApiData, apiData, selectedWeekStart, shows]);
+
   // Determine dynamic timeline start and end bounds based on shows of the selected day
   const { timelineStartMins, timelineEndMins, minStartMins } = useMemo(() => {
     if (shows.length === 0) {
@@ -1083,6 +1143,102 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
         );
       })()}
 
+      {/* Collapsible Stats and Alerts Panel */}
+      {useApiData && stats && (
+        <View style={styles.statsPanelContainer}>
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => setShowStatsPanel(!showStatsPanel)}
+            style={styles.statsPanelHeader}
+          >
+            <View style={styles.statsPanelHeaderTitleContainer}>
+              <MaterialCommunityIcons name="chart-bar" size={20} color={COLORS.primary} style={{ marginRight: 6 }} />
+              <Text style={styles.statsPanelHeaderTitle}>Estadísticas y Alertas del Cine</Text>
+            </View>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <Text style={styles.statsHeaderSummary}>
+                Hoy: {stats.dailyTotalSold} tix | Lentes 3D: {stats.daily3DSold}
+              </Text>
+              <MaterialCommunityIcons
+                name={showStatsPanel ? "chevron-up" : "chevron-down"}
+                size={20}
+                color={COLORS.textSoft}
+                style={{ marginLeft: 8 }}
+              />
+            </View>
+          </TouchableOpacity>
+
+          {showStatsPanel && (
+            <View style={styles.statsPanelBody}>
+              <View style={styles.statsGrid}>
+                {/* Daily Column */}
+                <View style={styles.statsColumn}>
+                  <Text style={styles.statsColumnTitle}>📍 HOY ({selectedDay.toUpperCase()})</Text>
+                  <View style={styles.statsItemRow}>
+                    <Text style={styles.statsItemLabel}>Tickets Vendidos:</Text>
+                    <Text style={styles.statsItemValue}>{stats.dailyTotalSold}</Text>
+                  </View>
+                  <View style={styles.statsItemRow}>
+                    <Text style={styles.statsItemLabel}>Lentes 3D Requeridos:</Text>
+                    <Text style={styles.statsItemValue}>{stats.daily3DSold}</Text>
+                  </View>
+                </View>
+
+                {/* Weekly Column */}
+                <View style={styles.statsColumn}>
+                  <Text style={styles.statsColumnTitle}>📅 SEMANA EN CURSO</Text>
+                  <View style={styles.statsItemRow}>
+                    <Text style={styles.statsItemLabel}>Total Vendidos:</Text>
+                    <Text style={styles.statsItemValue}>{stats.weeklyTotalSold}</Text>
+                  </View>
+                  <View style={styles.statsItemRow}>
+                    <Text style={styles.statsItemLabel}>Lentes 3D Requeridos:</Text>
+                    <Text style={styles.statsItemValue}>{stats.weekly3DSold}</Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Alerts Section (Only Daily) */}
+              <View style={styles.statsAlertsSection}>
+                <Text style={styles.statsAlertsTitle}>🚨 ALERTAS OPERATIVAS (Hoy)</Text>
+                
+                {stats.recordingRiskShows.length === 0 && stats.guideNeededShows.length === 0 ? (
+                  <View style={styles.noAlertsContainer}>
+                    <MaterialCommunityIcons name="check-circle" size={16} color="#10B981" style={{ marginRight: 6 }} />
+                    <Text style={styles.noAlertsText}>Sin alertas de sala hoy</Text>
+                  </View>
+                ) : (
+                  <View style={styles.alertsList}>
+                    {stats.recordingRiskShows.map((show, idx) => (
+                      <View key={`risk-${idx}`} style={[styles.alertItem, styles.alertItemRisk]}>
+                        <MaterialCommunityIcons name="alert-circle" size={14} color="#EF4444" style={{ marginRight: 6 }} />
+                        <Text style={styles.alertItemText} numberOfLines={1}>
+                          <Text style={{ fontWeight: "bold" }}>{show.inicio}</Text> - Sala {show.sala} | {show.pelicula} (Ocupación: {show.capacity !== undefined && show.soldSeats !== undefined && show.capacity > 0 ? ((show.soldSeats/show.capacity)*100).toFixed(0) : 0}%)
+                        </Text>
+                        <View style={[styles.alertBadge, { backgroundColor: "#EF4444" }]}>
+                          <Text style={styles.alertBadgeText}>Riesgo de grabación</Text>
+                        </View>
+                      </View>
+                    ))}
+                    {stats.guideNeededShows.map((show, idx) => (
+                      <View key={`guide-${idx}`} style={[styles.alertItem, styles.alertItemGuide]}>
+                        <MaterialCommunityIcons name="account-group" size={14} color="#10B981" style={{ marginRight: 6 }} />
+                        <Text style={styles.alertItemText} numberOfLines={1}>
+                          <Text style={{ fontWeight: "bold" }}>{show.inicio}</Text> - Sala {show.sala} | {show.pelicula} (Ocupación: {show.capacity !== undefined && show.soldSeats !== undefined && show.capacity > 0 ? ((show.soldSeats/show.capacity)*100).toFixed(0) : 0}%)
+                        </Text>
+                        <View style={[styles.alertBadge, { backgroundColor: "#10B981" }]}>
+                          <Text style={styles.alertBadgeText}>Necesario guía de sala</Text>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </View>
+            </View>
+          )}
+        </View>
+      )}
+
       {/* Main Grid View */}
       <View style={styles.gridContainer}>
         <ScrollView style={styles.verticalScrollView} bounces={false} stickyHeaderIndices={[1]}>
@@ -1301,14 +1457,33 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                                   >
                                     {show.inicio} - {show.fin}
                                   </Text>
-                                  {show.isSimulated && (
-                                    <View style={styles.cardSoldContainer}>
-                                      <MaterialCommunityIcons name="ticket" size={11} color="#EAB308" style={{ marginRight: 2 }} />
-                                      <Text style={[styles.cardSoldText, is3D ? { color: "#FFFFFF" } : { color: COLORS.primary }, { fontWeight: "bold" }]} numberOfLines={1}>
-                                        {show.soldSeats}/{show.capacity}
-                                      </Text>
-                                    </View>
-                                  )}
+                                  {show.isSimulated && (() => {
+                                    const rate = show.capacity !== undefined && show.capacity > 0 && show.soldSeats !== undefined ? show.soldSeats / show.capacity : 0;
+                                    let alertColor = "";
+                                    let alertText = "";
+                                    if (rate < 0.02) {
+                                      alertColor = "#EF4444";
+                                      alertText = "⚠️ Riesgo";
+                                    } else if (rate > 0.60) {
+                                      alertColor = "#10B981";
+                                      alertText = "👤 Guía";
+                                    }
+                                    return (
+                                      <View style={{ flexDirection: "row", alignItems: "center" }}>
+                                        <View style={styles.cardSoldContainer}>
+                                          <MaterialCommunityIcons name="ticket" size={11} color="#EAB308" style={{ marginRight: 2 }} />
+                                          <Text style={[styles.cardSoldText, is3D ? { color: "#FFFFFF" } : { color: COLORS.primary }, { fontWeight: "bold" }]} numberOfLines={1}>
+                                            {show.soldSeats}/{show.capacity}
+                                          </Text>
+                                        </View>
+                                        {alertText ? (
+                                          <View style={[styles.cardAlertBadge, { backgroundColor: alertColor }]}>
+                                            <Text style={styles.cardAlertBadgeText} numberOfLines={1}>{alertText}</Text>
+                                          </View>
+                                        ) : null}
+                                      </View>
+                                    );
+                                  })()}
                                   {show.calificacion ? (
                                     <View
                                       style={[
@@ -1465,6 +1640,34 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                     </View>
                   </View>
                 )}
+
+                {/* Dynamic alert block */}
+                {selectedShow.isSimulated && (() => {
+                  const rate = selectedShow.capacity !== undefined && selectedShow.capacity > 0 && selectedShow.soldSeats !== undefined ? selectedShow.soldSeats / selectedShow.capacity : 0;
+                  if (rate < 0.02) {
+                    return (
+                      <View style={[styles.detailRow, { backgroundColor: "rgba(239, 68, 68, 0.08)", borderRadius: 8, padding: 8, marginTop: 4, marginBottom: 8 }]}>
+                        <MaterialCommunityIcons name="alert-circle-outline" size={22} color="#EF4444" style={styles.detailIcon} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.detailLabel, { color: "#EF4444", fontWeight: "bold" }]}>Alerta de Seguridad</Text>
+                          <Text style={[styles.detailValue, { color: "#EF4444" }]}>⚠️ Riesgo de grabación (Ocupación menor al 2%)</Text>
+                        </View>
+                      </View>
+                    );
+                  }
+                  if (rate > 0.60) {
+                    return (
+                      <View style={[styles.detailRow, { backgroundColor: "rgba(16, 185, 129, 0.08)", borderRadius: 8, padding: 8, marginTop: 4, marginBottom: 8 }]}>
+                        <MaterialCommunityIcons name="account-group" size={22} color="#10B981" style={styles.detailIcon} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.detailLabel, { color: "#10B981", fontWeight: "bold" }]}>Operación de Sala</Text>
+                          <Text style={[styles.detailValue, { color: "#10B981" }]}>👤 Necesario guía de sala (Ocupación mayor al 60%)</Text>
+                        </View>
+                      </View>
+                    );
+                  }
+                  return null;
+                })()}
 
                 {/* Ads / Film Startup detail breakdown */}
                 <View style={styles.detailRow}>
@@ -2108,5 +2311,153 @@ const styles = StyleSheet.create({
   cardSoldContainer: {
     flexDirection: "row",
     alignItems: "center",
+  },
+  cardAlertBadge: {
+    marginLeft: 4,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 3,
+  },
+  cardAlertBadgeText: {
+    fontSize: 8,
+    color: "#FFFFFF",
+    fontWeight: "bold",
+  },
+  statsPanelContainer: {
+    backgroundColor: Platform.OS === "web" ? "var(--card, #1E293B)" : "#1E293B",
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  statsPanelHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #1E293B)" : "#1E293B",
+  },
+  statsPanelHeaderTitleContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  statsPanelHeaderTitle: {
+    fontSize: 13,
+    fontWeight: "bold",
+    color: COLORS.text,
+  },
+  statsHeaderSummary: {
+    fontSize: 12,
+    color: COLORS.textSoft,
+    fontWeight: "500",
+  },
+  statsPanelBody: {
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    backgroundColor: Platform.OS === "web" ? "var(--card, #0F172A)" : "#0F172A",
+    gap: 16,
+  },
+  statsGrid: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    flexWrap: "wrap",
+    gap: 16,
+  },
+  statsColumn: {
+    flex: 1,
+    minWidth: 200,
+    backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #1E293B)" : "#1E293B",
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    gap: 8,
+  },
+  statsColumnTitle: {
+    fontSize: 11,
+    fontWeight: "bold",
+    color: COLORS.textSoft,
+    letterSpacing: 0.5,
+    borderBottomWidth: 0.5,
+    borderBottomColor: COLORS.border,
+    paddingBottom: 4,
+    marginBottom: 4,
+  },
+  statsItemRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  statsItemLabel: {
+    fontSize: 12,
+    color: COLORS.textSoft,
+  },
+  statsItemValue: {
+    fontSize: 13,
+    fontWeight: "bold",
+    color: COLORS.text,
+  },
+  statsAlertsSection: {
+    backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #1E293B)" : "#1E293B",
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    gap: 8,
+  },
+  statsAlertsTitle: {
+    fontSize: 11,
+    fontWeight: "bold",
+    color: COLORS.textSoft,
+    letterSpacing: 0.5,
+    borderBottomWidth: 0.5,
+    borderBottomColor: COLORS.border,
+    paddingBottom: 4,
+    marginBottom: 4,
+  },
+  noAlertsContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 4,
+  },
+  noAlertsText: {
+    fontSize: 12,
+    color: "#10B981",
+    fontWeight: "500",
+  },
+  alertsList: {
+    gap: 8,
+  },
+  alertItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 8,
+    borderRadius: 6,
+    borderWidth: 1,
+    justifyContent: "space-between",
+  },
+  alertItemRisk: {
+    backgroundColor: "rgba(239, 68, 68, 0.08)",
+    borderColor: "rgba(239, 68, 68, 0.2)",
+  },
+  alertItemGuide: {
+    backgroundColor: "rgba(16, 185, 129, 0.08)",
+    borderColor: "rgba(16, 185, 129, 0.2)",
+  },
+  alertItemText: {
+    fontSize: 12,
+    color: COLORS.text,
+    flex: 1,
+    marginRight: 8,
+  },
+  alertBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  alertBadgeText: {
+    fontSize: 9,
+    color: "#FFFFFF",
+    fontWeight: "bold",
   },
 });
