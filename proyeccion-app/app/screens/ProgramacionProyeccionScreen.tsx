@@ -147,6 +147,30 @@ function getTheaterId(cineId: string): string {
   return mapping[cineId.toLowerCase()] || "103"; // fallback to Abasto (103)
 }
 
+// Get start of movie week (Thursday) for a given date in yyyy-mm-dd
+function getMovieWeekStart(date: Date): string {
+  const localDate = new Date(date.getTime() - (3 * 60 * 60 * 1000));
+  const dayNum = localDate.getUTCDay();
+  const daysToSubtract = dayNum <= 3 ? dayNum + 3 : dayNum - 4;
+  const thurDate = new Date(localDate.getTime() - daysToSubtract * 24 * 60 * 60 * 1000);
+  const yyyy = thurDate.getUTCFullYear();
+  const mm = String(thurDate.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(thurDate.getUTCDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+// Get start of movie week (Thursday) for the current date
+function getMovieWeekStartForNow(): string {
+  const localDate = new Date(Date.now() - (3 * 60 * 60 * 1000));
+  const dayNum = localDate.getUTCDay();
+  const daysToSubtract = dayNum <= 3 ? dayNum + 3 : dayNum - 4;
+  const thurDate = new Date(localDate.getTime() - daysToSubtract * 24 * 60 * 60 * 1000);
+  const yyyy = thurDate.getUTCFullYear();
+  const mm = String(thurDate.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(thurDate.getUTCDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 // Generate deterministic colors for each movie title
 function getMovieColor(title: string) {
   let hash = 0;
@@ -181,6 +205,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
   const [useApiData, setUseApiData] = useState(true); // default to true for live experience
   const [apiData, setApiData] = useState<any[] | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [selectedWeekStart, setSelectedWeekStart] = useState<string>("");
 
   const handleGridScroll = (event: any) => {
     const x = event.nativeEvent.contentOffset.x;
@@ -271,6 +296,30 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
     return () => { isMounted = false; };
   }, [useApiData, cineId]);
+
+  // Extracted list of available weeks from API data
+  const availableWeeks = useMemo(() => {
+    if (!apiData || apiData.length === 0) return [];
+    const set = new Set<string>();
+    apiData.forEach(session => {
+      const utcDate = new Date(session.sessionDateTime);
+      const weekStart = getMovieWeekStart(utcDate);
+      set.add(weekStart);
+    });
+    return Array.from(set).sort();
+  }, [apiData]);
+
+  // Set default selected week when availableWeeks change
+  useEffect(() => {
+    if (useApiData && availableWeeks.length > 0) {
+      const currentWeek = getMovieWeekStartForNow();
+      if (availableWeeks.includes(currentWeek)) {
+        setSelectedWeekStart(currentWeek);
+      } else {
+        setSelectedWeekStart(availableWeeks[0]);
+      }
+    }
+  }, [availableWeeks, useApiData]);
 
   const prevTodayRef = useRef<WeekdayKey>(getCurrentWeekdayKey());
 
@@ -380,9 +429,14 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
   // Extract all unique room numbers
   const rooms = useMemo(() => {
     if (useApiData) {
-      if (!apiData) return [];
+      if (!apiData || !selectedWeekStart) return [];
       const set = new Set<number>();
       apiData.forEach((session) => {
+        // Filter by selected week
+        const utcDate = new Date(session.sessionDateTime);
+        const weekStart = getMovieWeekStart(utcDate);
+        if (weekStart !== selectedWeekStart) return;
+
         if (session.theaterRoom !== undefined && session.theaterRoom !== null) {
           set.add(Number(session.theaterRoom));
         }
@@ -398,18 +452,22 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
       }
     });
     return Array.from(set).sort((a, b) => a - b);
-  }, [savedWeekly, useApiData, apiData]);
+  }, [savedWeekly, useApiData, apiData, selectedWeekStart]);
 
   // Build the list of shows for the selected day
   const shows = useMemo(() => {
     if (useApiData) {
-      if (!apiData) return [];
+      if (!apiData || !selectedWeekStart) return [];
 
       // Group API sessions by sessionId (to merge DBOX and normal)
       const sessionsBySessionId: Record<string, any[]> = {};
       apiData.forEach((session) => {
-        // Map UTC sessionDateTime to Argentina time (UTC-3)
+        // Filter by selected week
         const utcDate = new Date(session.sessionDateTime);
+        const weekStart = getMovieWeekStart(utcDate);
+        if (weekStart !== selectedWeekStart) return;
+
+        // Map UTC sessionDateTime to Argentina time (UTC-3)
         const arDate = new Date(utcDate.getTime() - (3 * 60 * 60 * 1000));
 
         // Get day key
@@ -765,7 +823,9 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
   }
 
   const formattedWeekLabel = useApiData
-    ? "Programación en Vivo (API / Simulación)"
+    ? (selectedWeekStart
+      ? `Programación API (${selectedWeekStart.split('-').reverse().slice(0,2).join('/')})`
+      : "Programación en Vivo (API / Simulación)")
     : (savedWeekly?.startDate
       ? `Semana del ${savedWeekly.startDate}`
       : "Programación Semanal");
@@ -803,6 +863,46 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
           </Text>
         </TouchableOpacity>
       </View>
+
+      {/* Week Selector Bar (if in API mode) */}
+      {useApiData && availableWeeks.length > 1 && (
+        <View style={styles.weekSelectorContainer}>
+          <Text style={styles.weekSelectorLabel}>Semana:</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.weekSelectorScroll}
+          >
+            {availableWeeks.map((week) => {
+              const isActive = selectedWeekStart === week;
+              
+              // Format week label nicely: e.g., "Semana del 25/06" or "Semana del 30/07 (Preventa)"
+              const [y, m, d] = week.split('-');
+              const currentWeek = getMovieWeekStartForNow();
+              const isCurrent = week === currentWeek;
+              
+              let label = `Semana del ${d}/${m}`;
+              if (isCurrent) {
+                label = `Semana Actual (${d}/${m})`;
+              } else if (week > currentWeek) {
+                label += " (Preventa)";
+              }
+              
+              return (
+                <TouchableOpacity
+                  key={week}
+                  onPress={() => setSelectedWeekStart(week)}
+                  style={[styles.weekButton, isActive && styles.weekButtonActive]}
+                >
+                  <Text style={[styles.weekButtonText, isActive && styles.weekButtonTextActive]}>
+                    {label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
 
       {/* Main Grid View */}
       <View style={styles.gridContainer}>
@@ -1725,5 +1825,44 @@ const styles = StyleSheet.create({
   occupancyVal: {
     fontSize: 11,
     color: COLORS.text,
+  },
+  weekSelectorContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: Platform.OS === "web" ? "var(--card, #1E293B)" : "#1E293B",
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    paddingHorizontal: THEME.spacing.md,
+    paddingVertical: THEME.spacing.sm,
+    gap: 8,
+  },
+  weekSelectorLabel: {
+    fontSize: 12,
+    fontWeight: "bold",
+    color: COLORS.textSoft,
+  },
+  weekSelectorScroll: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  weekButton: {
+    backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F1F5F9)" : "#F1F5F9",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  weekButtonActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  weekButtonText: {
+    fontSize: 11,
+    color: COLORS.text,
+    fontWeight: "bold",
+  },
+  weekButtonTextActive: {
+    color: "#FFFFFF",
   },
 });
