@@ -697,6 +697,10 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
   // Calculate current time line position
   const showCurrentTimeLine = useMemo(() => {
+    if (useApiData && selectedWeekStart) {
+      const currentWeek = getMovieWeekStartForNow();
+      if (selectedWeekStart !== currentWeek) return false;
+    }
     const today = getCurrentWeekdayKey();
     return (
       selectedDay === today &&
@@ -704,7 +708,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
       currentTimeMins >= timelineStartMins &&
       currentTimeMins <= timelineEndMins
     );
-  }, [selectedDay, shows.length, currentTimeMins, timelineStartMins, timelineEndMins]);
+  }, [selectedDay, shows.length, currentTimeMins, timelineStartMins, timelineEndMins, useApiData, selectedWeekStart]);
 
   const currentTimeLeft = useMemo(() => {
     return (currentTimeMins - timelineStartMins) * MINUTE_WIDTH;
@@ -719,6 +723,16 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
   // Determine status (PAST, PLAYING, FUTURE) of a show
   const getShowStatus = (show: DailyShow) => {
+    if (useApiData && selectedWeekStart) {
+      const currentWeek = getMovieWeekStartForNow();
+      if (selectedWeekStart > currentWeek) {
+        return "FUTURE";
+      }
+      if (selectedWeekStart < currentWeek) {
+        return "PAST";
+      }
+    }
+
     const today = getCurrentWeekdayKey();
     const todayIdx = DAY_CYCLE_INDEX[today];
     const selectedIdx = DAY_CYCLE_INDEX[selectedDay];
@@ -931,9 +945,18 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
         const currentIndex = availableWeeks.indexOf(selectedWeekStart);
         const canGoPrev = currentIndex > 0;
         const canGoNext = currentIndex < availableWeeks.length - 1;
+        const currentWeek = getMovieWeekStartForNow();
+        const isCurrent = selectedWeekStart === currentWeek;
+        
+        let label = formatWeekRange(selectedWeekStart);
+        if (isCurrent) {
+          label += " (Actual)";
+        } else if (selectedWeekStart > currentWeek) {
+          label += " (Preventa)";
+        }
         
         return (
-          <View style={styles.weekSelectorContainer}>
+          <View style={styles.singleWeekSelectorContainer}>
             <TouchableOpacity
               disabled={!canGoPrev}
               onPress={() => setSelectedWeekStart(availableWeeks[currentIndex - 1])}
@@ -942,37 +965,9 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
               <MaterialCommunityIcons name="chevron-left" size={20} color={canGoPrev ? COLORS.text : COLORS.muted} />
             </TouchableOpacity>
             
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.weekSelectorScroll}
-            >
-              {availableWeeks.map((week) => {
-                const isActive = selectedWeekStart === week;
-                const rangeLabel = formatWeekRange(week);
-                const currentWeek = getMovieWeekStartForNow();
-                const isCurrent = week === currentWeek;
-                
-                let label = rangeLabel;
-                if (isCurrent) {
-                  label += " (Actual)";
-                } else if (week > currentWeek) {
-                  label += " (Preventa)";
-                }
-                
-                return (
-                  <TouchableOpacity
-                    key={week}
-                    onPress={() => setSelectedWeekStart(week)}
-                    style={[styles.weekButton, isActive && styles.weekButtonActive]}
-                  >
-                    <Text style={[styles.weekButtonText, isActive && styles.weekButtonTextActive]}>
-                      {label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
+            <View style={styles.singleWeekLabelContainer}>
+              <Text style={styles.singleWeekLabelText}>{label}</Text>
+            </View>
 
             <TouchableOpacity
               disabled={!canGoNext}
@@ -1133,7 +1128,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                         {showsInSala.map((show, showIdx) => {
                           const { left, width } = getPositionAndWidth(show);
                           const movieAccentColor = getMovieColor(show.pelicula);
-                          const is3D = /3d/i.test(show.pelicula);
+                          const is3D = /3d/i.test(show.pelicula) || /3d/i.test(show.sessionFormat || "");
                           const showAds = width > 50; // show ads prefix block if card is wide enough
 
                           const status = getShowStatus(show);
@@ -1977,5 +1972,31 @@ const styles = StyleSheet.create({
   },
   arrowButtonDisabled: {
     opacity: 0.4,
+  },
+  singleWeekSelectorContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: Platform.OS === "web" ? "var(--card, #1E293B)" : "#1E293B",
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    paddingHorizontal: THEME.spacing.md,
+    paddingVertical: THEME.spacing.sm,
+    gap: 16,
+  },
+  singleWeekLabelContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F1F5F9)" : "#F1F5F9",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    minWidth: 260,
+    alignItems: "center",
+  },
+  singleWeekLabelText: {
+    fontSize: 13,
+    color: COLORS.text,
+    fontWeight: "bold",
   },
 });
