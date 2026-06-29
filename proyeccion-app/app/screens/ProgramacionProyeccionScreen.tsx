@@ -172,6 +172,21 @@ function getMovieWeekStartForNow(): string {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+// Format week start date to range label, e.g., "Semana del 25/6 a 01/7"
+function formatWeekRange(weekStart: string): string {
+  if (!weekStart) return "";
+  const [y, m, d] = weekStart.split('-').map(Number);
+  const thur = new Date(Date.UTC(y, m - 1, d));
+  const wed = new Date(thur.getTime() + 6 * 24 * 60 * 60 * 1000);
+  
+  const thurD = thur.getUTCDate();
+  const thurM = thur.getUTCMonth() + 1;
+  const wedD = String(wed.getUTCDate()).padStart(2, '0');
+  const wedM = wed.getUTCMonth() + 1;
+  
+  return `Semana del ${thurD}/${thurM} a ${wedD}/${wedM}`;
+}
+
 // Generate deterministic colors for each movie title
 function getMovieColor(title: string) {
   let hash = 0;
@@ -853,9 +868,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
   }
 
   const formattedWeekLabel = useApiData
-    ? (selectedWeekStart
-      ? `Programación API (${selectedWeekStart.split('-').reverse().slice(0,2).join('/')})`
-      : "Programación en Vivo (API / Simulación)")
+    ? "Programación en vivo"
     : (savedWeekly?.startDate
       ? `Semana del ${savedWeekly.startDate}`
       : "Programación Semanal");
@@ -866,11 +879,11 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
       <View style={styles.header}>
         <View style={styles.headerInfo}>
           <Text style={styles.headerTitle}>{formattedWeekLabel}</Text>
-          <Text style={styles.headerSubtitle}>
-            {useApiData
-              ? `Datos para Abasto (Cine ID ${getTheaterId(cineId)}). Uniendo butacas normales y D-BOX.`
-              : "La programación se obtiene a partir del reporte cargado y guardado en la sección de Servicios > Programación."}
-          </Text>
+          {!useApiData && (
+            <Text style={styles.headerSubtitle}>
+              La programación se obtiene a partir del reporte cargado y guardado en la sección de Servicios &gt; Programación.
+            </Text>
+          )}
           {useApiData && apiError && (
             <View style={styles.apiErrorBanner}>
               <MaterialCommunityIcons name="alert-circle-outline" size={14} color="#B45309" style={{ marginRight: 4 }} />
@@ -906,51 +919,70 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
               style={{ marginRight: 6 }} 
             />
             <Text style={[styles.apiToggleText, useApiData && styles.apiToggleTextActive]}>
-              {useApiData ? "Ver PDF/Excel" : "Ver Simulación API (Abasto)"}
+              {useApiData ? "Ver estática" : "Ver en tiempo real"}
             </Text>
           </TouchableOpacity>
         </View>
       </View>
 
       {/* Week Selector Bar (if in API mode) */}
-      {useApiData && availableWeeks.length > 1 && (
-        <View style={styles.weekSelectorContainer}>
-          <Text style={styles.weekSelectorLabel}>Semana:</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.weekSelectorScroll}
-          >
-            {availableWeeks.map((week) => {
-              const isActive = selectedWeekStart === week;
-              
-              // Format week label nicely: e.g., "Semana del 25/06" or "Semana del 30/07 (Preventa)"
-              const [y, m, d] = week.split('-');
-              const currentWeek = getMovieWeekStartForNow();
-              const isCurrent = week === currentWeek;
-              
-              let label = `Semana del ${d}/${m}`;
-              if (isCurrent) {
-                label = `Semana Actual (${d}/${m})`;
-              } else if (week > currentWeek) {
-                label += " (Preventa)";
-              }
-              
-              return (
-                <TouchableOpacity
-                  key={week}
-                  onPress={() => setSelectedWeekStart(week)}
-                  style={[styles.weekButton, isActive && styles.weekButtonActive]}
-                >
-                  <Text style={[styles.weekButtonText, isActive && styles.weekButtonTextActive]}>
-                    {label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
-      )}
+      {useApiData && availableWeeks.length > 1 && (() => {
+        const currentIndex = availableWeeks.indexOf(selectedWeekStart);
+        const canGoPrev = currentIndex > 0;
+        const canGoNext = currentIndex < availableWeeks.length - 1;
+        
+        return (
+          <View style={styles.weekSelectorContainer}>
+            <TouchableOpacity
+              disabled={!canGoPrev}
+              onPress={() => setSelectedWeekStart(availableWeeks[currentIndex - 1])}
+              style={[styles.arrowButton, !canGoPrev && styles.arrowButtonDisabled]}
+            >
+              <MaterialCommunityIcons name="chevron-left" size={20} color={canGoPrev ? COLORS.text : COLORS.muted} />
+            </TouchableOpacity>
+            
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.weekSelectorScroll}
+            >
+              {availableWeeks.map((week) => {
+                const isActive = selectedWeekStart === week;
+                const rangeLabel = formatWeekRange(week);
+                const currentWeek = getMovieWeekStartForNow();
+                const isCurrent = week === currentWeek;
+                
+                let label = rangeLabel;
+                if (isCurrent) {
+                  label += " (Actual)";
+                } else if (week > currentWeek) {
+                  label += " (Preventa)";
+                }
+                
+                return (
+                  <TouchableOpacity
+                    key={week}
+                    onPress={() => setSelectedWeekStart(week)}
+                    style={[styles.weekButton, isActive && styles.weekButtonActive]}
+                  >
+                    <Text style={[styles.weekButtonText, isActive && styles.weekButtonTextActive]}>
+                      {label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            <TouchableOpacity
+              disabled={!canGoNext}
+              onPress={() => setSelectedWeekStart(availableWeeks[currentIndex + 1])}
+              style={[styles.arrowButton, !canGoNext && styles.arrowButtonDisabled]}
+            >
+              <MaterialCommunityIcons name="chevron-right" size={20} color={canGoNext ? COLORS.text : COLORS.muted} />
+            </TouchableOpacity>
+          </View>
+        );
+      })()}
 
       {/* Main Grid View */}
       <View style={styles.gridContainer}>
@@ -1117,15 +1149,8 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                                   left,
                                   width,
                                   borderLeftColor: movieAccentColor,
+                                  backgroundColor: COLORS.card,
                                 },
-                                is3D
-                                  ? {
-                                      backgroundColor: movieAccentColor,
-                                      borderColor: movieAccentColor,
-                                    }
-                                  : {
-                                      backgroundColor: COLORS.card,
-                                    },
                                 isPast && { opacity: 0.45 },
                                 isPlaying && {
                                   borderColor: "#10B981",
@@ -1157,7 +1182,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                                 <View style={styles.movieCardHeaderRow}>
                                   {isPlaying && <View style={styles.playingDot} />}
                                   <Text
-                                    style={[styles.movieCardTitle, is3D && { color: "#FFFFFF" }]}
+                                    style={styles.movieCardTitle}
                                     numberOfLines={1}
                                   >
                                     {show.pelicula}
@@ -1165,28 +1190,20 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                                 </View>
                                 <View style={styles.movieCardFooter}>
                                   <Text
-                                    style={[styles.movieCardTime, is3D && { color: "#FFFFFF" }]}
+                                    style={styles.movieCardTime}
                                     numberOfLines={1}
                                   >
                                     {show.inicio} - {show.fin}
                                   </Text>
                                   {show.isSimulated && (
-                                    <Text style={[styles.cardSoldText, is3D ? { color: "#FFFFFF" } : { color: COLORS.primary }, { fontWeight: "bold" }]} numberOfLines={1}>
+                                    <Text style={[styles.cardSoldText, { color: COLORS.primary }, { fontWeight: "bold" }]} numberOfLines={1}>
                                       🔥 {show.soldSeats}/{show.capacity}
                                     </Text>
                                   )}
                                   {show.calificacion ? (
-                                    <View
-                                      style={[
-                                        styles.ratingBadge,
-                                        is3D && {
-                                          backgroundColor: "rgba(255, 255, 255, 0.22)",
-                                          borderColor: "transparent",
-                                        },
-                                      ]}
-                                    >
+                                    <View style={styles.ratingBadge}>
                                       <Text
-                                        style={[styles.ratingBadgeText, is3D && { color: "#FFFFFF" }]}
+                                        style={styles.ratingBadgeText}
                                         numberOfLines={1}
                                       >
                                         {show.calificacion}
@@ -1417,13 +1434,14 @@ const styles = StyleSheet.create({
     paddingBottom: THEME.spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "space-between",
   },
   headerInfo: {
     flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
+    alignItems: "flex-start",
+    flex: 1,
   },
   headerTitle: {
     fontSize: 16,
@@ -1931,5 +1949,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#FFFFFF",
     fontWeight: "bold",
+  },
+  arrowButton: {
+    padding: 6,
+    borderRadius: 6,
+    backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F1F5F9)" : "#F1F5F9",
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  arrowButtonDisabled: {
+    opacity: 0.4,
   },
 });
