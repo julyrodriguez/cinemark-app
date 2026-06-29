@@ -22,6 +22,7 @@ import { COLORS, THEME } from "../../lib/theme";
 import { WeekdayKey } from "../../lib/programacion/types";
 import dayjs from "dayjs";
 import { mockShowtimesData } from "./mockShowtimes";
+import { getRoomLayout, SeatInfo, RoomLayout, FirestoreSalaLayout } from "./ControlSalasScreen";
 
 // Types
 interface DailyShow {
@@ -233,6 +234,70 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
   const [seatMapError, setSeatMapError] = useState<string | null>(null);
   const [showSeatMap, setShowSeatMap] = useState<boolean>(false);
 
+  const [activeSalaLayout, setActiveSalaLayout] = useState<RoomLayout | null>(null);
+
+  useEffect(() => {
+    if (!cineId || !selectedShow) {
+      setActiveSalaLayout(null);
+      return;
+    }
+
+    const salaId = selectedShow.sala;
+    const ref = doc(db, CINES_COLLECTION, cineId, "salas_layouts", String(salaId));
+    
+    const unsubscribe = onSnapshot(ref, (snapshot) => {
+      if (snapshot.exists()) {
+        const dbLayout = snapshot.data() as FirestoreSalaLayout;
+        const seats: { [row: string]: SeatInfo[] } = {};
+        const customSeats = dbLayout.customSeats || {};
+        const invertSeats = dbLayout.invertSeats || false;
+
+        for (const row of dbLayout.rows) {
+          const rowSeats: SeatInfo[] = [];
+          for (let c = 1; c <= dbLayout.maxCol; c++) {
+            const key = `${row}-${c}`;
+            const exception = customSeats[key];
+            
+            let type: "seat" | "empty" = "seat";
+            let isDbox = false;
+
+            if (exception === "empty") {
+              type = "empty";
+            } else if (exception === "dbox") {
+              isDbox = true;
+            }
+
+            const seatNumber = invertSeats ? (dbLayout.maxCol - c + 1) : c;
+
+            rowSeats.push({
+              row,
+              number: seatNumber,
+              colIndex: c,
+              type,
+              isDbox,
+            });
+          }
+          seats[row] = rowSeats;
+        }
+
+        setActiveSalaLayout({
+          rows: dbLayout.rows,
+          maxCol: dbLayout.maxCol,
+          aisles: dbLayout.aisles || [],
+          seats,
+          invertSeats,
+        });
+      } else {
+        setActiveSalaLayout(getRoomLayout(salaId));
+      }
+    }, (error) => {
+      console.error("Error listening to sala layout:", error);
+      setActiveSalaLayout(getRoomLayout(salaId));
+    });
+
+    return () => unsubscribe();
+  }, [cineId, selectedShow]);
+
   const fetchSeatMap = async (show: DailyShow) => {
     if (!show || !cineId) return;
     setLoadingSeatMap(true);
@@ -262,17 +327,39 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
     }
   };
 
-  const renderSeatGrid = (data: any) => {
-    if (!data) return null;
-    const area = data.areas ? data.areas[0] : data;
-    const cols = area.areaLayoutColumns || 24;
-    const rows = area.rows || [];
+  const renderSeatGrid = (mapData: any) => {
+    const layout = activeSalaLayout;
+    if (!layout) {
+      return (
+        <View style={{ padding: 20, alignItems: "center" }}>
+          <ActivityIndicator size="small" color={COLORS.primary} />
+          <Text style={{ color: COLORS.textSoft, marginTop: 8 }}>Cargando plano de la sala...</Text>
+        </View>
+      );
+    }
 
-    // Sort rows by seatGridRowId descending (A to N)
-    const rowsSorted = [...rows].sort((a, b) => b.seatGridRowId - a.seatGridRowId);
+    // Build map of occupied seats from API mapData OR pre-saved database occupiedSeats
+    const occupiedMap = new Map<string, any>();
+    if (mapData && mapData.areas) {
+      mapData.areas.forEach((area: any) => {
+        if (!area.rows) return;
+        area.rows.forEach((row: any) => {
+          const rowId = row.rowPhysicalId;
+          if (!row.seats) return;
+          row.seats.forEach((seat: any) => {
+            occupiedMap.set(`${rowId}-${seat.seatNumber}`, seat);
+          });
+        });
+      });
+    } else if (selectedShow && selectedShow.occupiedSeats) {
+      selectedShow.occupiedSeats.forEach((seatKey: string) => {
+        occupiedMap.set(seatKey, { seatStatus: 1 });
+      });
+    }
 
     return (
       <View style={styles.seatGridContainer}>
+        {/* Screen Indicator */}
         <View style={styles.screenIndicator}>
           <View style={styles.screenLine} />
           <Text style={styles.screenText}>PANTALLA</Text>
@@ -280,59 +367,87 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
         <ScrollView horizontal={true} showsHorizontalScrollIndicator={true} contentContainerStyle={styles.horizontalGridScroll}>
           <View style={{ flexDirection: "column" }}>
-            <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 6 }}>
-              <View style={{ width: 24 }} />
-              {Array.from({ length: cols }, (_, i) => i + 1).map((colNum) => (
-                <Text key={colNum} style={styles.colNumberText}>
-                  {colNum}
-                </Text>
-              ))}
-            </View>
+            {layout.rows.map((rowName) => {
+              const rowSeats = layout.seats[rowName];
+              if (!rowSeats) return null;
 
-            {rowsSorted.map((row: any) => {
-              const rowId = row.rowPhysicalId;
-              const rowSeats: any = {};
-              row.seats.forEach((s: any) => {
-                rowSeats[s.gridSeatNumber] = s;
+              // Slice row seats dynamically based on aisles definition
+              const sections: SeatInfo[][] = [];
+              let prev = 0;
+              layout.aisles.forEach((aisleIndex) => {
+                sections.push(rowSeats.slice(prev, aisleIndex));
+                prev = aisleIndex;
               });
+              sections.push(rowSeats.slice(prev, layout.maxCol));
 
               return (
-                <View key={rowId} style={{ flexDirection: "row", alignItems: "center", marginVertical: 2 }}>
-                  <Text style={styles.rowLabelText}>{rowId}</Text>
-                  {Array.from({ length: cols }, (_, i) => i + 1).map((colNum) => {
-                    const seat = rowSeats[colNum];
-                    if (!seat) {
-                      return <View key={colNum} style={styles.seatSpacer} />;
-                    }
+                <View key={rowName} style={{ flexDirection: "row", alignItems: "center", marginVertical: 3 }}>
+                  {/* Left row letter */}
+                  <Text style={styles.rowLabelText}>{rowName}</Text>
 
-                    const status = seat.seatStatus;
-                    let seatStyle = styles.seatAvailable;
-                    let iconName = "";
+                  {/* Render sections separated by aisles */}
+                  {sections.map((section, idx) => (
+                    <React.Fragment key={idx}>
+                      {idx > 0 && <View style={styles.aisleSpace} />}
+                      <View style={{ flexDirection: "row" }}>
+                        {section.map((seat) => {
+                          if (seat.type === "empty") {
+                            return <View key={`empty-${seat.row}-${seat.colIndex}`} style={styles.seatSpacer} />;
+                          }
 
-                    if (status === 1 || status === 6 || status === 7) {
-                      seatStyle = styles.seatOccupied;
-                    } else if (status === 4) {
-                      seatStyle = styles.seatWheelchair;
-                      iconName = "wheelchair-accessibility";
-                    } else if (status === 5) {
-                      seatStyle = styles.seatAutoAssigned;
-                    } else if (status === 8) {
-                      seatStyle = styles.seatBlocked;
-                    }
+                          const seatKey = `${seat.row}-${seat.number}`;
+                          const apiSeat = occupiedMap.get(seatKey);
+                          const isSold = !!apiSeat;
+                          
+                          let seatStyle = styles.seatAvailable;
+                          let iconName = "";
 
-                    return (
-                      <View key={colNum} style={[styles.seatBase, seatStyle]}>
-                        {iconName ? (
-                          <MaterialCommunityIcons 
-                            name={iconName as any} 
-                            size={Platform.select({ web: 14, default: 10 })} 
-                            color="#FFF" 
-                          />
-                        ) : null}
+                          if (isSold) {
+                            const status = apiSeat.seatStatus;
+                            if (status === 1 || status === 6 || status === 7) {
+                              seatStyle = styles.seatOccupied;
+                            } else if (status === 4) {
+                              seatStyle = styles.seatWheelchair;
+                              iconName = "wheelchair-accessibility";
+                            } else if (status === 5) {
+                              seatStyle = styles.seatAutoAssigned;
+                            } else if (status === 8) {
+                              seatStyle = styles.seatBlocked;
+                            } else {
+                              seatStyle = styles.seatOccupied; // default fallback if sold
+                            }
+                          }
+
+                          // D-BOX border highlight
+                          const isDbox = seat.isDbox;
+
+                          return (
+                            <View 
+                              key={seatKey} 
+                              style={[
+                                styles.seatBase, 
+                                seatStyle,
+                                isDbox && styles.seatDboxBorder
+                              ]}
+                            >
+                              {iconName ? (
+                                <MaterialCommunityIcons 
+                                  name={iconName as any} 
+                                  size={Platform.select({ web: 13, default: 10 })} 
+                                  color="#FFF" 
+                                />
+                              ) : (
+                                <Text style={styles.seatNumberText}>{seat.number}</Text>
+                              )}
+                            </View>
+                          );
+                        })}
                       </View>
-                    );
-                  })}
-                  <Text style={[styles.rowLabelText, { marginLeft: 6 }]}>{rowId}</Text>
+                    </React.Fragment>
+                  ))}
+
+                  {/* Right row letter */}
+                  <Text style={[styles.rowLabelText, { marginLeft: 8 }]}>{rowName}</Text>
                 </View>
               );
             })}
@@ -2766,5 +2881,18 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 14,
     fontWeight: "bold",
+  },
+  aisleSpace: {
+    width: Platform.select({ web: 24, default: 16 }),
+  },
+  seatNumberText: {
+    color: "#FFFFFF",
+    fontSize: Platform.select({ web: 9, default: 7.5 }),
+    fontWeight: "bold",
+    textAlign: "center",
+  },
+  seatDboxBorder: {
+    borderWidth: Platform.select({ web: 1.5, default: 1 }),
+    borderColor: "#EAB308",
   },
 });

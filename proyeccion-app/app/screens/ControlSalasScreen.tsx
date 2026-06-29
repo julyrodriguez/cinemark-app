@@ -57,7 +57,7 @@ interface ActiveReport {
   };
 }
 
-interface SeatInfo {
+export interface SeatInfo {
   row: string;
   number: number;
   colIndex: number;
@@ -65,7 +65,7 @@ interface SeatInfo {
   isDbox?: boolean;
 }
 
-interface RoomLayout {
+export interface RoomLayout {
   rows: string[];
   maxCol: number;
   aisles: number[];
@@ -73,7 +73,7 @@ interface RoomLayout {
   invertSeats?: boolean;
 }
 
-interface FirestoreSalaLayout {
+export interface FirestoreSalaLayout {
   rows: string[];
   maxCol: number;
   aisles: number[];
