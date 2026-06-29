@@ -1302,9 +1302,12 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                                     {show.inicio} - {show.fin}
                                   </Text>
                                   {show.isSimulated && (
-                                    <Text style={[styles.cardSoldText, is3D ? { color: "#FFFFFF" } : { color: COLORS.primary }, { fontWeight: "bold" }]} numberOfLines={1}>
-                                      🔥 {show.soldSeats}/{show.capacity}
-                                    </Text>
+                                    <View style={styles.cardSoldContainer}>
+                                      <MaterialCommunityIcons name="ticket" size={11} color="#EAB308" style={{ marginRight: 2 }} />
+                                      <Text style={[styles.cardSoldText, is3D ? { color: "#FFFFFF" } : { color: COLORS.primary }, { fontWeight: "bold" }]} numberOfLines={1}>
+                                        {show.soldSeats}/{show.capacity}
+                                      </Text>
+                                    </View>
                                   )}
                                   {show.calificacion ? (
                                     <View
@@ -2101,5 +2104,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: COLORS.text,
     fontWeight: "bold",
+  },
+  cardSoldContainer: {
+    flexDirection: "row",
+    alignItems: "center",
   },
 });
