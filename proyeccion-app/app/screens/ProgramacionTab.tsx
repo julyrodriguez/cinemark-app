@@ -655,6 +655,7 @@ export default function ProgramacionTab() {
               borderWidth: useSavedWeekly || (!!weeklyUri && useSavedWeekly) ? 2 : 1,
               backgroundColor: useSavedWeekly ? (!!weeklyUri ? COLORS.dangerSoft : COLORS.primarySoft) : COLORS.card,
               padding: 16,
+              opacity: weeklyUri ? 0.6 : 1,
             },
           ]}
           onPress={() => {
@@ -697,19 +698,11 @@ export default function ProgramacionTab() {
           </View>
 
           {!!weeklyUri ? (
-            useSavedWeekly ? (
-              <View style={{ marginTop: 8, padding: 8, backgroundColor: COLORS.dangerSoft, borderColor: COLORS.danger, borderWidth: 1, borderRadius: 8 }}>
-                <Text style={{ fontSize: 11.5, fontWeight: "800", color: COLORS.danger }}>
-                  ⚠️ Conflicto: Tenés un archivo cargado y la opción de reporte guardado activa. Deseleccioná esta opción o quitá el archivo presionando la "✕" en el selector para evitar problemas.
-                </Text>
-              </View>
-            ) : (
-              <View style={{ marginTop: 8, padding: 8, backgroundColor: COLORS.dangerSoft, borderColor: COLORS.danger, borderWidth: 1, borderRadius: 8 }}>
-                <Text style={{ fontSize: 11.5, fontWeight: "800", color: COLORS.danger }}>
-                  ⚠️ Ya tenés un archivo cargado en el selector de arriba. No podés utilizar el reporte guardado hasta que lo quites presionando la "✕" en el selector.
-                </Text>
-              </View>
-            )
+            <View style={{ marginTop: 8, padding: 8, backgroundColor: COLORS.dangerSoft, borderColor: COLORS.danger, borderWidth: 1, borderRadius: 8 }}>
+              <Text style={{ fontSize: 11.5, fontWeight: "800", color: COLORS.danger }}>
+                ⚠️ Para usar el último reporte guardado expulse el reporte cargado actualmente.
+              </Text>
+            </View>
           ) : (
             <Text style={{ fontSize: 11, fontWeight: "600", color: useSavedWeekly ? COLORS.primary : COLORS.muted, marginTop: 8 }}>
               {useSavedWeekly
