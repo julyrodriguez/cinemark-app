@@ -365,7 +365,13 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
           <Text style={styles.screenText}>PANTALLA</Text>
         </View>
 
-        <ScrollView horizontal={true} showsHorizontalScrollIndicator={true} contentContainerStyle={styles.horizontalGridScroll}>
+        <ScrollView 
+          horizontal={true} 
+          showsHorizontalScrollIndicator={true}
+          bounces={true}
+          contentContainerStyle={styles.horizontalGridScroll}
+          style={{ alignSelf: "stretch" }}
+        >
           <View style={{ flexDirection: "column" }}>
             {layout.rows.map((rowName) => {
               const rowSeats = layout.seats[rowName];
@@ -2799,8 +2805,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(30, 41, 59, 0.5)",
     borderWidth: 1,
     borderColor: COLORS.border,
-    alignItems: "center",
-    overflow: "hidden",
+    alignSelf: "stretch",
   },
   screenIndicator: {
     width: "80%",
@@ -2823,6 +2828,8 @@ const styles = StyleSheet.create({
   },
   horizontalGridScroll: {
     paddingBottom: 8,
+    paddingHorizontal: Platform.select({ web: 0, default: 4 }),
+    flexGrow: 0,
   },
   colNumberText: {
     width: Platform.select({ web: 22, default: 14 }),
