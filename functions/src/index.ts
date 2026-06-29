@@ -1493,7 +1493,14 @@ export const getCinemarkShowtimes = onCall({ cors: true }, async (request) => {
       throw new HttpsError("failed-precondition", `Cinemark API returned status ${response.status}`);
     }
 
-    const json = await response.json();
+    const json = (await response.json()) as any;
+    if (json && json.data) {
+      json.data.forEach((s: any) => {
+        const originalDate = new Date(s.sessionDateTime);
+        const adjustedDate = new Date(originalDate.getTime() + 3 * 60 * 60 * 1000);
+        s.sessionDateTime = adjustedDate.toISOString();
+      });
+    }
     return json;
   } catch (error: any) {
     console.error("Error fetching Cinemark showtimes:", error);
