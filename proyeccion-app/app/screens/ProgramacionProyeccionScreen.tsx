@@ -19,6 +19,7 @@ import { useAuthUser } from "../../lib/useAuthUser";
 import { COLORS, THEME } from "../../lib/theme";
 import { WeekdayKey } from "../../lib/programacion/types";
 import dayjs from "dayjs";
+import { mockShowtimesData } from "./mockShowtimes";
 
 // Types
 interface DailyShow {
@@ -29,6 +30,25 @@ interface DailyShow {
   fin: string;
   sortInicio: number;
   sortFin: number;
+
+  // API / Simulation Mode Properties
+  isSimulated?: boolean;
+  sessionId?: string;
+  sessionFormat?: string;
+  language?: string;
+  premiere?: boolean;
+  
+  capacity?: number;
+  availableSeats?: number;
+  soldSeats?: number;
+  
+  hasDbox?: boolean;
+  normalCapacity?: number;
+  normalAvailable?: number;
+  normalSold?: number;
+  dboxCapacity?: number;
+  dboxAvailable?: number;
+  dboxSold?: number;
 }
 
 interface SavedWeekly {
@@ -118,6 +138,14 @@ function getCurrentTimeMins(): number {
   return minsFromMidnight >= 360 ? minsFromMidnight - 360 : minsFromMidnight + 1440 - 360;
 }
 
+// Map user's cineId to BFF API theater ID
+function getTheaterId(cineId: string): string {
+  const mapping: Record<string, string> = {
+    "abasto": "103",
+  };
+  return mapping[cineId.toLowerCase()] || "103"; // fallback to Abasto (103)
+}
+
 // Generate deterministic colors for each movie title
 function getMovieColor(title: string) {
   let hash = 0;
@@ -147,6 +175,11 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
   const isCollapsed = isMobile && isScrolled;
   const currentRoomColWidth = isCollapsed ? 34 : ROOM_COL_WIDTH;
+
+  // API Data Integration states
+  const [useApiData, setUseApiData] = useState(true); // default to true for live experience
+  const [apiData, setApiData] = useState<any[] | null>(null);
+  const [apiError, setApiError] = useState<string | null>(null);
 
   const handleGridScroll = (event: any) => {
     const x = event.nativeEvent.contentOffset.x;
@@ -186,16 +219,64 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
         } else {
           setSavedWeekly(null);
         }
-        setLoading(false);
+        if (!useApiData) {
+          setLoading(false);
+        }
       },
       (error) => {
         console.error("[ProgramacionProyeccionScreen] Error loading programming:", error);
-        setLoading(false);
+        if (!useApiData) {
+          setLoading(false);
+        }
       }
     );
 
     return () => unsubscribe();
-  }, [cineId]);
+  }, [cineId, useApiData]);
+
+  // Fetch showtimes from BFF API or fallback to mock data
+  useEffect(() => {
+    if (!useApiData) return;
+
+    let isMounted = true;
+    const theaterId = getTheaterId(cineId);
+    const url = `https://bff.cinemark.com.ar/api/cinema/showtimes?theater=${theaterId}&_t=${Date.now()}`;
+
+    setLoading(true);
+    setApiError(null);
+
+    fetch(url, {
+      headers: {
+        "country": "AR",
+        "Accept": "application/json, text/plain, */*"
+      }
+    })
+      .then(res => {
+        if (!res.ok) throw new Error("API response error");
+        return res.json();
+      })
+      .then(json => {
+        if (isMounted) {
+          if (json && json.data) {
+            setApiData(json.data);
+            setApiError(null);
+          } else {
+            throw new Error("Invalid API data format");
+          }
+          setLoading(false);
+        }
+      })
+      .catch(err => {
+        console.warn("Live API fetch failed, falling back to mockShowtimesData:", err);
+        if (isMounted) {
+          setApiData(mockShowtimesData.data || []);
+          setApiError("CORS/Red: Usando datos de simulación locales.");
+          setLoading(false);
+        }
+      });
+
+    return () => { isMounted = false; };
+  }, [useApiData, cineId]);
 
   const prevTodayRef = useRef<WeekdayKey>(getCurrentWeekdayKey());
 
@@ -304,6 +385,17 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
   // Extract all unique room numbers
   const rooms = useMemo(() => {
+    if (useApiData) {
+      if (!apiData) return [];
+      const set = new Set<number>();
+      apiData.forEach((session) => {
+        if (session.theaterRoom !== undefined && session.theaterRoom !== null) {
+          set.add(Number(session.theaterRoom));
+        }
+      });
+      return Array.from(set).sort((a, b) => a - b);
+    }
+
     if (!savedWeekly?.weeklyRows) return [];
     const set = new Set<number>();
     savedWeekly.weeklyRows.forEach((row) => {
@@ -312,10 +404,125 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
       }
     });
     return Array.from(set).sort((a, b) => a - b);
-  }, [savedWeekly]);
+  }, [savedWeekly, useApiData, apiData]);
 
   // Build the list of shows for the selected day
   const shows = useMemo(() => {
+    if (useApiData) {
+      if (!apiData) return [];
+
+      // Group API sessions by sessionId (to merge DBOX and normal)
+      const sessionsBySessionId: Record<string, any[]> = {};
+      apiData.forEach((session) => {
+        // Map UTC sessionDateTime to Argentina time (UTC-3)
+        const utcDate = new Date(session.sessionDateTime);
+        const arDate = new Date(utcDate.getTime() - (3 * 60 * 60 * 1000));
+
+        // Get day key
+        const dayNum = arDate.getUTCDay(); // 0 = Sunday, 1 = Monday, etc.
+        const map: Record<number, WeekdayKey> = {
+          0: "domingo", 1: "lunes", 2: "martes", 3: "miercoles",
+          4: "jueves", 5: "viernes", 6: "sabado"
+        };
+        const sessionDay = map[dayNum];
+
+        // We only care about sessions on the selected day
+        if (sessionDay !== selectedDay) return;
+
+        const sid = session.sessionId;
+        if (!sessionsBySessionId[sid]) {
+          sessionsBySessionId[sid] = [];
+        }
+        sessionsBySessionId[sid].push(session);
+      });
+
+      const list: DailyShow[] = [];
+
+      Object.keys(sessionsBySessionId).forEach((sid) => {
+        const group = sessionsBySessionId[sid];
+        const first = group[0];
+
+        const utcDate = new Date(first.sessionDateTime);
+        const arDate = new Date(utcDate.getTime() - (3 * 60 * 60 * 1000));
+
+        const hours = String(arDate.getUTCHours()).padStart(2, '0');
+        const mins = String(arDate.getUTCMinutes()).padStart(2, '0');
+        const inicio = `${hours}:${mins}`;
+
+        // Fallback duration 120 mins
+        const durationMins = 120;
+        const endMins = (arDate.getUTCHours() * 60 + arDate.getUTCMinutes() + durationMins) % 1440;
+        const endH = Math.floor(endMins / 60);
+        const endM = endMins % 60;
+        const fin = `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
+
+        // Merge normal and dbox seats
+        let totalCapacity = 0;
+        let totalAvailable = 0;
+        let formats: string[] = [];
+        let isPremiere = false;
+
+        let hasDbox = false;
+        let normalCapacity = 0;
+        let normalAvailable = 0;
+        let dboxCapacity = 0;
+        let dboxAvailable = 0;
+
+        group.forEach((s) => {
+          totalCapacity += s.occupation.capacity;
+          totalAvailable += s.occupation.availableSeats;
+          formats.push(s.sessionFormat);
+          if (s.premiere) isPremiere = true;
+
+          if (s.sessionFormat.toUpperCase().includes("DBOX")) {
+            hasDbox = true;
+            dboxCapacity += s.occupation.capacity;
+            dboxAvailable += s.occupation.availableSeats;
+          } else {
+            normalCapacity += s.occupation.capacity;
+            normalAvailable += s.occupation.availableSeats;
+          }
+        });
+
+        const totalSold = totalCapacity - totalAvailable;
+        const normalSold = normalCapacity - normalAvailable;
+        const dboxSold = dboxCapacity - dboxAvailable;
+
+        // Extract a clean rating from tags or default empty
+        const rating = first.tags?.[0]?.label || "";
+
+        list.push({
+          sala: Number(first.theaterRoom),
+          pelicula: first.movieName,
+          calificacion: rating,
+          inicio,
+          fin,
+          sortInicio: timeToMinutes(inicio),
+          sortFin: timeToMinutes(fin),
+
+          isSimulated: true,
+          sessionId: sid,
+          sessionFormat: Array.from(new Set(formats)).join(" / "),
+          language: first.language.name,
+          premiere: isPremiere,
+
+          capacity: totalCapacity,
+          availableSeats: totalAvailable,
+          soldSeats: totalSold,
+
+          hasDbox,
+          normalCapacity,
+          normalAvailable,
+          normalSold,
+          dboxCapacity,
+          dboxAvailable,
+          dboxSold,
+        });
+      });
+
+      return list;
+    }
+
     if (!savedWeekly?.weeklyRows) return [];
     const list: DailyShow[] = [];
     savedWeekly.weeklyRows.forEach((row) => {
@@ -354,7 +561,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
       });
     });
     return list;
-  }, [savedWeekly, selectedDay]);
+  }, [savedWeekly, selectedDay, useApiData, apiData]);
 
   // Determine dynamic timeline start and end bounds based on shows of the selected day
   const { timelineStartMins, timelineEndMins, minStartMins } = useMemo(() => {
@@ -540,21 +747,34 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
     );
   }
 
-  if (!savedWeekly || rooms.length === 0) {
+  // Adjust empty check to allow API/Simulated data when savedWeekly is empty/null
+  if ((!useApiData && (!savedWeekly || rooms.length === 0)) || (useApiData && rooms.length === 0)) {
     return (
       <View style={styles.centerContainer}>
         <MaterialCommunityIcons name="calendar-blank" size={64} color={COLORS.muted} />
         <Text style={styles.noDataTitle}>No hay programación cargada</Text>
         <Text style={styles.noDataSubtitle}>
-          Subí el reporte en la sección de Servicios &gt; Programaciones para visualizar la programación aquí.
+          {useApiData 
+            ? "No se pudieron obtener datos de la API ni de simulación local."
+            : "Subí el reporte en la sección de Servicios > Programaciones para visualizar la programación aquí."}
         </Text>
+        <TouchableOpacity
+          onPress={() => setUseApiData(!useApiData)}
+          style={[styles.apiToggleButton, { marginTop: 16 }]}
+        >
+          <Text style={styles.apiToggleText}>
+            {useApiData ? "Ver Reporte PDF/Excel" : "Ver Simulación API (Abasto)"}
+          </Text>
+        </TouchableOpacity>
       </View>
     );
   }
 
-  const formattedWeekLabel = savedWeekly.startDate
-    ? `Semana del ${savedWeekly.startDate}`
-    : "Programación Semanal";
+  const formattedWeekLabel = useApiData
+    ? "Programación en Vivo (API / Simulación)"
+    : (savedWeekly?.startDate
+      ? `Semana del ${savedWeekly.startDate}`
+      : "Programación Semanal");
 
   return (
     <View style={styles.container}>
@@ -563,9 +783,31 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
         <View style={styles.headerInfo}>
           <Text style={styles.headerTitle}>{formattedWeekLabel}</Text>
           <Text style={styles.headerSubtitle}>
-            La programación se obtiene a partir del reporte cargado y guardado en la sección de Servicios &gt; Programación.
+            {useApiData
+              ? `Datos para Abasto (Cine ID ${getTheaterId(cineId)}). Uniendo butacas normales y D-BOX.`
+              : "La programación se obtiene a partir del reporte cargado y guardado en la sección de Servicios > Programación."}
           </Text>
+          {useApiData && apiError && (
+            <View style={styles.apiErrorBanner}>
+              <MaterialCommunityIcons name="alert-circle-outline" size={14} color="#B45309" style={{ marginRight: 4 }} />
+              <Text style={styles.apiErrorText}>{apiError}</Text>
+            </View>
+          )}
         </View>
+        <TouchableOpacity
+          onPress={() => setUseApiData(!useApiData)}
+          style={[styles.apiToggleButton, useApiData && styles.apiToggleButtonActive]}
+        >
+          <MaterialCommunityIcons 
+            name={useApiData ? "sync" : "cloud-sync"} 
+            size={18} 
+            color={useApiData ? "#FFFFFF" : COLORS.textSoft} 
+            style={{ marginRight: 6 }} 
+          />
+          <Text style={[styles.apiToggleText, useApiData && styles.apiToggleTextActive]}>
+            {useApiData ? "Ver PDF/Excel" : "Ver Simulación API (Abasto)"}
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {/* Main Grid View */}
@@ -786,6 +1028,11 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                                   >
                                     {show.inicio} - {show.fin}
                                   </Text>
+                                  {show.isSimulated && (
+                                    <Text style={[styles.cardSoldText, is3D ? { color: "#FFFFFF" } : { color: COLORS.primary }, { fontWeight: "bold" }]} numberOfLines={1}>
+                                      🔥 {show.soldSeats} vend.
+                                    </Text>
+                                  )}
                                   {show.calificacion ? (
                                     <View
                                       style={[
@@ -888,6 +1135,60 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                     <Text style={styles.detailValue}>Sala {selectedShow.sala}</Text>
                   </View>
                 </View>
+
+                {/* API Info / Format & Language */}
+                {selectedShow.isSimulated && (
+                  <View style={styles.detailRow}>
+                    <MaterialCommunityIcons name="movie-filter-outline" size={22} color={COLORS.muted} style={styles.detailIcon} />
+                    <View>
+                      <Text style={styles.detailLabel}>Formato e Idioma (API)</Text>
+                      <Text style={styles.detailValue}>
+                        {selectedShow.sessionFormat} | {selectedShow.language}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+
+                {/* Sales Breakdown / Ocupación */}
+                {selectedShow.isSimulated && (
+                  <View style={styles.detailRow}>
+                    <MaterialCommunityIcons name="ticket-confirmation-outline" size={22} color={COLORS.muted} style={styles.detailIcon} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.detailLabel}>Ventas / Ocupación</Text>
+                      <View style={styles.occupancyContainer}>
+                        {selectedShow.hasDbox ? (
+                          <>
+                            <View style={styles.occupancySubRow}>
+                              <Text style={styles.occupancyLabel}>Butacas Comunes:</Text>
+                              <Text style={styles.occupancyVal}>
+                                <Text style={{ fontWeight: "bold" }}>{selectedShow.normalSold}</Text> vendidas de {selectedShow.normalCapacity} ({selectedShow.normalAvailable} disp.)
+                              </Text>
+                            </View>
+                            <View style={styles.occupancySubRow}>
+                              <Text style={styles.occupancyLabel}>Butacas D-BOX:</Text>
+                              <Text style={styles.occupancyVal}>
+                                <Text style={{ fontWeight: "bold" }}>{selectedShow.dboxSold}</Text> vendidas de {selectedShow.dboxCapacity} ({selectedShow.dboxAvailable} disp.)
+                              </Text>
+                            </View>
+                            <View style={[styles.occupancySubRow, { borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: 4, marginTop: 4 }]}>
+                              <Text style={[styles.occupancyLabel, { fontWeight: "bold" }]}>Total Sala:</Text>
+                              <Text style={[styles.occupancyVal, { fontWeight: "bold", color: COLORS.primary }]}>
+                                {selectedShow.soldSeats} vendidas de {selectedShow.capacity} ({selectedShow.availableSeats} disp.)
+                              </Text>
+                            </View>
+                          </>
+                        ) : (
+                          <View style={styles.occupancySubRow}>
+                            <Text style={styles.occupancyLabel}>Butacas:</Text>
+                            <Text style={styles.occupancyVal}>
+                              <Text style={{ fontWeight: "bold" }}>{selectedShow.soldSeats}</Text> vendidas de {selectedShow.capacity} ({selectedShow.availableSeats} disp.)
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                  </View>
+                )}
 
                 {/* Ads / Film Startup detail breakdown */}
                 <View style={styles.detailRow}>
@@ -1367,5 +1668,68 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: THEME.fontSize.md,
     fontWeight: "bold",
+  },
+  apiToggleButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: Platform.OS === "web" ? "var(--card, #1E293B)" : "#1E293B",
+    borderColor: COLORS.border,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  apiToggleButtonActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  apiToggleText: {
+    fontSize: 12,
+    color: COLORS.textSoft,
+    fontWeight: "bold",
+  },
+  apiToggleTextActive: {
+    color: "#FFFFFF",
+  },
+  apiErrorBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FEF3C7",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    marginTop: 4,
+  },
+  apiErrorText: {
+    fontSize: 10.5,
+    color: "#B45309",
+    fontWeight: "600",
+  },
+  cardSoldText: {
+    fontSize: 9,
+    fontWeight: "bold",
+  },
+  occupancyContainer: {
+    marginTop: 4,
+    backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F1F5F9)" : "#F1F5F9",
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 0.5,
+    borderColor: COLORS.border,
+  },
+  occupancySubRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 2,
+  },
+  occupancyLabel: {
+    fontSize: 11,
+    color: COLORS.textSoft,
+  },
+  occupancyVal: {
+    fontSize: 11,
+    color: COLORS.text,
   },
 });
