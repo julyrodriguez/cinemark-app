@@ -1783,8 +1783,8 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
         animationType="fade"
         onRequestClose={() => { setSelectedShow(null); setShowSeatMap(false); setSeatMapData(null); }}
       >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, showSeatMap && styles.modalContentLarge]}>
+        <View style={[styles.modalOverlay, showSeatMap && isMobile && styles.modalOverlayFullScreen]}>
+          <View style={[styles.modalContent, showSeatMap && (isMobile ? styles.modalContentFullScreen : styles.modalContentLarge)]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalHeaderTitle}>Detalle de Función</Text>
               <TouchableOpacity onPress={() => { setSelectedShow(null); setShowSeatMap(false); setSeatMapData(null); }} style={styles.modalCloseButton}>
@@ -1794,9 +1794,9 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
             {selectedShow && (
               <ScrollView 
-                style={{ maxHeight: windowHeight - 200 }} 
-                contentContainerStyle={[styles.modalBody, { paddingBottom: 16 }]}
-                showsVerticalScrollIndicator={true}
+                style={{ maxHeight: showSeatMap && isMobile ? windowHeight - 100 : windowHeight - 200 }} 
+                contentContainerStyle={[styles.modalBody, showSeatMap && isMobile && { paddingHorizontal: 0, paddingBottom: 8 }]}
+                showsVerticalScrollIndicator={false}
               >
                 {showSeatMap ? (
                   <View style={{ flex: 1, minHeight: 350 }}>
@@ -2364,6 +2364,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: THEME.spacing.lg,
   },
+  modalOverlayFullScreen: {
+    padding: 0,
+    justifyContent: "flex-end",
+  },
   modalContent: {
     width: "100%",
     maxWidth: 420,
@@ -2379,6 +2383,15 @@ const styles = StyleSheet.create({
   modalContentLarge: {
     maxWidth: 800,
     width: Platform.OS === "web" ? "90%" : "98%",
+  },
+  modalContentFullScreen: {
+    width: "100%",
+    maxWidth: "100%",
+    borderRadius: 0,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 16,
+    paddingBottom: 24,
   },
   modalHeader: {
     flexDirection: "row",
@@ -2781,12 +2794,13 @@ const styles = StyleSheet.create({
   },
   seatGridContainer: {
     marginTop: 8,
-    padding: 12,
+    padding: Platform.select({ web: 12, default: 4 }),
     borderRadius: 8,
     backgroundColor: "rgba(30, 41, 59, 0.5)",
     borderWidth: 1,
     borderColor: COLORS.border,
     alignItems: "center",
+    overflow: "hidden",
   },
   screenIndicator: {
     width: "80%",
@@ -2811,30 +2825,30 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   colNumberText: {
-    width: Platform.select({ web: 22, default: 16 }),
+    width: Platform.select({ web: 22, default: 14 }),
     textAlign: "center",
-    fontSize: Platform.select({ web: 10, default: 8 }),
+    fontSize: Platform.select({ web: 10, default: 7 }),
     color: COLORS.textSoft,
-    marginHorizontal: Platform.select({ web: 2, default: 1 }),
+    marginHorizontal: Platform.select({ web: 2, default: 0.5 }),
   },
   rowLabelText: {
-    width: Platform.select({ web: 26, default: 18 }),
+    width: Platform.select({ web: 26, default: 16 }),
     textAlign: "center",
-    fontSize: Platform.select({ web: 12, default: 10 }),
+    fontSize: Platform.select({ web: 12, default: 9 }),
     fontWeight: "bold",
     color: COLORS.textSoft,
   },
   seatSpacer: {
-    width: Platform.select({ web: 22, default: 16 }),
-    height: Platform.select({ web: 22, default: 16 }),
-    marginHorizontal: Platform.select({ web: 2, default: 1 }),
+    width: Platform.select({ web: 22, default: 14 }),
+    height: Platform.select({ web: 22, default: 14 }),
+    marginHorizontal: Platform.select({ web: 2, default: 0.5 }),
     backgroundColor: "transparent",
   },
   seatBase: {
-    width: Platform.select({ web: 22, default: 16 }),
-    height: Platform.select({ web: 22, default: 16 }),
+    width: Platform.select({ web: 22, default: 14 }),
+    height: Platform.select({ web: 22, default: 14 }),
     borderRadius: Platform.select({ web: 5, default: 3 }),
-    marginHorizontal: Platform.select({ web: 2, default: 1 }),
+    marginHorizontal: Platform.select({ web: 2, default: 0.5 }),
     justifyContent: "center",
     alignItems: "center",
   },
@@ -2889,13 +2903,14 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
   },
   aisleSpace: {
-    width: Platform.select({ web: 24, default: 16 }),
+    width: Platform.select({ web: 24, default: 12 }),
   },
   seatNumberText: {
     color: "#FFFFFF",
-    fontSize: Platform.select({ web: 9, default: 7.5 }),
+    fontSize: Platform.select({ web: 9, default: 6 }),
     fontWeight: "bold",
     textAlign: "center",
+    lineHeight: Platform.select({ web: 11, default: 8 }),
   },
   seatDboxBorder: {
     borderWidth: Platform.select({ web: 1.5, default: 1 }),
