@@ -1150,8 +1150,15 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                                   left,
                                   width,
                                   borderLeftColor: movieAccentColor,
-                                  backgroundColor: COLORS.card,
                                 },
+                                is3D
+                                  ? {
+                                      backgroundColor: movieAccentColor,
+                                      borderColor: movieAccentColor,
+                                    }
+                                  : {
+                                      backgroundColor: COLORS.card,
+                                    },
                                 isPast && { opacity: 0.45 },
                                 isPlaying && {
                                   borderColor: "#10B981",
@@ -1183,7 +1190,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                                 <View style={styles.movieCardHeaderRow}>
                                   {isPlaying && <View style={styles.playingDot} />}
                                   <Text
-                                    style={styles.movieCardTitle}
+                                    style={[styles.movieCardTitle, is3D && { color: "#FFFFFF" }]}
                                     numberOfLines={1}
                                   >
                                     {show.pelicula}
@@ -1191,20 +1198,28 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                                 </View>
                                 <View style={styles.movieCardFooter}>
                                   <Text
-                                    style={styles.movieCardTime}
+                                    style={[styles.movieCardTime, is3D && { color: "#FFFFFF" }]}
                                     numberOfLines={1}
                                   >
                                     {show.inicio} - {show.fin}
                                   </Text>
                                   {show.isSimulated && (
-                                    <Text style={[styles.cardSoldText, { color: COLORS.primary }, { fontWeight: "bold" }]} numberOfLines={1}>
+                                    <Text style={[styles.cardSoldText, is3D ? { color: "#FFFFFF" } : { color: COLORS.primary }, { fontWeight: "bold" }]} numberOfLines={1}>
                                       🔥 {show.soldSeats}/{show.capacity}
                                     </Text>
                                   )}
                                   {show.calificacion ? (
-                                    <View style={styles.ratingBadge}>
+                                    <View
+                                      style={[
+                                        styles.ratingBadge,
+                                        is3D && {
+                                          backgroundColor: "rgba(255, 255, 255, 0.22)",
+                                          borderColor: "transparent",
+                                        },
+                                      ]}
+                                    >
                                       <Text
-                                        style={styles.ratingBadgeText}
+                                        style={[styles.ratingBadgeText, is3D && { color: "#FFFFFF" }]}
                                         numberOfLines={1}
                                       >
                                         {show.calificacion}
