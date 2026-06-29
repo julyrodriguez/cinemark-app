@@ -1611,7 +1611,7 @@ async function syncShowtimesForCine(cineId: string, theaterId: string) {
       return;
     }
 
-    const json = await response.json();
+    const json = (await response.json()) as any;
     const sessions = json.data || [];
     
     // Group new sessions by weekStart
