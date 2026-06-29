@@ -1579,3 +1579,140 @@ export const getCinemarkShowtimes = onCall(async (request) => {
   }
 });
 
+// Helper for movie week start in backend functions
+function getMovieWeekStartForFunction(date: Date): string {
+  const localDate = new Date(date.getTime() - (3 * 60 * 60 * 1000));
+  const dayNum = localDate.getUTCDay();
+  const daysToSubtract = dayNum <= 3 ? dayNum + 3 : dayNum - 4;
+  const thurDate = new Date(localDate.getTime() - daysToSubtract * 24 * 60 * 60 * 1000);
+  const yyyy = thurDate.getUTCFullYear();
+  const mm = String(thurDate.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(thurDate.getUTCDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+// Background sync function for a cinema
+async function syncShowtimesForCine(cineId: string, theaterId: string) {
+  const url = `https://bff.cinemark.com.ar/api/cinema/showtimes?theater=${theaterId}&_t=${Date.now()}`;
+  console.log(`Starting sync for cine: ${cineId} (theaterId: ${theaterId})`);
+  
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "country": "AR",
+        "Accept": "application/json, text/plain, */*",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+      }
+    });
+
+    if (!response.ok) {
+      console.error(`Cinemark API failed for theater ${theaterId} with status ${response.status}`);
+      return;
+    }
+
+    const json = await response.json();
+    const sessions = json.data || [];
+    
+    // Group new sessions by weekStart
+    const sessionsByWeek: Record<string, any[]> = {};
+    sessions.forEach((s: any) => {
+      const utcDate = new Date(s.sessionDateTime);
+      const weekStart = getMovieWeekStartForFunction(utcDate);
+      if (!sessionsByWeek[weekStart]) {
+        sessionsByWeek[weekStart] = [];
+      }
+      sessionsByWeek[weekStart].push(s);
+    });
+    
+    // For each week, read existing, merge and save
+    for (const weekStart of Object.keys(sessionsByWeek)) {
+      const docRef = db.collection("cines").doc(cineId).collection("showtimes").doc(weekStart);
+      const docSnap = await docRef.get();
+      
+      let existingSessions: any[] = [];
+      if (docSnap.exists) {
+        existingSessions = docSnap.data()?.sessions || [];
+      }
+      
+      const newSessions = sessionsByWeek[weekStart];
+      
+      // Merge: preserve history, update new status
+      const mergedMap = new Map<string, any>();
+      existingSessions.forEach(s => {
+        const key = `${s.sessionId}_${s.theaterRoom}`;
+        mergedMap.set(key, s);
+      });
+      newSessions.forEach(s => {
+        const key = `${s.sessionId}_${s.theaterRoom}`;
+        mergedMap.set(key, s);
+      });
+      
+      const mergedList = Array.from(mergedMap.values()).sort((a, b) => 
+        a.sessionDateTime.localeCompare(b.sessionDateTime)
+      );
+      
+      await docRef.set({
+        weekStart,
+        updatedAt: new Date().toISOString(),
+        sessions: mergedList
+      }, { merge: true });
+    }
+    
+    console.log(`Sync completed successfully for cineId ${cineId} (theater ${theaterId})`);
+  } catch (err) {
+    console.error(`Error syncing showtimes for cineId ${cineId}:`, err);
+  }
+}
+
+// 20-minute cron scheduler to update showtimes background history
+export const cronUpdateShowtimes = onSchedule("every 20 minutes", async () => {
+  console.log("Running scheduled showtimes synchronizer");
+  const cinesSnap = await db.collection("cines").get();
+  
+  for (const cineDoc of cinesSnap.docs) {
+    const cineId = cineDoc.id;
+    const configSnap = await db.collection("cines").doc(cineId).collection("info").doc("config").get();
+    let theaterId = "";
+    
+    if (configSnap.exists) {
+      theaterId = configSnap.data()?.theaterId || "";
+    }
+    // Fallback for Abasto
+    if (!theaterId && cineId.toLowerCase() === "abasto") {
+      theaterId = "103";
+    }
+    
+    if (!theaterId) {
+      console.log(`Skipping cine ${cineId} (no theaterId configured)`);
+      continue;
+    }
+    
+    await syncShowtimesForCine(cineId, theaterId);
+  }
+});
+
+// Force sync callable function for manual refresh
+export const forceSyncShowtimes = onCall(async (request) => {
+  const targetCineId = String(request.data?.cineId || request.auth?.token?.cineId || "");
+  if (!targetCineId) {
+    throw new HttpsError("invalid-argument", "Missing cineId");
+  }
+  
+  // Get theaterId
+  const configSnap = await db.collection("cines").doc(targetCineId).collection("info").doc("config").get();
+  let theaterId = "";
+  if (configSnap.exists) {
+    theaterId = configSnap.data()?.theaterId || "";
+  }
+  if (!theaterId && targetCineId.toLowerCase() === "abasto") {
+    theaterId = "103";
+  }
+  if (!theaterId) {
+    throw new HttpsError("not-found", `No theaterId found for cine ${targetCineId}`);
+  }
+  
+  await syncShowtimesForCine(targetCineId, theaterId);
+  return { success: true };
+});
+

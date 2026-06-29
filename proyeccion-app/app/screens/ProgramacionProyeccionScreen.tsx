@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Modal,
   Platform,
   ScrollView,
@@ -13,7 +14,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { doc, onSnapshot } from "firebase/firestore";
+import { doc, onSnapshot, getDoc } from "firebase/firestore";
 import { db, CINES_COLLECTION, functions } from "../../lib/firebaseConfig";
 import { httpsCallable } from "firebase/functions";
 import { useAuthUser } from "../../lib/useAuthUser";
@@ -260,66 +261,95 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
     return () => unsubscribe();
   }, [cineId, useApiData]);
 
-  // Fetch showtimes from BFF API or fallback to mock data
+  // Fetch showtimes from Firestore or fallback to mock data
+  const [syncing, setSyncing] = useState(false);
+
   useEffect(() => {
-    if (!useApiData) return;
+    if (!useApiData || !cineId || !selectedWeekStart) return;
 
     let isMounted = true;
-    const theaterId = getTheaterId(cineId);
-
     setLoading(true);
     setApiError(null);
 
-    const getShowtimesFunc = httpsCallable(functions, "getCinemarkShowtimes");
+    const docRef = doc(db, CINES_COLLECTION, cineId, "showtimes", selectedWeekStart);
 
-    getShowtimesFunc({ theaterId })
-      .then((res: any) => {
+    getDoc(docRef)
+      .then((snap) => {
         if (isMounted) {
-          const json = res.data;
-          if (json && json.data) {
-            setApiData(json.data);
+          if (snap.exists()) {
+            const data = snap.data();
+            setApiData(data.sessions || []);
             setApiError(null);
           } else {
-            throw new Error("Invalid API data format");
+            console.warn(`No showtimes document found in Firestore for week: ${selectedWeekStart}`);
+            setApiData([]);
+            setApiError("No hay datos sincronizados para esta semana. Presiona el botón de sincronizar.");
           }
           setLoading(false);
         }
       })
-      .catch((err: any) => {
-        console.warn("Live API fetch failed, falling back to mockShowtimesData:", err);
+      .catch((err) => {
+        console.error("Error reading showtimes from Firestore:", err);
         if (isMounted) {
           setApiData(mockShowtimesData.data || []);
-          setApiError("Error de Red/API: Usando datos de simulación locales.");
+          setApiError("Error de lectura en Firestore. Usando datos de simulación locales.");
           setLoading(false);
         }
       });
 
     return () => { isMounted = false; };
-  }, [useApiData, cineId]);
+  }, [useApiData, cineId, selectedWeekStart]);
 
-  // Extracted list of available weeks from API data
+  // Generate weeks list dynamically (current + 5 future weeks for pre-sales)
   const availableWeeks = useMemo(() => {
-    if (!apiData || apiData.length === 0) return [];
-    const set = new Set<string>();
-    apiData.forEach(session => {
-      const utcDate = new Date(session.sessionDateTime);
-      const weekStart = getMovieWeekStart(utcDate);
-      set.add(weekStart);
-    });
-    return Array.from(set).sort();
-  }, [apiData]);
+    const list: string[] = [];
+    const currentThur = getMovieWeekStartForNow();
+    const [y, m, d] = currentThur.split('-').map(Number);
+    const thurDate = new Date(Date.UTC(y, m - 1, d));
 
-  // Set default selected week when availableWeeks change
-  useEffect(() => {
-    if (useApiData && availableWeeks.length > 0) {
-      const currentWeek = getMovieWeekStartForNow();
-      if (availableWeeks.includes(currentWeek)) {
-        setSelectedWeekStart(currentWeek);
-      } else {
-        setSelectedWeekStart(availableWeeks[0]);
-      }
+    for (let i = 0; i < 6; i++) {
+      const nextThur = new Date(thurDate.getTime() + i * 7 * 24 * 60 * 60 * 1000);
+      const yyyy = nextThur.getUTCFullYear();
+      const mm = String(nextThur.getUTCMonth() + 1).padStart(2, '0');
+      const dd = String(nextThur.getUTCDate()).padStart(2, '0');
+      list.push(`${yyyy}-${mm}-${dd}`);
     }
-  }, [availableWeeks, useApiData]);
+    return list;
+  }, []);
+
+  // Set default selected week
+  useEffect(() => {
+    if (useApiData && !selectedWeekStart) {
+      setSelectedWeekStart(getMovieWeekStartForNow());
+    }
+  }, [useApiData, selectedWeekStart]);
+
+  const handleManualSync = async () => {
+    if (!cineId) return;
+    try {
+      setSyncing(true);
+      const syncFunc = httpsCallable(functions, "forceSyncShowtimes");
+      await syncFunc({ cineId });
+
+      // Reload active week from Firestore
+      const docRef = doc(db, CINES_COLLECTION, cineId, "showtimes", selectedWeekStart);
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        const data = snap.data();
+        setApiData(data.sessions || []);
+        setApiError(null);
+      } else {
+        setApiData([]);
+        setApiError("Sincronización completa: No hay funciones programadas para esta semana.");
+      }
+      Alert.alert("Éxito", "Sincronización con Cinemark completada correctamente.");
+    } catch (err: any) {
+      console.error("Manual sync failed:", err);
+      Alert.alert("Error", "No se pudo sincronizar con Cinemark: " + (err.message || err));
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const prevTodayRef = useRef<WeekdayKey>(getCurrentWeekdayKey());
 
@@ -848,20 +878,38 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
             </View>
           )}
         </View>
-        <TouchableOpacity
-          onPress={() => setUseApiData(!useApiData)}
-          style={[styles.apiToggleButton, useApiData && styles.apiToggleButtonActive]}
-        >
-          <MaterialCommunityIcons 
-            name={useApiData ? "sync" : "cloud-sync"} 
-            size={18} 
-            color={useApiData ? "#FFFFFF" : COLORS.textSoft} 
-            style={{ marginRight: 6 }} 
-          />
-          <Text style={[styles.apiToggleText, useApiData && styles.apiToggleTextActive]}>
-            {useApiData ? "Ver PDF/Excel" : "Ver Simulación API (Abasto)"}
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.headerButtonsRow}>
+          {useApiData && (
+            <TouchableOpacity
+              onPress={handleManualSync}
+              disabled={syncing}
+              style={[styles.apiSyncButton, { marginRight: 8 }]}
+            >
+              {syncing ? (
+                <ActivityIndicator size="small" color="#FFFFFF" style={{ marginRight: 6 }} />
+              ) : (
+                <MaterialCommunityIcons name="cached" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
+              )}
+              <Text style={styles.apiSyncButtonText}>
+                {syncing ? "Sincronizando..." : "Sincronizar"}
+              </Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            onPress={() => setUseApiData(!useApiData)}
+            style={[styles.apiToggleButton, useApiData && styles.apiToggleButtonActive]}
+          >
+            <MaterialCommunityIcons 
+              name={useApiData ? "sync" : "cloud-sync"} 
+              size={18} 
+              color={useApiData ? "#FFFFFF" : COLORS.textSoft} 
+              style={{ marginRight: 6 }} 
+            />
+            <Text style={[styles.apiToggleText, useApiData && styles.apiToggleTextActive]}>
+              {useApiData ? "Ver PDF/Excel" : "Ver Simulación API (Abasto)"}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Week Selector Bar (if in API mode) */}
@@ -1864,5 +1912,24 @@ const styles = StyleSheet.create({
   },
   weekButtonTextActive: {
     color: "#FFFFFF",
+  },
+  headerButtonsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  apiSyncButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+  },
+  apiSyncButtonText: {
+    fontSize: 12,
+    color: "#FFFFFF",
+    fontWeight: "bold",
   },
 });
