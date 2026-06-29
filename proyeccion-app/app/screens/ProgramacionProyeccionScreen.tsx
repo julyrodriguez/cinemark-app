@@ -41,6 +41,7 @@ interface DailyShow {
   premiere?: boolean;
   corporateId?: string;
   movieId?: string;
+  occupiedSeats?: string[];
   
   capacity?: number;
   availableSeats?: number;
@@ -729,6 +730,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
             premiere: isPremiere,
             corporateId: first.corporateId,
             movieId: first.movieId,
+            occupiedSeats: first.occupiedSeats || [],
 
             capacity: totalCapacity,
             availableSeats: totalAvailable,
@@ -859,6 +861,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
               show.premiere = isPremiere;
               show.corporateId = matchingSessions[0].corporateId;
               show.movieId = matchingSessions[0].movieId;
+              show.occupiedSeats = matchingSessions[0].occupiedSeats || [];
 
               show.capacity = totalCapacity;
               show.availableSeats = totalAvailable;

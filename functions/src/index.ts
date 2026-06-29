@@ -1520,6 +1520,115 @@ function getMovieWeekStartForFunction(date: Date): string {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+// Helper to fetch occupied seats list for a session
+async function getOccupiedSeats(theaterId: string, sessionId: string, corporateId: string): Promise<string[] | null> {
+  const urlOrder = "https://bff.cinemark.com.ar/api/order-tickets";
+  const headers = {
+    "accept": "application/json",
+    "content-type": "application/json",
+    "country": "AR",
+    "member-session-id": "dc2a9a5a-3239-4ff9-8b97-142882f08a43",
+    "origin": "https://www.cinemark.com.ar",
+    "referer": "https://www.cinemark.com.ar/",
+    "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+  };
+
+  const payload = {
+    "cinemaId": Number(theaterId),
+    "feature": 0,
+    "isMobile": false,
+    "movie": {
+      "cinemaAddress": "Aguero 665, Abasto Shopping",
+      "cinemaCity": "CABA",
+      "cinemaName": "Abasto",
+      "corporateFilmId": String(corporateId),
+      "rating": "R-13",
+      "ratingDescription": "Apto para todo Público"
+    },
+    "salesChannelToken": "d792f0f7def937524c47b6e5036b70085302d9df18a7dfc48478ce3d2de4bef9",
+    "sessionId": Number(sessionId),
+    "ticketList": [
+      {
+        "areaCategoryCode": "",
+        "hOCode": "1005",
+        "recogId": 0,
+        "promoId": 0,
+        "voucher": "",
+        "quantity": 1,
+        "buyOptions": [
+          {
+            "recogId": 0,
+            "promoId": 0,
+            "cssClass": "ticket-price-reg",
+            "value": 2320000,
+            "valueWithoutTax": 1770900,
+            "balances": [],
+            "buttonQty": 1,
+            "level": 0,
+            "maxQty": 6,
+            "service": 105000,
+            "type": 3
+          }
+        ],
+        "isPaymentByCreditCardOnly": false,
+        "isVoucher": false,
+        "partnershipName": "",
+        "price": 2320000,
+        "ticketsQty": 1
+      }
+    ],
+    "user": {
+      "fullName": "Julian Rodríguez",
+      "email": "julian180@live.com",
+      "phone": "1130510126",
+      "memberId": "5215241",
+      "customerType": 0
+    }
+  };
+
+  try {
+    const orderRes = await fetch(urlOrder, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload)
+    });
+
+    if (!orderRes.ok) return null;
+    const orderJson = await orderRes.json() as any;
+    const transIdTemp = orderJson.data?.transIdTemp;
+    if (!transIdTemp) return null;
+
+    const urlMap = `https://bff.cinemark.com.ar/api/order-get-map?cinemaId=${theaterId}&transIdTemp=${transIdTemp}&sessionId=${sessionId}`;
+    const mapRes = await fetch(urlMap, {
+      method: "GET",
+      headers
+    });
+    if (!mapRes.ok) return null;
+
+    const mapJson = await mapRes.json() as any;
+    if (mapJson.Code !== 0 || !mapJson.Data?.areas) return null;
+
+    const occupiedSeats: string[] = [];
+    mapJson.Data.areas.forEach((area: any) => {
+      if (!area.rows) return;
+      area.rows.forEach((row: any) => {
+        const rowId = row.rowPhysicalId;
+        if (!row.seats) return;
+        row.seats.forEach((seat: any) => {
+          if (seat.seatStatus !== 0) {
+            occupiedSeats.push(`${rowId}-${seat.seatNumber}`);
+          }
+        });
+      });
+    });
+
+    return occupiedSeats;
+  } catch (e) {
+    console.error(`Error fetching occupied seats for session ${sessionId}:`, e);
+    return null;
+  }
+}
+
 // Background sync function for a cinema
 async function syncShowtimesForCine(cineId: string, theaterId: string) {
   const url = `https://bff.cinemark.com.ar/api/cinema/showtimes?theater=${theaterId}&_t=${Date.now()}`;
@@ -1542,6 +1651,37 @@ async function syncShowtimesForCine(cineId: string, theaterId: string) {
 
     const json = (await response.json()) as any;
     const sessions = json.data || [];
+
+    // Today's seat map synchronization
+    const now = new Date();
+    const arNow = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+    const todayStr = arNow.toISOString().split("T")[0];
+    
+    const todaySessions = sessions.filter((s: any) => {
+      if (s.sessionDisplayDate !== todayStr) return false;
+      const sessionTime = new Date(s.sessionDateTime).getTime();
+      const threeHoursAgo = now.getTime() - 3 * 60 * 60 * 1000;
+      return sessionTime > threeHoursAgo;
+    });
+
+    console.log(`Found ${todaySessions.length} active sessions today to sync seat maps.`);
+    for (const s of todaySessions) {
+      try {
+        const corpId = s.corporateId || s.movieId || "";
+        const occupiedSeats = await getOccupiedSeats(theaterId, s.sessionId, corpId);
+        if (occupiedSeats !== null) {
+          s.occupiedSeats = occupiedSeats;
+          s.soldSeats = occupiedSeats.length;
+          if (s.occupation) {
+            s.occupation.availableSeats = s.occupation.capacity - occupiedSeats.length;
+          }
+        }
+      } catch (err) {
+        console.error(`Failed syncing seat map for session ${s.sessionId}:`, err);
+      }
+      // Small delay to prevent rate limits
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
     
     // Group new sessions by weekStart
     const sessionsByWeek: Record<string, any[]> = {};
@@ -1600,7 +1740,7 @@ async function syncShowtimesForCine(cineId: string, theaterId: string) {
 }
 
 // 20-minute cron scheduler to update showtimes background history
-export const cronUpdateShowtimes = onSchedule("every 20 minutes", async () => {
+export const cronUpdateShowtimes = onSchedule({ schedule: "every 20 minutes", timeoutSeconds: 300 }, async () => {
   console.log("Running scheduled showtimes synchronizer");
   const cinesSnap = await db.collection("cines").get();
   
@@ -1627,7 +1767,7 @@ export const cronUpdateShowtimes = onSchedule("every 20 minutes", async () => {
 });
 
 // Force sync callable function for manual refresh
-export const forceSyncShowtimes = onCall({ cors: true }, async (request) => {
+export const forceSyncShowtimes = onCall({ cors: true, timeoutSeconds: 300 }, async (request) => {
   const targetCineId = String(request.data?.cineId || request.auth?.token?.cineId || "");
   if (!targetCineId) {
     throw new HttpsError("invalid-argument", "Missing cineId");
