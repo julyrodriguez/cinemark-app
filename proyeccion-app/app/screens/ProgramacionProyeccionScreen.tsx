@@ -1024,7 +1024,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                                   </Text>
                                   {show.isSimulated && (
                                     <Text style={[styles.cardSoldText, is3D ? { color: "#FFFFFF" } : { color: COLORS.primary }, { fontWeight: "bold" }]} numberOfLines={1}>
-                                      🔥 {show.soldSeats} vend.
+                                      🔥 {show.soldSeats}/{show.capacity}
                                     </Text>
                                   )}
                                   {show.calificacion ? (
