@@ -1143,106 +1143,100 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
         );
       })()}
 
-      {/* Collapsible Stats and Alerts Panel */}
-      {useApiData && stats && (
-        <View style={styles.statsPanelContainer}>
-          <TouchableOpacity
-            activeOpacity={0.8}
-            onPress={() => setShowStatsPanel(!showStatsPanel)}
-            style={styles.statsPanelHeader}
-          >
-            <View style={styles.statsPanelHeaderTitleContainer}>
-              <MaterialCommunityIcons name="chart-bar" size={20} color={COLORS.primary} style={{ marginRight: 6 }} />
-              <Text style={styles.statsPanelHeaderTitle}>Estadísticas y Alertas del Cine</Text>
-            </View>
-            <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <Text style={styles.statsHeaderSummary}>
-                Hoy: {stats.dailyTotalSold} tix | Lentes 3D: {stats.daily3DSold}
-              </Text>
-              <MaterialCommunityIcons
-                name={showStatsPanel ? "chevron-up" : "chevron-down"}
-                size={20}
-                color={COLORS.textSoft}
-                style={{ marginLeft: 8 }}
-              />
-            </View>
-          </TouchableOpacity>
-
-          {showStatsPanel && (
-            <View style={styles.statsPanelBody}>
-              <View style={styles.statsGrid}>
-                {/* Daily Column */}
-                <View style={styles.statsColumn}>
-                  <Text style={styles.statsColumnTitle}>📍 HOY ({selectedDay.toUpperCase()})</Text>
-                  <View style={styles.statsItemRow}>
-                    <Text style={styles.statsItemLabel}>Tickets Vendidos:</Text>
-                    <Text style={styles.statsItemValue}>{stats.dailyTotalSold}</Text>
-                  </View>
-                  <View style={styles.statsItemRow}>
-                    <Text style={styles.statsItemLabel}>Lentes 3D Requeridos:</Text>
-                    <Text style={styles.statsItemValue}>{stats.daily3DSold}</Text>
-                  </View>
-                </View>
-
-                {/* Weekly Column */}
-                <View style={styles.statsColumn}>
-                  <Text style={styles.statsColumnTitle}>📅 SEMANA EN CURSO</Text>
-                  <View style={styles.statsItemRow}>
-                    <Text style={styles.statsItemLabel}>Total Vendidos:</Text>
-                    <Text style={styles.statsItemValue}>{stats.weeklyTotalSold}</Text>
-                  </View>
-                  <View style={styles.statsItemRow}>
-                    <Text style={styles.statsItemLabel}>Lentes 3D Requeridos:</Text>
-                    <Text style={styles.statsItemValue}>{stats.weekly3DSold}</Text>
-                  </View>
-                </View>
-              </View>
-
-              {/* Alerts Section (Only Daily) */}
-              <View style={styles.statsAlertsSection}>
-                <Text style={styles.statsAlertsTitle}>🚨 ALERTAS OPERATIVAS (Hoy)</Text>
-                
-                {stats.recordingRiskShows.length === 0 && stats.guideNeededShows.length === 0 ? (
-                  <View style={styles.noAlertsContainer}>
-                    <MaterialCommunityIcons name="check-circle" size={16} color="#10B981" style={{ marginRight: 6 }} />
-                    <Text style={styles.noAlertsText}>Sin alertas de sala hoy</Text>
-                  </View>
-                ) : (
-                  <View style={styles.alertsList}>
-                    {stats.recordingRiskShows.map((show, idx) => (
-                      <View key={`risk-${idx}`} style={[styles.alertItem, styles.alertItemRisk]}>
-                        <MaterialCommunityIcons name="alert-circle" size={14} color="#EF4444" style={{ marginRight: 6 }} />
-                        <Text style={styles.alertItemText} numberOfLines={1}>
-                          <Text style={{ fontWeight: "bold" }}>{show.inicio}</Text> - Sala {show.sala} | {show.pelicula} (Ocupación: {show.capacity !== undefined && show.soldSeats !== undefined && show.capacity > 0 ? ((show.soldSeats/show.capacity)*100).toFixed(0) : 0}%)
-                        </Text>
-                        <View style={[styles.alertBadge, { backgroundColor: "#EF4444" }]}>
-                          <Text style={styles.alertBadgeText}>Riesgo de grabación</Text>
-                        </View>
-                      </View>
-                    ))}
-                    {stats.guideNeededShows.map((show, idx) => (
-                      <View key={`guide-${idx}`} style={[styles.alertItem, styles.alertItemGuide]}>
-                        <MaterialCommunityIcons name="account-group" size={14} color="#10B981" style={{ marginRight: 6 }} />
-                        <Text style={styles.alertItemText} numberOfLines={1}>
-                          <Text style={{ fontWeight: "bold" }}>{show.inicio}</Text> - Sala {show.sala} | {show.pelicula} (Ocupación: {show.capacity !== undefined && show.soldSeats !== undefined && show.capacity > 0 ? ((show.soldSeats/show.capacity)*100).toFixed(0) : 0}%)
-                        </Text>
-                        <View style={[styles.alertBadge, { backgroundColor: "#10B981" }]}>
-                          <Text style={styles.alertBadgeText}>Necesario guía de sala</Text>
-                        </View>
-                      </View>
-                    ))}
-                  </View>
-                )}
-              </View>
-            </View>
-          )}
-        </View>
-      )}
-
       {/* Main Grid View */}
       <View style={styles.gridContainer}>
-        <ScrollView style={styles.verticalScrollView} bounces={false} stickyHeaderIndices={[1]}>
-          {/* Days Tabs Selection (Index 0) */}
+        <ScrollView style={styles.verticalScrollView} bounces={false} stickyHeaderIndices={useApiData && stats ? [2] : [1]}>
+          {/* Collapsible Stats and Alerts Panel */}
+          {useApiData && stats && (
+            <View style={styles.statsPanelContainer}>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => setShowStatsPanel(!showStatsPanel)}
+                style={styles.statsPanelHeader}
+              >
+                <View style={styles.statsPanelHeaderTitleContainer}>
+                  <MaterialCommunityIcons name="chart-bar" size={20} color={COLORS.primary} style={{ marginRight: 6 }} />
+                  <Text style={styles.statsPanelHeaderTitle}>Estadísticas y alertas del cine</Text>
+                </View>
+                <MaterialCommunityIcons
+                  name={showStatsPanel ? "chevron-up" : "chevron-down"}
+                  size={20}
+                  color={COLORS.textSoft}
+                />
+              </TouchableOpacity>
+
+              {showStatsPanel && (
+                <View style={styles.statsPanelBody}>
+                  <View style={styles.statsGrid}>
+                    {/* Daily Column */}
+                    <View style={styles.statsColumn}>
+                      <Text style={styles.statsColumnTitle}>📍 HOY ({selectedDay.toUpperCase()})</Text>
+                      <View style={styles.statsItemRow}>
+                        <Text style={styles.statsItemLabel}>Tickets Vendidos:</Text>
+                        <Text style={styles.statsItemValue}>{stats.dailyTotalSold}</Text>
+                      </View>
+                      <View style={styles.statsItemRow}>
+                        <Text style={styles.statsItemLabel}>Lentes 3D Requeridos:</Text>
+                        <Text style={styles.statsItemValue}>{stats.daily3DSold}</Text>
+                      </View>
+                    </View>
+
+                    {/* Weekly Column */}
+                    <View style={styles.statsColumn}>
+                      <Text style={styles.statsColumnTitle}>📅 SEMANA EN CURSO</Text>
+                      <View style={styles.statsItemRow}>
+                        <Text style={styles.statsItemLabel}>Total Vendidos:</Text>
+                        <Text style={styles.statsItemValue}>{stats.weeklyTotalSold}</Text>
+                      </View>
+                      <View style={styles.statsItemRow}>
+                        <Text style={styles.statsItemLabel}>Lentes 3D Requeridos:</Text>
+                        <Text style={styles.statsItemValue}>{stats.weekly3DSold}</Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* Alerts Section (Only Daily) */}
+                  <View style={styles.statsAlertsSection}>
+                    <Text style={styles.statsAlertsTitle}>🚨 ALERTAS OPERATIVAS (Hoy)</Text>
+                    
+                    {stats.recordingRiskShows.length === 0 && stats.guideNeededShows.length === 0 ? (
+                      <View style={styles.noAlertsContainer}>
+                        <MaterialCommunityIcons name="check-circle" size={16} color="#10B981" style={{ marginRight: 6 }} />
+                        <Text style={styles.noAlertsText}>Sin alertas de sala hoy</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.alertsList}>
+                        {stats.recordingRiskShows.map((show, idx) => (
+                          <View key={`risk-${idx}`} style={[styles.alertItem, styles.alertItemRisk]}>
+                            <MaterialCommunityIcons name="alert-circle" size={14} color="#EF4444" style={{ marginRight: 6 }} />
+                            <Text style={styles.alertItemText} numberOfLines={1}>
+                              <Text style={{ fontWeight: "bold" }}>{show.inicio}</Text> - Sala {show.sala} | {show.pelicula} (Ocupación: {show.capacity !== undefined && show.soldSeats !== undefined && show.capacity > 0 ? ((show.soldSeats/show.capacity)*100).toFixed(0) : 0}%)
+                            </Text>
+                            <View style={[styles.alertBadge, { backgroundColor: "#EF4444" }]}>
+                              <Text style={styles.alertBadgeText}>Riesgo de grabación</Text>
+                            </View>
+                          </View>
+                        ))}
+                        {stats.guideNeededShows.map((show, idx) => (
+                          <View key={`guide-${idx}`} style={[styles.alertItem, styles.alertItemGuide]}>
+                            <MaterialCommunityIcons name="account-group" size={14} color="#10B981" style={{ marginRight: 6 }} />
+                            <Text style={styles.alertItemText} numberOfLines={1}>
+                              <Text style={{ fontWeight: "bold" }}>{show.inicio}</Text> - Sala {show.sala} | {show.pelicula} (Ocupación: {show.capacity !== undefined && show.soldSeats !== undefined && show.capacity > 0 ? ((show.soldSeats/show.capacity)*100).toFixed(0) : 0}%)
+                            </Text>
+                            <View style={[styles.alertBadge, { backgroundColor: "#10B981" }]}>
+                              <Text style={styles.alertBadgeText}>Necesario guía de sala</Text>
+                            </View>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+                  </View>
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* Days Tabs Selection (Index 0 or 1 depending on stats visibility) */}
           <View style={styles.tabBarContainer}>
             <ScrollView
               horizontal
