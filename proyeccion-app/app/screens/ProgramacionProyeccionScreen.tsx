@@ -1022,8 +1022,12 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
     );
   }
 
-  // Adjust empty check to allow API/Simulated data when savedWeekly is empty/null
-  if ((!useApiData && (!savedWeekly || rooms.length === 0)) || (useApiData && rooms.length === 0)) {
+  // Full-screen empty check (only if we have absolutely no layout data or no weeks available at all)
+  const hasNoDataAtAll = !useApiData
+    ? (!savedWeekly || rooms.length === 0)
+    : (availableWeeks.length === 0 || !selectedWeekStart);
+
+  if (hasNoDataAtAll) {
     return (
       <View style={styles.centerContainer}>
         <MaterialCommunityIcons name="calendar-blank" size={64} color={COLORS.muted} />
@@ -1260,7 +1264,15 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
             </ScrollView>
           </View>
 
-          {/* Grid Header Row (Index 1) */}
+          {rooms.length === 0 ? (
+            <View style={styles.emptyGridPlaceholder}>
+              <MaterialCommunityIcons name="calendar-blank" size={48} color={COLORS.muted} style={{ marginBottom: 12 }} />
+              <Text style={styles.emptyGridTitle}>No hay funciones cargadas</Text>
+              <Text style={styles.emptyGridSubtitle}>No se encontraron funciones para esta fecha o semana.</Text>
+            </View>
+          ) : (
+            <>
+              {/* Grid Header Row (Index 1) */}
           <View style={[
             styles.mainLayoutRow,
             { zIndex: 10 },
@@ -1548,6 +1560,8 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
               </View>
             </ScrollView>
           </View>
+        </>
+      )}
         </ScrollView>
       </View>
 
@@ -2453,5 +2467,27 @@ const styles = StyleSheet.create({
     fontSize: 9,
     color: "#FFFFFF",
     fontWeight: "bold",
+  },
+  emptyGridPlaceholder: {
+    paddingVertical: 48,
+    paddingHorizontal: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: Platform.OS === "web" ? "var(--card, #1E293B)" : "#1E293B",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    margin: 16,
+  },
+  emptyGridTitle: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: COLORS.text,
+    marginBottom: 4,
+  },
+  emptyGridSubtitle: {
+    fontSize: 12,
+    color: COLORS.textSoft,
+    textAlign: "center",
   },
 });
