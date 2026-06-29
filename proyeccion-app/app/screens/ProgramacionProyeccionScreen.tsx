@@ -214,7 +214,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
   const timelineScrollRef = useRef<ScrollView>(null);
   const lastScrolledDay = useRef<string | null>(null);
 
-  const { width: windowWidth } = useWindowDimensions();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const isMobile = windowWidth < 768;
   const [isScrolled, setIsScrolled] = useState(false);
 
@@ -1793,7 +1793,11 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
             </View>
 
             {selectedShow && (
-              <View style={styles.modalBody}>
+              <ScrollView 
+                style={{ maxHeight: windowHeight - 200 }} 
+                contentContainerStyle={[styles.modalBody, { paddingBottom: 16 }]}
+                showsVerticalScrollIndicator={true}
+              >
                 {showSeatMap ? (
                   <View style={{ flex: 1, minHeight: 350 }}>
                     <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}>
@@ -1992,7 +1996,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                     )}
                   </>
                 )}
-              </View>
+              </ScrollView>
             )}
 
             <TouchableOpacity onPress={() => { setSelectedShow(null); setShowSeatMap(false); setSeatMapData(null); }} style={styles.modalButton}>
@@ -2853,6 +2857,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-around",
     alignItems: "center",
+    flexWrap: "wrap",
+    gap: 8,
     marginBottom: 16,
     paddingVertical: 8,
     borderBottomWidth: 1,
