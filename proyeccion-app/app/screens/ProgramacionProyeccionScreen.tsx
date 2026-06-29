@@ -397,7 +397,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
                           const seatKey = `${seat.row}-${seat.number}`;
                           const apiSeat = occupiedMap.get(seatKey);
-                          const isSold = !!apiSeat;
+                          const isSold = apiSeat ? apiSeat.seatStatus !== 0 : false;
                           
                           let seatStyle = styles.seatAvailable;
                           let iconName = "";
