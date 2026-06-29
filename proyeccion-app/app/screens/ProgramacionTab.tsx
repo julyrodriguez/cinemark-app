@@ -159,7 +159,6 @@ export default function ProgramacionTab() {
   // Estado para las filas parseadas (si se carga un archivo y se quiere guardar)
   const [loadedWeeklyRows, setLoadedWeeklyRows] = useState<any[] | null>(null);
   const [loadedWeeklyType, setLoadedWeeklyType] = useState<"excel" | "pdf" | null>(null);
-  const [savingWeekly, setSavingWeekly] = useState(false);
 
   // Estados para el Weekly guardado en Firestore
   const [savedWeekly, setSavedWeekly] = useState<{
@@ -197,68 +196,7 @@ export default function ProgramacionTab() {
     loadLatestSavedWeekly();
   }, [cineId]);
 
-  async function handleSaveWeeklyToDb() {
-    console.log("[Weekly Save] Iniciando handleSaveWeeklyToDb...");
-    if (!cineId) {
-      console.warn("[Weekly Save] Cancelado: cineId es nulo o vacío.");
-      return;
-    }
-    if (!loadedWeeklyRows || !loadedWeeklyRows.length) {
-      console.warn("[Weekly Save] Cancelado: loadedWeeklyRows está vacío o nulo.");
-      return;
-    }
-    if (!fechaInicioSemana.trim()) {
-      console.warn("[Weekly Save] Cancelado: fechaInicioSemana está vacía.");
-      Alert.alert("Error", "Por favor ingresa una fecha de inicio de semana válida (formato YYYY-MM-DD).");
-      return;
-    }
 
-    try {
-      setSavingWeekly(true);
-      console.log("[Weekly Save] Creando docRef para:", CINES_COLLECTION, "->", cineId, "-> programacion_semanal -> actual");
-      const docRef = doc(db, CINES_COLLECTION, cineId, "programacion_semanal", "actual");
-
-      console.log("[Weekly Save] Sanitizando loadedWeeklyRows (largo:", loadedWeeklyRows.length, ")");
-      const sanitizedRows = JSON.parse(JSON.stringify(loadedWeeklyRows));
-      console.log("[Weekly Save] Primer fila sanitizada de ejemplo:", sanitizedRows[0]);
-
-      const payload = {
-        startDate: fechaInicioSemana,
-        weeklyRows: sanitizedRows,
-        savedAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      console.log("[Weekly Save] Payload construido:", JSON.stringify(payload).substring(0, 300) + "...");
-
-      console.log("[Weekly Save] Llamando a setDoc...");
-      await setDoc(docRef, payload);
-      console.log("[Weekly Save] setDoc finalizado con éxito.");
-      Alert.alert("Éxito", "La programación semanal ha sido guardada en la base de datos.");
-
-      // Establecer el reporte guardado localmente de inmediato para evitar delay
-      setSavedWeekly({
-        startDate: payload.startDate,
-        savedAt: payload.savedAt,
-        weeklyRows: payload.weeklyRows,
-      });
-      setUseSavedWeekly(true);
-
-      // Limpiar archivo local temporal cargado tras guardar con éxito
-      setWeeklyUri(null);
-      setWeeklyName(null);
-      setLoadedWeeklyRows(null);
-      setLoadedWeeklyType(null);
-
-      console.log("[Weekly Save] Recargando loadLatestSavedWeekly...");
-      await loadLatestSavedWeekly();
-      console.log("[Weekly Save] Flujo de guardado completado totalmente.");
-    } catch (error: any) {
-      console.error("[Weekly Save] ERROR FATAL al guardar en la BD:", error);
-      Alert.alert("Error de Guardado", `Ocurrió un error al guardar: ${error.message || error}`);
-    } finally {
-      setSavingWeekly(false);
-    }
-  }
 
   const [summary, setSummary] = useState<{
     entrada: number;
@@ -365,6 +303,10 @@ export default function ProgramacionTab() {
       let dateLabelToUse = WEEKDAY_LABELS[selectedDay];
       let startDateToUse: Date | null = null;
 
+      let shouldSaveAutomatically = false;
+      let rowsToSave: any[] = [];
+      let startDateToSave = "";
+
       if (useSavedWeekly && savedWeekly) {
         weeklyRows = savedWeekly.weeklyRows;
         const parsedStartDate = dayjs(savedWeekly.startDate).toDate();
@@ -375,6 +317,10 @@ export default function ProgramacionTab() {
         const parsedStartDate = dayjs(fechaInicioSemana).toDate();
         startDateToUse = parsedStartDate;
         dateLabelToUse = buildDateLabel(parsedStartDate, selectedDay);
+
+        shouldSaveAutomatically = true;
+        rowsToSave = loadedWeeklyRows;
+        startDateToSave = fechaInicioSemana;
       } else if (weeklyUri) {
         const isPdf = weeklyName?.toLowerCase().endsWith(".pdf") || false;
         const { rows, startDate } = isPdf
@@ -385,6 +331,10 @@ export default function ProgramacionTab() {
         if (startDate) {
           dateLabelToUse = buildDateLabel(startDate, selectedDay);
         }
+
+        shouldSaveAutomatically = true;
+        rowsToSave = rows;
+        startDateToSave = startDate ? dayjs(startDate).format("YYYY-MM-DD") : fechaInicioSemana;
       }
 
       if (!weeklyRows.length) {
@@ -418,6 +368,39 @@ export default function ProgramacionTab() {
       });
 
       setStatusText("Generación exitosa");
+
+      // Si guardamos automáticamente, corremos la misma lógica que handleSaveWeeklyToDb
+      if (shouldSaveAutomatically && cineId && rowsToSave.length > 0) {
+        try {
+          const docRef = doc(db, CINES_COLLECTION, cineId, "programacion_semanal", "actual");
+          const sanitizedRows = JSON.parse(JSON.stringify(rowsToSave));
+          const payload = {
+            startDate: startDateToSave,
+            weeklyRows: sanitizedRows,
+            savedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+          await setDoc(docRef, payload);
+
+          setSavedWeekly({
+            startDate: payload.startDate,
+            savedAt: payload.savedAt,
+            weeklyRows: payload.weeklyRows,
+          });
+          setUseSavedWeekly(true);
+
+          // Limpiar archivo local temporal cargado tras guardar con éxito
+          setWeeklyUri(null);
+          setWeeklyName(null);
+          setLoadedWeeklyRows(null);
+          setLoadedWeeklyType(null);
+
+          await loadLatestSavedWeekly();
+          setStatusText("Generación exitosa. Reporte guardado para futuros usos.");
+        } catch (saveError) {
+          console.error("[Weekly Save Automatic] Error al guardar en la BD:", saveError);
+        }
+      }
 
       if (Platform.OS === "web") {
         if (generated.webArrayBuffer) {
@@ -517,7 +500,7 @@ export default function ProgramacionTab() {
           {/* Cartel naranja de información PDF */}
           <View style={s.pdfInfoBanner}>
             <Text style={s.pdfInfoBannerText}>
-              💡 NUEVO: ¡Ahora también podés cargar el archivo PDF semanal de Vista (`sessionByScreen.pdf`)! Además, ahora se puede guardar el reporte para no tener que cargarlo si no hubo cambios de programación.
+              💡 NUEVO: ¡Ahora también podés cargar el archivo PDF semanal de Vista (`sessionByScreen.pdf`)! Además, ahora el reporte se guarda automáticamente al generar el Excel para no tener que volver a cargarlo si no hay cambios.
             </Text>
           </View>
 
@@ -571,21 +554,6 @@ export default function ProgramacionTab() {
                   Cargado: {dayjs().format("DD/MM/YYYY HH:mm")} hs
                 </Text>
               </View>
-
-              <Pressable
-                style={[
-                  s.compactSaveButton,
-                  savingWeekly && { opacity: 0.7 }
-                ]}
-                onPress={handleSaveWeeklyToDb}
-                disabled={savingWeekly}
-              >
-                {savingWeekly ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
-                  <Text style={s.compactSaveButtonText}>💾 GUARDAR REPORTE SEMANAL PARA FUTUROS USOS</Text>
-                )}
-              </Pressable>
             </View>
           )}
         </View>
@@ -699,7 +667,7 @@ export default function ProgramacionTab() {
           <View style={s.rowBetween}>
             <View style={{ flex: 1, paddingRight: 10 }}>
               <Text style={{ fontSize: 11, fontWeight: "700", color: !!weeklyUri && useSavedWeekly ? COLORS.danger : COLORS.muted, textTransform: "uppercase" }}>
-                📅 Último Reporte Semanal Guardado
+                📅 Último Reporte Semanal Usado
               </Text>
               <Text style={{ fontSize: 13, fontWeight: "800", color: COLORS.text, marginTop: 4 }}>
                 Cargado el: {dayjs(savedWeekly.savedAt).format("DD/MM/YYYY HH:mm")}
