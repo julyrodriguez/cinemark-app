@@ -297,8 +297,9 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
             setApiError(null);
           } else {
             console.warn(`No showtimes document found in Firestore for week: ${selectedWeekStart}`);
-            setApiData([]);
-            setApiError("No hay datos sincronizados para esta semana. Presiona el botón de sincronizar.");
+            // Fallback to local mock data so the app displays instantly
+            setApiData(mockShowtimesData.data || []);
+            setApiError("Sin sincronizar: Mostrando datos de simulación locales.");
           }
           setLoading(false);
         }
