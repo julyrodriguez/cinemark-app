@@ -218,7 +218,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
   const currentRoomColWidth = isCollapsed ? 34 : ROOM_COL_WIDTH;
 
   // API Data Integration states
-  const [useApiData, setUseApiData] = useState(true); // default to true for live experience
+  const useApiData = true;
   const [apiData, setApiData] = useState<any[] | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
   const [selectedWeekStart, setSelectedWeekStart] = useState<string>("");
@@ -1022,29 +1022,15 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
     );
   }
 
-  // Full-screen empty check (only if we have absolutely no layout data or no weeks available at all)
-  const hasNoDataAtAll = !useApiData
-    ? (!savedWeekly || rooms.length === 0)
-    : (availableWeeks.length === 0 || !selectedWeekStart);
-
-  if (hasNoDataAtAll) {
+  // Full-screen empty check (only if we have absolutely no weeks available at all)
+  if (availableWeeks.length === 0 || !selectedWeekStart) {
     return (
       <View style={styles.centerContainer}>
         <MaterialCommunityIcons name="calendar-blank" size={64} color={COLORS.muted} />
         <Text style={styles.noDataTitle}>No hay programación cargada</Text>
         <Text style={styles.noDataSubtitle}>
-          {useApiData 
-            ? "No se pudieron obtener datos de la API ni de simulación local."
-            : "Subí el reporte en la sección de Servicios > Programaciones para visualizar la programación aquí."}
+          No se pudieron obtener datos de la API de Cinemark ni existe un historial de sincronizaciones.
         </Text>
-        <TouchableOpacity
-          onPress={() => setUseApiData(!useApiData)}
-          style={[styles.apiToggleButton, { marginTop: 16 }]}
-        >
-          <Text style={styles.apiToggleText}>
-            {useApiData ? "Ver Reporte PDF/Excel" : "Ver Simulación API (Abasto)"}
-          </Text>
-        </TouchableOpacity>
       </View>
     );
   }
@@ -1078,7 +1064,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
             <TouchableOpacity
               onPress={handleManualSync}
               disabled={syncing}
-              style={[styles.apiSyncButton, { marginRight: 8 }]}
+              style={styles.apiSyncButton}
             >
               {syncing ? (
                 <ActivityIndicator size="small" color="#FFFFFF" style={{ marginRight: 6 }} />
@@ -1090,20 +1076,6 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
               </Text>
             </TouchableOpacity>
           )}
-          <TouchableOpacity
-            onPress={() => setUseApiData(!useApiData)}
-            style={[styles.apiToggleButton, useApiData && styles.apiToggleButtonActive]}
-          >
-            <MaterialCommunityIcons 
-              name={useApiData ? "sync" : "cloud-sync"} 
-              size={18} 
-              color={useApiData ? "#FFFFFF" : COLORS.textSoft} 
-              style={{ marginRight: 6 }} 
-            />
-            <Text style={[styles.apiToggleText, useApiData && styles.apiToggleTextActive]}>
-              {useApiData ? "Ver estática" : "Ver en tiempo real"}
-            </Text>
-          </TouchableOpacity>
         </View>
       </View>
 
