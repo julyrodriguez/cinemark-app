@@ -1520,8 +1520,67 @@ function getMovieWeekStartForFunction(date: Date): string {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+// Helper to check if a session is on Wednesday (Argentina Time)
+function isWednesdaySession(sessionDateTime?: string): boolean {
+  if (sessionDateTime) {
+    try {
+      const date = new Date(sessionDateTime);
+      const localDate = new Date(date.getTime() - (3 * 60 * 60 * 1000));
+      return localDate.getUTCDay() === 3;
+    } catch (e) {
+      console.error("Error parsing sessionDateTime in isWednesdaySession:", e);
+    }
+  }
+  const now = new Date();
+  const localNow = new Date(now.getTime() - (3 * 60 * 60 * 1000));
+  return localNow.getUTCDay() === 3;
+}
+
+function buildTicketList(isWednesday: boolean) {
+  const hOCode = isWednesday ? "1000" : "1005";
+  const value = isWednesday ? 940000 : 2320000;
+  const valueWithoutTax = isWednesday ? 717500 : 1770900;
+  const price = value;
+
+  return [
+    {
+      "areaCategoryCode": "",
+      "hOCode": hOCode,
+      "recogId": 0,
+      "promoId": 0,
+      "voucher": "",
+      "quantity": 1,
+      "buyOptions": [
+        {
+          "recogId": 0,
+          "promoId": 0,
+          "cssClass": "ticket-price-reg",
+          "value": value,
+          "valueWithoutTax": valueWithoutTax,
+          "balances": [],
+          "buttonQty": 1,
+          "level": 0,
+          "maxQty": 6,
+          "service": 105000,
+          "type": 3
+        }
+      ],
+      "isPaymentByCreditCardOnly": false,
+      "isVoucher": false,
+      "partnershipName": "",
+      "price": price,
+      "ticketsQty": 1
+    }
+  ];
+}
+
 // Helper to fetch occupied seats list for a session
-async function getOccupiedSeats(theaterId: string, sessionId: string, corporateId: string): Promise<string[] | null> {
+async function getOccupiedSeats(
+  theaterId: string,
+  sessionId: string,
+  corporateId: string,
+  sessionDateTime?: string
+): Promise<string[] | null> {
   const urlOrder = "https://bff.cinemark.com.ar/api/order-tickets";
   const headers = {
     "accept": "application/json",
@@ -1532,6 +1591,9 @@ async function getOccupiedSeats(theaterId: string, sessionId: string, corporateI
     "referer": "https://www.cinemark.com.ar/",
     "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
   };
+
+  const isWednesday = isWednesdaySession(sessionDateTime);
+  const ticketList = buildTicketList(isWednesday);
 
   const payload = {
     "cinemaId": Number(theaterId),
@@ -1547,36 +1609,7 @@ async function getOccupiedSeats(theaterId: string, sessionId: string, corporateI
     },
     "salesChannelToken": "d792f0f7def937524c47b6e5036b70085302d9df18a7dfc48478ce3d2de4bef9",
     "sessionId": Number(sessionId),
-    "ticketList": [
-      {
-        "areaCategoryCode": "",
-        "hOCode": "1005",
-        "recogId": 0,
-        "promoId": 0,
-        "voucher": "",
-        "quantity": 1,
-        "buyOptions": [
-          {
-            "recogId": 0,
-            "promoId": 0,
-            "cssClass": "ticket-price-reg",
-            "value": 2320000,
-            "valueWithoutTax": 1770900,
-            "balances": [],
-            "buttonQty": 1,
-            "level": 0,
-            "maxQty": 6,
-            "service": 105000,
-            "type": 3
-          }
-        ],
-        "isPaymentByCreditCardOnly": false,
-        "isVoucher": false,
-        "partnershipName": "",
-        "price": 2320000,
-        "ticketsQty": 1
-      }
-    ],
+    "ticketList": ticketList,
     "user": {
       "fullName": "Julian Rodríguez",
       "email": "julian180@live.com",
@@ -1687,7 +1720,7 @@ async function syncShowtimesForCine(cineId: string, theaterId: string, skipSeatM
       for (const s of todaySessions) {
         try {
           const corpId = s.corporateId || s.movieId || "";
-          const occupiedSeats = await getOccupiedSeats(theaterId, s.sessionId, corpId);
+          const occupiedSeats = await getOccupiedSeats(theaterId, s.sessionId, corpId, s.sessionDateTime);
           if (occupiedSeats !== null) {
             s.occupiedSeats = occupiedSeats;
             s.soldSeats = occupiedSeats.length;
@@ -1834,6 +1867,7 @@ export const getCinemarkSeatMap = onCall({ cors: true }, async (request) => {
   const cinemaId = Number(request.data?.cinemaId || 103);
   const sessionId = Number(request.data?.sessionId);
   const corporateFilmId = String(request.data?.corporateFilmId || "");
+  const sessionDateTime = request.data?.sessionDateTime ? String(request.data.sessionDateTime) : undefined;
 
   if (!sessionId) {
     throw new HttpsError("invalid-argument", "Missing sessionId");
@@ -1850,6 +1884,9 @@ export const getCinemarkSeatMap = onCall({ cors: true }, async (request) => {
     "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
   };
 
+  const isWednesday = isWednesdaySession(sessionDateTime);
+  const ticketList = buildTicketList(isWednesday);
+
   const payload = {
     "cinemaId": cinemaId,
     "feature": 0,
@@ -1864,36 +1901,7 @@ export const getCinemarkSeatMap = onCall({ cors: true }, async (request) => {
     },
     "salesChannelToken": "d792f0f7def937524c47b6e5036b70085302d9df18a7dfc48478ce3d2de4bef9",
     "sessionId": sessionId,
-    "ticketList": [
-      {
-        "areaCategoryCode": "",
-        "hOCode": "1005",
-        "recogId": 0,
-        "promoId": 0,
-        "voucher": "",
-        "quantity": 1,
-        "buyOptions": [
-          {
-            "recogId": 0,
-            "promoId": 0,
-            "cssClass": "ticket-price-reg",
-            "value": 2320000,
-            "valueWithoutTax": 1770900,
-            "balances": [],
-            "buttonQty": 1,
-            "level": 0,
-            "maxQty": 6,
-            "service": 105000,
-            "type": 3
-          }
-        ],
-        "isPaymentByCreditCardOnly": false,
-        "isVoucher": false,
-        "partnershipName": "",
-        "price": 2320000,
-        "ticketsQty": 1
-      }
-    ],
+    "ticketList": ticketList,
     "user": {
       "fullName": "Julian Rodríguez",
       "email": "julian180@live.com",

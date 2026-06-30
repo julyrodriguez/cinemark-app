@@ -38,6 +38,7 @@ interface DailyShow {
   // API / Simulation Mode Properties
   isSimulated?: boolean;
   sessionId?: string;
+  sessionDateTime?: string;
   sessionFormat?: string;
   language?: string;
   premiere?: boolean;
@@ -330,7 +331,8 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
       const res = await getSeatMapFunc({
         cinemaId: getTheaterId(cineId),
         sessionId: show.sessionId,
-        corporateFilmId: show.corporateId || show.movieId || ""
+        corporateFilmId: show.corporateId || show.movieId || "",
+        sessionDateTime: show.sessionDateTime
       });
 
       const responseData = res.data as any;
@@ -872,6 +874,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
             isSimulated: true,
             sessionId: sid,
+            sessionDateTime: first.sessionDateTime,
             sessionFormat: Array.from(new Set(formats)).join(" / "),
             language: first.language.name,
             premiere: isPremiere,
@@ -1003,6 +1006,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
               show.isSimulated = true;
               show.sessionId = matchingSessions[0].sessionId;
+              show.sessionDateTime = matchingSessions[0].sessionDateTime;
               show.sessionFormat = Array.from(new Set(formats)).join(" / ");
               show.language = matchingSessions[0].language.name;
               show.premiere = isPremiere;
