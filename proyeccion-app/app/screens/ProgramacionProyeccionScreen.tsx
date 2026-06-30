@@ -23,6 +23,7 @@ import { WeekdayKey } from "../../lib/programacion/types";
 import dayjs from "dayjs";
 import { mockShowtimesData } from "./mockShowtimes";
 import { getRoomLayout, SeatInfo, RoomLayout, FirestoreSalaLayout } from "./ControlSalasScreen";
+import { getCineConfig } from "../../lib/cineConfig";
 
 // Types
 interface DailyShow {
@@ -204,6 +205,20 @@ function getMovieColor(title: string) {
 export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: boolean }) {
   const { cineId } = useAuthUser();
   const [loading, setLoading] = useState(true);
+  const [salasCount, setSalasCount] = useState<number>(12);
+
+  // Load cinema configuration (salas count)
+  useEffect(() => {
+    if (!cineId) return;
+
+    getCineConfig(cineId)
+      .then((cfg) => {
+        if (cfg?.salasCount && Number.isFinite(cfg.salasCount) && cfg.salasCount > 0) {
+          setSalasCount(Math.floor(cfg.salasCount));
+        }
+      })
+      .catch((e) => console.error("Error loading cine config in ProgramacionProyeccionScreen:", e));
+  }, [cineId]);
   const [savedWeekly, setSavedWeekly] = useState<SavedWeekly | null>(null);
   const [selectedDay, setSelectedDay] = useState<WeekdayKey>(getCurrentWeekdayKey());
   const [selectedShow, setSelectedShow] = useState<DailyShow | null>(null);
@@ -305,13 +320,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
     setSeatMapData(null);
     setShowSeatMap(true);
 
-    // Si ya tenemos occupiedSeats guardados en la sesión (del cron), los usamos directamente
-    if (show.occupiedSeats && show.occupiedSeats.length > 0) {
-      // Hay datos en caché de Firestore: los usamos sin llamar a la API
-      setLoadingSeatMap(false);
-      return;
-    }
-
+    // Intentar obtener el mapa de asientos en tiempo real a través de la API primero
     try {
       const getSeatMapFunc = httpsCallable(functions, "getCinemarkSeatMap");
       const res = await getSeatMapFunc({
@@ -323,45 +332,38 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
       const responseData = res.data as any;
       if (responseData && responseData.Code === 0) {
         setSeatMapData(responseData.Data);
-      } else {
-        // API falló: intentamos leer de Firestore como fallback
-        const weekStart = getMovieWeekStart(new Date());
-        const docRef = doc(db, CINES_COLLECTION, cineId, "showtimes", selectedWeekStart || weekStart);
-        const snap = await getDoc(docRef);
-        if (snap.exists()) {
-          const sessions: any[] = snap.data()?.sessions || [];
-          const saved = sessions.find((s: any) => String(s.sessionId) === String(show.sessionId));
-          if (saved?.occupiedSeats && saved.occupiedSeats.length > 0) {
-            // Enriquecer el show con los datos guardados y cerrar sin error
-            setSelectedShow(prev => prev ? { ...prev, occupiedSeats: saved.occupiedSeats } : prev);
-            setSeatMapError(null);
-            setLoadingSeatMap(false);
-            return;
-          }
-        }
-        setSeatMapError(responseData?.Message || "No se pudo obtener el mapa de asientos. La función puede haber comenzado.");
+        setLoadingSeatMap(false);
+        return;
       }
     } catch (err: any) {
-      console.error("Error fetching seat map:", err);
-      // Fallback a Firestore cuando la API tira error (ej. sesión ya empezada)
-      try {
-        const weekStart = getMovieWeekStart(new Date());
-        const docRef = doc(db, CINES_COLLECTION, cineId, "showtimes", selectedWeekStart || weekStart);
-        const snap = await getDoc(docRef);
-        if (snap.exists()) {
-          const sessions: any[] = snap.data()?.sessions || [];
-          const saved = sessions.find((s: any) => String(s.sessionId) === String(show.sessionId));
-          if (saved?.occupiedSeats && saved.occupiedSeats.length > 0) {
-            setSelectedShow(prev => prev ? { ...prev, occupiedSeats: saved.occupiedSeats } : prev);
-            setSeatMapError(null);
-            setLoadingSeatMap(false);
-            return;
-          }
+      console.warn("Real-time seat map fetch failed, trying Firestore fallback:", err);
+    }
+
+    // Fallback a Firestore: si la llamada a la API falló (o devolvió código !== 0),
+    // intentamos usar los datos en caché (ya sea del show actual o del documento de showtimes en Firestore)
+    if (show.occupiedSeats && show.occupiedSeats.length > 0) {
+      setLoadingSeatMap(false);
+      return;
+    }
+
+    try {
+      const weekStart = getMovieWeekStart(new Date());
+      const docRef = doc(db, CINES_COLLECTION, cineId, "showtimes", selectedWeekStart || weekStart);
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        const sessions: any[] = snap.data()?.sessions || [];
+        const saved = sessions.find((s: any) => String(s.sessionId) === String(show.sessionId));
+        if (saved?.occupiedSeats && saved.occupiedSeats.length > 0) {
+          setSelectedShow(prev => prev ? { ...prev, occupiedSeats: saved.occupiedSeats } : prev);
+          setSeatMapError(null);
+          setLoadingSeatMap(false);
+          return;
         }
-      } catch (fsErr) {
-        console.error("Error reading fallback from Firestore:", fsErr);
       }
-      setSeatMapError(err?.message || "Error al conectar con el servidor.");
+      setSeatMapError("No se pudo obtener el mapa de asientos en vivo ni el caché local.");
+    } catch (fsErr: any) {
+      console.error("Error reading fallback from Firestore:", fsErr);
+      setSeatMapError("Error al obtener el mapa de asientos.");
     } finally {
       setLoadingSeatMap(false);
     }
@@ -752,38 +754,14 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
     };
   }, [scrollEl]);
 
-  // Extract all unique room numbers
+  // Extract all unique room numbers from the cinema config (matching Control de Salas)
   const rooms = useMemo(() => {
-    if (useApiData) {
-      const currentWeek = getMovieWeekStartForNow();
-      const isCurrentWeek = selectedWeekStart === currentWeek;
-      
-      if (!isCurrentWeek) {
-        if (!apiData || !selectedWeekStart) return [];
-        const set = new Set<number>();
-        apiData.forEach((session) => {
-          // Filter by selected week
-          const utcDate = new Date(session.sessionDateTime);
-          const weekStart = getMovieWeekStart(utcDate);
-          if (weekStart !== selectedWeekStart) return;
-
-          if (session.theaterRoom !== undefined && session.theaterRoom !== null) {
-            set.add(Number(session.theaterRoom));
-          }
-        });
-        return Array.from(set).sort((a, b) => a - b);
-      }
+    const list: number[] = [];
+    for (let i = 1; i <= salasCount; i++) {
+      list.push(i);
     }
-
-    if (!savedWeekly?.weeklyRows) return [];
-    const set = new Set<number>();
-    savedWeekly.weeklyRows.forEach((row) => {
-      if (row.sala !== undefined && row.sala !== null) {
-        set.add(Number(row.sala));
-      }
-    });
-    return Array.from(set).sort((a, b) => a - b);
-  }, [savedWeekly, useApiData, apiData, selectedWeekStart]);
+    return list;
+  }, [salasCount]);
 
   // Build the list of shows for the selected day
   const shows = useMemo(() => {
