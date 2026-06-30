@@ -1423,30 +1423,33 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                   ]}>
                     Ventas: {show.capacity !== undefined ? `${show.soldSeats} / ${show.capacity}` : "Sin datos"}
                   </Text>
-                  {show.isSimulated && (() => {
-                    const rate = show.capacity !== undefined && show.capacity > 0 && show.soldSeats !== undefined ? show.soldSeats / show.capacity : 0;
-                    let alertColor = "";
-                    let alertText = "";
-                    if (rate < 0.02) {
-                      alertColor = "#EF4444";
-                      alertText = "⚠️ Riesgo de grabación";
-                    } else if (rate > 0.60) {
-                      alertColor = "#10B981";
-                      alertText = "👤 Necesario guía";
-                    }
-                    if (!alertText) return null;
-                    return (
+                </View>
+
+                {show.isSimulated && (() => {
+                  const rate = show.capacity !== undefined && show.capacity > 0 && show.soldSeats !== undefined ? show.soldSeats / show.capacity : 0;
+                  let alertColor = "";
+                  let alertText = "";
+                  if (rate < 0.02) {
+                    alertColor = "#EF4444";
+                    alertText = "⚠️ Riesgo de grabación";
+                  } else if (rate > 0.60) {
+                    alertColor = "#10B981";
+                    alertText = "👤 Necesario guía";
+                  }
+                  if (!alertText) return null;
+                  return (
+                    <View style={{ flexDirection: "row", marginTop: 4 }}>
                       <View style={[
                         styles.cardAlertBadge, 
-                        { backgroundColor: alertColor, marginLeft: 8, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }
+                        { backgroundColor: alertColor, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }
                       ]}>
                         <Text style={[styles.cardAlertBadgeText, { fontSize: 10 }]} numberOfLines={1}>
                           {alertText}
                         </Text>
                       </View>
-                    );
-                  })()}
-                </View>
+                    </View>
+                  );
+                })()}
               </View>
 
               {/* View Seats Button */}
@@ -1487,13 +1490,13 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
   return (
     <View style={styles.container}>
       {/* Header Info */}
-      <View style={styles.header}>
-        <View style={styles.headerInfo}>
+      <View style={[styles.header, isMobile && { flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8 }]}>
+        <View style={[styles.headerInfo, isMobile && { alignItems: "center", marginBottom: formattedWeekLabel ? 8 : 0 }]}>
           {formattedWeekLabel ? (
             <Text style={styles.headerTitle}>{formattedWeekLabel}</Text>
           ) : null}
           {!useApiData && (
-            <Text style={styles.headerSubtitle}>
+            <Text style={[styles.headerSubtitle, isMobile && { textAlign: "center" }]}>
               La programación se obtiene a partir del reporte cargado y guardado en la sección de Servicios &gt; Programación.
             </Text>
           )}
@@ -1504,7 +1507,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
             </View>
           )}
         </View>
-        <View style={styles.headerButtonsRow}>
+        <View style={[styles.headerButtonsRow, isMobile && { justifyContent: "center", alignSelf: "stretch" }]}>
           <TouchableOpacity
             onPress={() => setViewMode(prev => prev === "grid" ? "list" : "grid")}
             style={[styles.toggleViewButton, { marginRight: 8 }]}
