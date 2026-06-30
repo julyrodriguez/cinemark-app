@@ -1423,6 +1423,29 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                   ]}>
                     Ventas: {show.capacity !== undefined ? `${show.soldSeats} / ${show.capacity}` : "Sin datos"}
                   </Text>
+                  {show.isSimulated && (() => {
+                    const rate = show.capacity !== undefined && show.capacity > 0 && show.soldSeats !== undefined ? show.soldSeats / show.capacity : 0;
+                    let alertColor = "";
+                    let alertText = "";
+                    if (rate < 0.02) {
+                      alertColor = "#EF4444";
+                      alertText = "⚠️ Riesgo de grabación";
+                    } else if (rate > 0.60) {
+                      alertColor = "#10B981";
+                      alertText = "👤 Necesario guía";
+                    }
+                    if (!alertText) return null;
+                    return (
+                      <View style={[
+                        styles.cardAlertBadge, 
+                        { backgroundColor: alertColor, marginLeft: 8, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }
+                      ]}>
+                        <Text style={[styles.cardAlertBadgeText, { fontSize: 10 }]} numberOfLines={1}>
+                          {alertText}
+                        </Text>
+                      </View>
+                    );
+                  })()}
                 </View>
               </View>
 
@@ -1456,7 +1479,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
   };
 
   const formattedWeekLabel = useApiData
-    ? "Programación en vivo"
+    ? ""
     : (savedWeekly?.startDate
       ? `Semana del ${savedWeekly.startDate}`
       : "Programación Semanal");
@@ -1466,7 +1489,9 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
       {/* Header Info */}
       <View style={styles.header}>
         <View style={styles.headerInfo}>
-          <Text style={styles.headerTitle}>{formattedWeekLabel}</Text>
+          {formattedWeekLabel ? (
+            <Text style={styles.headerTitle}>{formattedWeekLabel}</Text>
+          ) : null}
           {!useApiData && (
             <Text style={styles.headerSubtitle}>
               La programación se obtiene a partir del reporte cargado y guardado en la sección de Servicios &gt; Programación.
