@@ -305,6 +305,13 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
     setSeatMapData(null);
     setShowSeatMap(true);
 
+    // Si ya tenemos occupiedSeats guardados en la sesión (del cron), los usamos directamente
+    if (show.occupiedSeats && show.occupiedSeats.length > 0) {
+      // Hay datos en caché de Firestore: los usamos sin llamar a la API
+      setLoadingSeatMap(false);
+      return;
+    }
+
     try {
       const getSeatMapFunc = httpsCallable(functions, "getCinemarkSeatMap");
       const res = await getSeatMapFunc({
@@ -317,10 +324,43 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
       if (responseData && responseData.Code === 0) {
         setSeatMapData(responseData.Data);
       } else {
-        setSeatMapError(responseData?.Message || "Error al obtener el mapa de asientos.");
+        // API falló: intentamos leer de Firestore como fallback
+        const weekStart = getMovieWeekStart(new Date());
+        const docRef = doc(db, CINES_COLLECTION, cineId, "showtimes", selectedWeekStart || weekStart);
+        const snap = await getDoc(docRef);
+        if (snap.exists()) {
+          const sessions: any[] = snap.data()?.sessions || [];
+          const saved = sessions.find((s: any) => String(s.sessionId) === String(show.sessionId));
+          if (saved?.occupiedSeats && saved.occupiedSeats.length > 0) {
+            // Enriquecer el show con los datos guardados y cerrar sin error
+            setSelectedShow(prev => prev ? { ...prev, occupiedSeats: saved.occupiedSeats } : prev);
+            setSeatMapError(null);
+            setLoadingSeatMap(false);
+            return;
+          }
+        }
+        setSeatMapError(responseData?.Message || "No se pudo obtener el mapa de asientos. La función puede haber comenzado.");
       }
     } catch (err: any) {
       console.error("Error fetching seat map:", err);
+      // Fallback a Firestore cuando la API tira error (ej. sesión ya empezada)
+      try {
+        const weekStart = getMovieWeekStart(new Date());
+        const docRef = doc(db, CINES_COLLECTION, cineId, "showtimes", selectedWeekStart || weekStart);
+        const snap = await getDoc(docRef);
+        if (snap.exists()) {
+          const sessions: any[] = snap.data()?.sessions || [];
+          const saved = sessions.find((s: any) => String(s.sessionId) === String(show.sessionId));
+          if (saved?.occupiedSeats && saved.occupiedSeats.length > 0) {
+            setSelectedShow(prev => prev ? { ...prev, occupiedSeats: saved.occupiedSeats } : prev);
+            setSeatMapError(null);
+            setLoadingSeatMap(false);
+            return;
+          }
+        }
+      } catch (fsErr) {
+        console.error("Error reading fallback from Firestore:", fsErr);
+      }
       setSeatMapError(err?.message || "Error al conectar con el servidor.");
     } finally {
       setLoadingSeatMap(false);
