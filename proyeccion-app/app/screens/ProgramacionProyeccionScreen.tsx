@@ -1850,7 +1850,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                         <Text style={{ color: "#EF4444", fontWeight: "bold", marginTop: 8, fontSize: 14 }}>Error al cargar mapa</Text>
                         <Text style={{ color: COLORS.textSoft, textAlign: "center", marginTop: 4, paddingHorizontal: 16, fontSize: 12 }}>{seatMapError}</Text>
                       </View>
-                    ) : seatMapData ? (
+                    ) : (seatMapData || (selectedShow && selectedShow.occupiedSeats && selectedShow.occupiedSeats.length > 0)) ? (
                       <>
                         <View style={styles.legendContainer}>
                           <View style={styles.legendItem}>

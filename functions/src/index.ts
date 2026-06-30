@@ -1593,23 +1593,41 @@ async function getOccupiedSeats(theaterId: string, sessionId: string, corporateI
       body: JSON.stringify(payload)
     });
 
-    if (!orderRes.ok) return null;
+    if (!orderRes.ok) {
+      console.warn(`getOccupiedSeats: order-tickets HTTP ${orderRes.status} for session ${sessionId}`);
+      return null;
+    }
     const orderJson = await orderRes.json() as any;
-    const transIdTemp = orderJson.data?.transIdTemp;
-    if (!transIdTemp) return null;
+    // La API puede responder con claves en minúscula o mayúscula según el endpoint
+    const orderCode = orderJson.code ?? orderJson.Code;
+    const orderData = orderJson.data ?? orderJson.Data;
+    const transIdTemp = orderData?.transIdTemp;
+    if (orderCode !== 0 || !transIdTemp) {
+      console.warn(`getOccupiedSeats: no transIdTemp for session ${sessionId}. code=${orderCode}, msg=${orderJson.message ?? orderJson.Message}`);
+      return null;
+    }
 
     const urlMap = `https://bff.cinemark.com.ar/api/order-get-map?cinemaId=${theaterId}&transIdTemp=${transIdTemp}&sessionId=${sessionId}`;
     const mapRes = await fetch(urlMap, {
       method: "GET",
       headers
     });
-    if (!mapRes.ok) return null;
+    if (!mapRes.ok) {
+      console.warn(`getOccupiedSeats: order-get-map HTTP ${mapRes.status} for session ${sessionId}`);
+      return null;
+    }
 
     const mapJson = await mapRes.json() as any;
-    if (mapJson.Code !== 0 || !mapJson.Data?.areas) return null;
+    // La API responde con Code/Data en mayúscula en este endpoint
+    const mapCode = mapJson.Code ?? mapJson.code;
+    const mapData = mapJson.Data ?? mapJson.data;
+    if (mapCode !== 0 || !mapData?.areas) {
+      console.warn(`getOccupiedSeats: invalid map response for session ${sessionId}. Code=${mapCode}`);
+      return null;
+    }
 
     const occupiedSeats: string[] = [];
-    mapJson.Data.areas.forEach((area: any) => {
+    mapData.areas.forEach((area: any) => {
       if (!area.rows) return;
       area.rows.forEach((row: any) => {
         const rowId = row.rowPhysicalId;
@@ -1630,7 +1648,7 @@ async function getOccupiedSeats(theaterId: string, sessionId: string, corporateI
 }
 
 // Background sync function for a cinema
-async function syncShowtimesForCine(cineId: string, theaterId: string) {
+async function syncShowtimesForCine(cineId: string, theaterId: string, skipSeatMaps: boolean = false) {
   const url = `https://bff.cinemark.com.ar/api/cinema/showtimes?theater=${theaterId}&_t=${Date.now()}`;
   console.log(`Starting sync for cine: ${cineId} (theaterId: ${theaterId})`);
   
@@ -1653,34 +1671,38 @@ async function syncShowtimesForCine(cineId: string, theaterId: string) {
     const sessions = json.data || [];
 
     // Today's seat map synchronization
-    const now = new Date();
-    const arNow = new Date(now.getTime() - 3 * 60 * 60 * 1000);
-    const todayStr = arNow.toISOString().split("T")[0];
-    
-    const todaySessions = sessions.filter((s: any) => {
-      if (s.sessionDisplayDate !== todayStr) return false;
-      const sessionTime = new Date(s.sessionDateTime).getTime();
-      const threeHoursAgo = now.getTime() - 3 * 60 * 60 * 1000;
-      return sessionTime > threeHoursAgo;
-    });
+    if (!skipSeatMaps) {
+      const now = new Date();
+      const arNow = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+      const todayStr = arNow.toISOString().split("T")[0];
+      
+      const todaySessions = sessions.filter((s: any) => {
+        if (s.sessionDisplayDate !== todayStr) return false;
+        const sessionTime = new Date(s.sessionDateTime).getTime();
+        const threeHoursAgo = now.getTime() - 3 * 60 * 60 * 1000;
+        return sessionTime > threeHoursAgo;
+      });
 
-    console.log(`Found ${todaySessions.length} active sessions today to sync seat maps.`);
-    for (const s of todaySessions) {
-      try {
-        const corpId = s.corporateId || s.movieId || "";
-        const occupiedSeats = await getOccupiedSeats(theaterId, s.sessionId, corpId);
-        if (occupiedSeats !== null) {
-          s.occupiedSeats = occupiedSeats;
-          s.soldSeats = occupiedSeats.length;
-          if (s.occupation) {
-            s.occupation.availableSeats = s.occupation.capacity - occupiedSeats.length;
+      console.log(`Found ${todaySessions.length} active sessions today to sync seat maps.`);
+      for (const s of todaySessions) {
+        try {
+          const corpId = s.corporateId || s.movieId || "";
+          const occupiedSeats = await getOccupiedSeats(theaterId, s.sessionId, corpId);
+          if (occupiedSeats !== null) {
+            s.occupiedSeats = occupiedSeats;
+            s.soldSeats = occupiedSeats.length;
+            if (s.occupation) {
+              s.occupation.availableSeats = s.occupation.capacity - occupiedSeats.length;
+            }
           }
+        } catch (err) {
+          console.error(`Failed syncing seat map for session ${s.sessionId}:`, err);
         }
-      } catch (err) {
-        console.error(`Failed syncing seat map for session ${s.sessionId}:`, err);
+        // Small delay to prevent rate limits
+        await new Promise(resolve => setTimeout(resolve, 200));
       }
-      // Small delay to prevent rate limits
-      await new Promise(resolve => setTimeout(resolve, 200));
+    } else {
+      console.log("Skipping seat maps fetch for manual schedule sync.");
     }
     
     // Group new sessions by weekStart
@@ -1711,7 +1733,9 @@ async function syncShowtimesForCine(cineId: string, theaterId: string) {
       
       const newSessions = sessionsByWeek[weekStart];
       
-      // Merge: preserve history, update new status
+      // Merge: preserve history, update new status.
+      // IMPORTANTE: si la sesión nueva no trae occupiedSeats (no era de hoy),
+      // preservar los occupiedSeats que ya estaban guardados en Firestore.
       const mergedMap = new Map<string, any>();
       existingSessions.forEach(s => {
         const key = `${s.sessionId}_${s.theaterRoom}`;
@@ -1719,12 +1743,26 @@ async function syncShowtimesForCine(cineId: string, theaterId: string) {
       });
       newSessions.forEach(s => {
         const key = `${s.sessionId}_${s.theaterRoom}`;
-        mergedMap.set(key, s);
+        const existing = mergedMap.get(key);
+        if (existing) {
+          // Preservar occupiedSeats del existente si la sesión nueva no los trae
+          const merged = { ...existing, ...s };
+          if (!s.occupiedSeats && existing.occupiedSeats) {
+            merged.occupiedSeats = existing.occupiedSeats;
+            merged.soldSeats = existing.soldSeats;
+          }
+          mergedMap.set(key, merged);
+        } else {
+          mergedMap.set(key, s);
+        }
       });
       
       const mergedList = Array.from(mergedMap.values()).sort((a, b) => 
         a.sessionDateTime.localeCompare(b.sessionDateTime)
       );
+
+      const withSeats = mergedList.filter(s => s.occupiedSeats && s.occupiedSeats.length > 0).length;
+      console.log(`Saving week ${weekStart} for ${cineId}: ${mergedList.length} sessions, ${withSeats} with occupiedSeats.`);
       
       await docRef.set({
         weekStart,
@@ -1732,6 +1770,7 @@ async function syncShowtimesForCine(cineId: string, theaterId: string) {
         sessions: mergedList
       }, { merge: true });
     }
+
     
     console.log(`Sync completed successfully for cineId ${cineId} (theater ${theaterId})`);
   } catch (err) {
@@ -1786,7 +1825,7 @@ export const forceSyncShowtimes = onCall({ cors: true, timeoutSeconds: 300 }, as
     throw new HttpsError("not-found", `No theaterId found for cine ${targetCineId}`);
   }
   
-  await syncShowtimesForCine(targetCineId, theaterId);
+  await syncShowtimesForCine(targetCineId, theaterId, true);
   return { success: true };
 });
 
