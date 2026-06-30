@@ -222,6 +222,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
   const [savedWeekly, setSavedWeekly] = useState<SavedWeekly | null>(null);
   const [selectedDay, setSelectedDay] = useState<WeekdayKey>(getCurrentWeekdayKey());
   const [selectedShow, setSelectedShow] = useState<DailyShow | null>(null);
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
 
   const [currentTimeMins, setCurrentTimeMins] = useState(getCurrentTimeMins());
   const [scrollEl, setScrollEl] = useState<any>(null);
@@ -1298,6 +1299,84 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
     );
   }
 
+  const renderListView = () => {
+    const sortedShows = [...shows].sort((a, b) => {
+      if (a.sala !== b.sala) {
+        return a.sala - b.sala;
+      }
+      return a.sortInicio - b.sortInicio;
+    });
+
+    return (
+      <View style={styles.listContainer}>
+        {sortedShows.map((show, idx) => {
+          const is3D = /3d/i.test(show.pelicula) || /3d/i.test(show.sessionFormat || "");
+          const movieAccentColor = getMovieColor(show.pelicula);
+          
+          return (
+            <View 
+              key={`list-card-${idx}`}
+              style={[
+                styles.listCard,
+                { borderLeftColor: movieAccentColor },
+                is3D ? { backgroundColor: movieAccentColor } : null
+              ]}
+            >
+              {/* Room number to the left */}
+              <View style={[styles.listRoomBadge, is3D && { backgroundColor: "rgba(255, 255, 255, 0.25)" }]}>
+                <Text style={[styles.listRoomBadgeText, is3D && { color: "#FFFFFF" }]}>SALA</Text>
+                <Text style={[styles.listRoomNumberText, is3D && { color: "#FFFFFF" }]}>{show.sala}</Text>
+              </View>
+
+              {/* Movie info */}
+              <View style={styles.listInfoContainer}>
+                <Text style={[styles.listMovieTitle, is3D && { color: "#FFFFFF" }]} numberOfLines={2}>
+                  {show.pelicula}{is3D && !/3d/i.test(show.pelicula) ? " (3D)" : ""}
+                </Text>
+                
+                <Text style={[styles.listMovieTime, is3D && { color: "rgba(255, 255, 255, 0.85)" }]}>
+                  ⏰ {show.inicio} - {show.fin} hs
+                </Text>
+
+                <View style={styles.listOccupancyContainer}>
+                  <MaterialCommunityIcons 
+                    name="ticket" 
+                    size={14} 
+                    color={is3D ? "#FFFFFF" : "#EAB308"} 
+                  />
+                  <Text style={[styles.listOccupancyText, is3D && { color: "rgba(255, 255, 255, 0.85)" }]}>
+                    Ventas: {show.capacity !== undefined ? `${show.soldSeats} / ${show.capacity}` : "Sin datos"}
+                  </Text>
+                </View>
+              </View>
+
+              {/* View Seats Button */}
+              <TouchableOpacity
+                onPress={() => {
+                  setSelectedShow(show);
+                  fetchSeatMap(show);
+                }}
+                disabled={!show.isSimulated}
+                style={[
+                  styles.listButton,
+                  is3D ? { backgroundColor: "#FFFFFF" } : null,
+                  !show.isSimulated && { opacity: 0.4 }
+                ]}
+              >
+                <Text style={[
+                  styles.listButtonText,
+                  is3D && show.isSimulated ? { color: movieAccentColor } : null
+                ]}>
+                  {show.isSimulated ? "Ver Asientos" : "Sin Mapa"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          );
+        })}
+      </View>
+    );
+  };
+
   const formattedWeekLabel = useApiData
     ? "Programación en vivo"
     : (savedWeekly?.startDate
@@ -1323,6 +1402,22 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
           )}
         </View>
         <View style={styles.headerButtonsRow}>
+          <TouchableOpacity
+            onPress={() => setViewMode(prev => prev === "grid" ? "list" : "grid")}
+            style={[styles.toggleViewButton, { marginRight: 8 }]}
+            activeOpacity={0.8}
+          >
+            <MaterialCommunityIcons
+              name={viewMode === "grid" ? "view-list" : "view-grid"}
+              size={18}
+              color={COLORS.text}
+              style={{ marginRight: 6 }}
+            />
+            <Text style={styles.toggleViewButtonText}>
+              {viewMode === "grid" ? "Modo Lista" : "Modo Grilla"}
+            </Text>
+          </TouchableOpacity>
+
           {useApiData && (
             <TouchableOpacity
               onPress={handleManualSync}
@@ -1505,6 +1600,8 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
               <Text style={styles.emptyGridTitle}>No hay funciones cargadas</Text>
               <Text style={styles.emptyGridSubtitle}>No se encontraron funciones para esta fecha o semana.</Text>
             </View>
+          ) : viewMode === "list" ? (
+            renderListView()
           ) : (
             <>
               {/* Grid Header Row (Index 1) */}
@@ -2940,5 +3037,105 @@ const styles = StyleSheet.create({
   seatDboxBorder: {
     borderWidth: Platform.select({ web: 1.5, default: 1 }),
     borderColor: "#EAB308",
+  },
+  toggleViewButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F1F5F9)" : "#F1F5F9",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  toggleViewButtonText: {
+    fontSize: 12,
+    color: COLORS.text,
+    fontWeight: "bold",
+  },
+  listContainer: {
+    padding: 12,
+    gap: 12,
+  },
+  listCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.card,
+    borderRadius: 12,
+    padding: 12,
+    borderLeftWidth: 5,
+    borderLeftColor: COLORS.primary,
+    ...Platform.select({
+      ios: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 3,
+      },
+      web: {
+        boxShadow: "0 2px 8px rgba(0, 0, 0, 0.08)",
+      },
+    }),
+  },
+  listRoomBadge: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: "rgba(224, 242, 254, 1)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  listRoomBadgeText: {
+    fontSize: 8,
+    color: COLORS.primary,
+    fontWeight: "bold",
+  },
+  listRoomNumberText: {
+    fontSize: 16,
+    color: COLORS.primary,
+    fontWeight: "bold",
+    lineHeight: 18,
+  },
+  listInfoContainer: {
+    flex: 1,
+    justifyContent: "center",
+  },
+  listMovieTitle: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: COLORS.text,
+    marginBottom: 4,
+  },
+  listMovieTime: {
+    fontSize: 12,
+    color: COLORS.textSoft,
+    marginBottom: 4,
+  },
+  listOccupancyContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  listOccupancyText: {
+    fontSize: 12,
+    color: COLORS.textSoft,
+    marginLeft: 4,
+  },
+  listButton: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    justifyContent: "center",
+    alignItems: "center",
+    marginLeft: 8,
+  },
+  listButtonText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "bold",
   },
 });
