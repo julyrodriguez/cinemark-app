@@ -1445,17 +1445,17 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                       </View>
                     ) : (
                       <View style={styles.alertsList}>
-                        {stats.recordingRiskShows.map((show, idx) => (
-                          <View key={`risk-${idx}`} style={[styles.alertItem, styles.alertItemRisk]}>
+                        {stats.recordingRiskShows.length > 0 && (
+                          <View style={[styles.alertItem, styles.alertItemRisk]}>
                             <MaterialCommunityIcons name="alert-circle" size={14} color="#EF4444" style={{ marginRight: 6 }} />
                             <Text style={styles.alertItemText} numberOfLines={1}>
-                              <Text style={{ fontWeight: "bold" }}>{show.inicio}</Text> - Sala {show.sala} | {show.pelicula} (Ocupación: {show.capacity !== undefined && show.soldSeats !== undefined && show.capacity > 0 ? ((show.soldSeats/show.capacity)*100).toFixed(0) : 0}%)
+                              Hay <Text style={{ fontWeight: "bold" }}>{stats.recordingRiskShows.length}</Text> funciones con ocupación menor al 2%
                             </Text>
                             <View style={[styles.alertBadge, { backgroundColor: "#EF4444" }]}>
                               <Text style={styles.alertBadgeText}>Riesgo de grabación</Text>
                             </View>
                           </View>
-                        ))}
+                        )}
                         {stats.guideNeededShows.map((show, idx) => (
                           <View key={`guide-${idx}`} style={[styles.alertItem, styles.alertItemGuide]}>
                             <MaterialCommunityIcons name="account-group" size={14} color="#10B981" style={{ marginRight: 6 }} />
