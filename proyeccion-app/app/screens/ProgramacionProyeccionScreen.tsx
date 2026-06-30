@@ -228,6 +228,9 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
   const [scrollEl, setScrollEl] = useState<any>(null);
   const headerScrollRef = useRef<ScrollView>(null);
   const timelineScrollRef = useRef<ScrollView>(null);
+  const verticalScrollRef = useRef<ScrollView>(null);
+  const cardYOffsets = useRef<Record<number, number>>({});
+  const listContainerY = useRef(0);
   const lastScrolledDay = useRef<string | null>(null);
 
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
@@ -1088,6 +1091,41 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
     };
   }, [useApiData, apiData, selectedWeekStart, shows]);
 
+  const getOperationalStartMins = (show: DailyShow) => {
+    const startMins = timeToMinutes(show.inicio);
+    return startMins >= 360 ? startMins - 360 : startMins + 1440 - 360;
+  };
+
+  const scrollToUpcomingShow = () => {
+    if (!verticalScrollRef.current) return;
+    
+    const sortedShows = [...shows].sort((a, b) => {
+      const aStart = getOperationalStartMins(a);
+      const bStart = getOperationalStartMins(b);
+      return aStart - bStart;
+    });
+
+    const nextShowIndex = sortedShows.findIndex(show => getShowStatus(show) === "FUTURE");
+    
+    if (nextShowIndex !== -1) {
+      const cardY = cardYOffsets.current[nextShowIndex];
+      if (cardY !== undefined) {
+        const targetY = listContainerY.current + cardY;
+        verticalScrollRef.current.scrollTo({ y: targetY, animated: true });
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (viewMode === "list" && shows.length > 0) {
+      cardYOffsets.current = {};
+      const timer = setTimeout(() => {
+        scrollToUpcomingShow();
+      }, 250);
+      return () => clearTimeout(timer);
+    }
+  }, [selectedDay, viewMode, shows]);
+
   // Determine dynamic timeline start and end bounds based on shows of the selected day
   const { timelineStartMins, timelineEndMins, minStartMins } = useMemo(() => {
     if (shows.length === 0) {
@@ -1301,40 +1339,74 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
   const renderListView = () => {
     const sortedShows = [...shows].sort((a, b) => {
-      if (a.sala !== b.sala) {
-        return a.sala - b.sala;
-      }
-      return a.sortInicio - b.sortInicio;
+      const aStart = getOperationalStartMins(a);
+      const bStart = getOperationalStartMins(b);
+      return aStart - bStart;
     });
 
     return (
-      <View style={styles.listContainer}>
+      <View 
+        style={styles.listContainer}
+        onLayout={(event) => {
+          listContainerY.current = event.nativeEvent.layout.y;
+        }}
+      >
         {sortedShows.map((show, idx) => {
           const is3D = /3d/i.test(show.pelicula) || /3d/i.test(show.sessionFormat || "");
           const movieAccentColor = getMovieColor(show.pelicula);
+          const status = getShowStatus(show);
+          const hasEntered = status === "PAST" || status === "PLAYING";
           
           return (
             <View 
               key={`list-card-${idx}`}
+              onLayout={(event) => {
+                cardYOffsets.current[idx] = event.nativeEvent.layout.y;
+              }}
               style={[
                 styles.listCard,
                 { borderLeftColor: movieAccentColor },
-                is3D ? { backgroundColor: movieAccentColor } : null
+                is3D ? { backgroundColor: movieAccentColor } : null,
+                hasEntered && {
+                  backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F1F5F9)" : "#F1F5F9",
+                  borderLeftColor: "#94A3B8",
+                  opacity: 0.6
+                }
               ]}
             >
               {/* Room number to the left */}
-              <View style={[styles.listRoomBadge, is3D && { backgroundColor: "rgba(255, 255, 255, 0.25)" }]}>
-                <Text style={[styles.listRoomBadgeText, is3D && { color: "#FFFFFF" }]}>SALA</Text>
-                <Text style={[styles.listRoomNumberText, is3D && { color: "#FFFFFF" }]}>{show.sala}</Text>
+              <View style={[
+                styles.listRoomBadge, 
+                is3D && !hasEntered && { backgroundColor: "rgba(255, 255, 255, 0.25)" },
+                hasEntered && { backgroundColor: "#E2E8F0" }
+              ]}>
+                <Text style={[
+                  styles.listRoomBadgeText, 
+                  is3D && !hasEntered && { color: "#FFFFFF" },
+                  hasEntered && { color: "#64748B" }
+                ]}>SALA</Text>
+                <Text style={[
+                  styles.listRoomNumberText, 
+                  is3D && !hasEntered && { color: "#FFFFFF" },
+                  hasEntered && { color: "#64748B" }
+                ]}>{show.sala}</Text>
               </View>
 
               {/* Movie info */}
               <View style={styles.listInfoContainer}>
-                <Text style={[styles.listMovieTitle, is3D && { color: "#FFFFFF" }]} numberOfLines={2}>
+                <Text style={[
+                  styles.listMovieTitle, 
+                  is3D && !hasEntered && { color: "#FFFFFF" },
+                  hasEntered && { color: "#64748B" }
+                ]} numberOfLines={2}>
                   {show.pelicula}{is3D && !/3d/i.test(show.pelicula) ? " (3D)" : ""}
                 </Text>
                 
-                <Text style={[styles.listMovieTime, is3D && { color: "rgba(255, 255, 255, 0.85)" }]}>
+                <Text style={[
+                  styles.listMovieTime, 
+                  is3D && !hasEntered && { color: "rgba(255, 255, 255, 0.85)" },
+                  hasEntered && { color: "#94A3B8" }
+                ]}>
                   ⏰ {show.inicio} - {show.fin} hs
                 </Text>
 
@@ -1342,9 +1414,13 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                   <MaterialCommunityIcons 
                     name="ticket" 
                     size={14} 
-                    color={is3D ? "#FFFFFF" : "#EAB308"} 
+                    color={hasEntered ? "#94A3B8" : (is3D ? "#FFFFFF" : "#EAB308")} 
                   />
-                  <Text style={[styles.listOccupancyText, is3D && { color: "rgba(255, 255, 255, 0.85)" }]}>
+                  <Text style={[
+                    styles.listOccupancyText, 
+                    is3D && !hasEntered && { color: "rgba(255, 255, 255, 0.85)" },
+                    hasEntered && { color: "#94A3B8" }
+                  ]}>
                     Ventas: {show.capacity !== undefined ? `${show.soldSeats} / ${show.capacity}` : "Sin datos"}
                   </Text>
                 </View>
@@ -1359,13 +1435,15 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                 disabled={!show.isSimulated}
                 style={[
                   styles.listButton,
-                  is3D ? { backgroundColor: "#FFFFFF" } : null,
+                  is3D && !hasEntered && { backgroundColor: "#FFFFFF" },
+                  hasEntered && { backgroundColor: "#E2E8F0" },
                   !show.isSimulated && { opacity: 0.4 }
                 ]}
               >
                 <Text style={[
                   styles.listButtonText,
-                  is3D && show.isSimulated ? { color: movieAccentColor } : null
+                  is3D && show.isSimulated && !hasEntered ? { color: movieAccentColor } : null,
+                  hasEntered && { color: "#64748B" }
                 ]}>
                   {show.isSimulated ? "Ver Asientos" : "Sin Mapa"}
                 </Text>
@@ -1479,7 +1557,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
       {/* Main Grid View */}
       <View style={styles.gridContainer}>
-        <ScrollView style={styles.verticalScrollView} bounces={false} stickyHeaderIndices={useApiData && stats ? [2] : [1]}>
+        <ScrollView ref={verticalScrollRef} style={styles.verticalScrollView} bounces={false} stickyHeaderIndices={useApiData && stats ? [2] : [1]}>
           {/* Collapsible Stats and Alerts Panel */}
           {useApiData && stats && (
             <View style={styles.statsPanelContainer}>
