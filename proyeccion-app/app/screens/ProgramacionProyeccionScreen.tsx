@@ -157,6 +157,9 @@ function getTheaterId(cineId: string): string {
 // Get start of movie week (Thursday) for a given date in yyyy-mm-dd
 function getMovieWeekStart(date: Date): string {
   const localDate = new Date(date.getTime() - (3 * 60 * 60 * 1000));
+  if (localDate.getUTCHours() < 6) {
+    localDate.setTime(localDate.getTime() - 24 * 60 * 60 * 1000);
+  }
   const dayNum = localDate.getUTCDay();
   const daysToSubtract = dayNum <= 3 ? dayNum + 3 : dayNum - 4;
   const thurDate = new Date(localDate.getTime() - daysToSubtract * 24 * 60 * 60 * 1000);
@@ -169,6 +172,9 @@ function getMovieWeekStart(date: Date): string {
 // Get start of movie week (Thursday) for the current date
 function getMovieWeekStartForNow(): string {
   const localDate = new Date(Date.now() - (3 * 60 * 60 * 1000));
+  if (localDate.getUTCHours() < 6) {
+    localDate.setTime(localDate.getTime() - 24 * 60 * 60 * 1000);
+  }
   const dayNum = localDate.getUTCDay();
   const daysToSubtract = dayNum <= 3 ? dayNum + 3 : dayNum - 4;
   const thurDate = new Date(localDate.getTime() - daysToSubtract * 24 * 60 * 60 * 1000);
@@ -795,6 +801,9 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
           // Map UTC sessionDateTime to Argentina time (UTC-3)
           const arDate = new Date(utcDate.getTime() - (3 * 60 * 60 * 1000));
+          if (arDate.getUTCHours() < 6) {
+            arDate.setTime(arDate.getTime() - 24 * 60 * 60 * 1000);
+          }
 
           // Get day key
           const dayNum = arDate.getUTCDay(); // 0 = Sunday, 1 = Monday, etc.
@@ -920,6 +929,9 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
         if (weekStart !== selectedWeekStart) return;
 
         const arDate = new Date(utcDate.getTime() - (3 * 60 * 60 * 1000));
+        if (arDate.getUTCHours() < 6) {
+          arDate.setTime(arDate.getTime() - 24 * 60 * 60 * 1000);
+        }
         const dayNum = arDate.getUTCDay();
         const map: Record<number, WeekdayKey> = {
           0: "domingo", 1: "lunes", 2: "martes", 3: "miercoles",

@@ -1511,6 +1511,9 @@ export const getCinemarkShowtimes = onCall({ cors: true }, async (request) => {
 // Helper for movie week start in backend functions
 function getMovieWeekStartForFunction(date: Date): string {
   const localDate = new Date(date.getTime() - (3 * 60 * 60 * 1000));
+  if (localDate.getUTCHours() < 6) {
+    localDate.setTime(localDate.getTime() - 24 * 60 * 60 * 1000);
+  }
   const dayNum = localDate.getUTCDay();
   const daysToSubtract = dayNum <= 3 ? dayNum + 3 : dayNum - 4;
   const thurDate = new Date(localDate.getTime() - daysToSubtract * 24 * 60 * 60 * 1000);
@@ -1526,6 +1529,9 @@ function isWednesdaySession(sessionDateTime?: string): boolean {
     try {
       const date = new Date(sessionDateTime);
       const localDate = new Date(date.getTime() - (3 * 60 * 60 * 1000));
+      if (localDate.getUTCHours() < 6) {
+        localDate.setTime(localDate.getTime() - 24 * 60 * 60 * 1000);
+      }
       return localDate.getUTCDay() === 3;
     } catch (e) {
       console.error("Error parsing sessionDateTime in isWednesdaySession:", e);
@@ -1533,6 +1539,9 @@ function isWednesdaySession(sessionDateTime?: string): boolean {
   }
   const now = new Date();
   const localNow = new Date(now.getTime() - (3 * 60 * 60 * 1000));
+  if (localNow.getUTCHours() < 6) {
+    localNow.setTime(localNow.getTime() - 24 * 60 * 60 * 1000);
+  }
   return localNow.getUTCDay() === 3;
 }
 
