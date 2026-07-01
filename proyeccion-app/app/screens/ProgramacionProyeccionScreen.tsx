@@ -270,6 +270,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
         const dbLayout = snapshot.data() as FirestoreSalaLayout;
         const seats: { [row: string]: SeatInfo[] } = {};
         const customSeats = dbLayout.customSeats || {};
+        const customSeatNumbers = dbLayout.customSeatNumbers || {};
         const invertSeats = dbLayout.invertSeats || false;
 
         for (const row of dbLayout.rows) {
@@ -287,7 +288,8 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
               isDbox = true;
             }
 
-            const seatNumber = invertSeats ? (dbLayout.maxCol - c + 1) : c;
+            const customNum = customSeatNumbers[key];
+            const seatNumber = customNum !== undefined ? customNum : (invertSeats ? (dbLayout.maxCol - c + 1) : c);
 
             rowSeats.push({
               row,
@@ -304,6 +306,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
           rows: dbLayout.rows,
           maxCol: dbLayout.maxCol,
           aisles: dbLayout.aisles || [],
+          rowAisles: dbLayout.rowAisles || [],
           seats,
           invertSeats,
         });
@@ -435,74 +438,77 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
               sections.push(rowSeats.slice(prev, layout.maxCol));
 
               return (
-                <View key={rowName} style={{ flexDirection: "row", alignItems: "center", marginVertical: 3 }}>
-                  {/* Left row letter */}
-                  <Text style={styles.rowLabelText}>{rowName}</Text>
+                <React.Fragment key={rowName}>
+                  <View style={{ flexDirection: "row", alignItems: "center", marginVertical: 3 }}>
+                    {/* Left row letter */}
+                    <Text style={styles.rowLabelText}>{rowName}</Text>
 
-                  {/* Render sections separated by aisles */}
-                  {sections.map((section, idx) => (
-                    <React.Fragment key={idx}>
-                      {idx > 0 && <View style={styles.aisleSpace} />}
-                      <View style={{ flexDirection: "row" }}>
-                        {section.map((seat) => {
-                          if (seat.type === "empty") {
-                            return <View key={`empty-${seat.row}-${seat.colIndex}`} style={styles.seatSpacer} />;
-                          }
-
-                          const seatKey = `${seat.row}-${seat.number}`;
-                          const apiSeat = occupiedMap.get(seatKey);
-                          const isSold = apiSeat ? apiSeat.seatStatus !== 0 : false;
-                          
-                          let seatStyle = styles.seatAvailable;
-                          let iconName = "";
-
-                          if (isSold) {
-                            const status = apiSeat.seatStatus;
-                            if (status === 1 || status === 6 || status === 7) {
-                              seatStyle = styles.seatOccupied;
-                            } else if (status === 4) {
-                              seatStyle = styles.seatWheelchair;
-                              iconName = "wheelchair-accessibility";
-                            } else if (status === 5) {
-                              seatStyle = styles.seatAutoAssigned;
-                            } else if (status === 8) {
-                              seatStyle = styles.seatBlocked;
-                            } else {
-                              seatStyle = styles.seatOccupied; // default fallback if sold
+                    {/* Render sections separated by aisles */}
+                    {sections.map((section, idx) => (
+                      <React.Fragment key={idx}>
+                        {idx > 0 && <View style={styles.aisleSpace} />}
+                        <View style={{ flexDirection: "row" }}>
+                          {section.map((seat) => {
+                            if (seat.type === "empty") {
+                              return <View key={`empty-${seat.row}-${seat.colIndex}`} style={styles.seatSpacer} />;
                             }
-                          }
 
-                          // D-BOX border highlight
-                          const isDbox = seat.isDbox;
+                            const seatKey = `${seat.row}-${seat.number}`;
+                            const apiSeat = occupiedMap.get(seatKey);
+                            const isSold = apiSeat ? apiSeat.seatStatus !== 0 : false;
+                            
+                            let seatStyle = styles.seatAvailable;
+                            let iconName = "";
 
-                          return (
-                            <View 
-                              key={seatKey} 
-                              style={[
-                                styles.seatBase, 
-                                seatStyle,
-                                isDbox && styles.seatDboxBorder
-                              ]}
-                            >
-                              {iconName ? (
-                                <MaterialCommunityIcons 
-                                  name={iconName as any} 
-                                  size={Platform.select({ web: 13, default: 10 })} 
-                                  color="#FFF" 
-                                />
-                              ) : (
-                                <Text style={styles.seatNumberText}>{seat.number}</Text>
-                              )}
-                            </View>
-                          );
-                        })}
-                      </View>
-                    </React.Fragment>
-                  ))}
+                            if (isSold) {
+                              const status = apiSeat.seatStatus;
+                              if (status === 1 || status === 6 || status === 7) {
+                                seatStyle = styles.seatOccupied;
+                              } else if (status === 4) {
+                                seatStyle = styles.seatWheelchair;
+                                iconName = "wheelchair-accessibility";
+                              } else if (status === 5) {
+                                seatStyle = styles.seatAutoAssigned;
+                              } else if (status === 8) {
+                                seatStyle = styles.seatBlocked;
+                              } else {
+                                seatStyle = styles.seatOccupied; // default fallback if sold
+                              }
+                            }
 
-                  {/* Right row letter */}
-                  <Text style={[styles.rowLabelText, { marginLeft: 8 }]}>{rowName}</Text>
-                </View>
+                            // D-BOX border highlight
+                            const isDbox = seat.isDbox;
+
+                            return (
+                              <View 
+                                key={seatKey} 
+                                style={[
+                                  styles.seatBase, 
+                                  seatStyle,
+                                  isDbox && styles.seatDboxBorder
+                                ]}
+                              >
+                                {iconName ? (
+                                  <MaterialCommunityIcons 
+                                    name={iconName as any} 
+                                    size={Platform.select({ web: 13, default: 10 })} 
+                                    color="#FFF" 
+                                  />
+                                ) : (
+                                  <Text style={styles.seatNumberText}>{seat.number}</Text>
+                                )}
+                              </View>
+                            );
+                          })}
+                        </View>
+                      </React.Fragment>
+                    ))}
+
+                    {/* Right row letter */}
+                    <Text style={[styles.rowLabelText, { marginLeft: 8 }]}>{rowName}</Text>
+                  </View>
+                  {layout.rowAisles?.includes(rowName) && <View style={{ height: 14 }} />}
+                </React.Fragment>
               );
             })}
           </View>

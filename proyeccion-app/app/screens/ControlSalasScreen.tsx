@@ -69,6 +69,7 @@ export interface RoomLayout {
   rows: string[];
   maxCol: number;
   aisles: number[];
+  rowAisles?: string[];
   seats: { [row: string]: SeatInfo[] };
   invertSeats?: boolean;
 }
@@ -81,6 +82,10 @@ export interface FirestoreSalaLayout {
     [seatKey: string]: "empty" | "dbox";
   };
   invertSeats?: boolean;
+  rowAisles?: string[];
+  customSeatNumbers?: {
+    [seatKey: string]: number;
+  };
 }
 
 // Default layout builder for all 12 rooms based on exact user specification
@@ -247,7 +252,7 @@ export const getRoomLayout = (salaId: number): RoomLayout => {
     seats[row] = rowSeats;
   }
 
-  return { rows, maxCol, aisles, seats };
+  return { rows, maxCol, aisles, rowAisles: [], seats };
 };
 
 // Helper to convert getRoomLayout configuration to the Firestore layout schema
@@ -272,6 +277,8 @@ const convertLayoutToFirestoreSchema = (salaId: number): FirestoreSalaLayout => 
     aisles: defaultLayout.aisles,
     customSeats,
     invertSeats: defaultLayout.invertSeats || false,
+    rowAisles: defaultLayout.rowAisles || [],
+    customSeatNumbers: {},
   };
 };
 
@@ -306,9 +313,13 @@ export default function ControlSalasScreen() {
   const [editorRowsInput, setEditorRowsInput] = useState<string>("");
   const [editorMaxColInput, setEditorMaxColInput] = useState<string>("");
   const [editorAislesInput, setEditorAislesInput] = useState<string>("");
+  const [editorRowAislesInput, setEditorRowAislesInput] = useState<string>("");
   const [editorCustomSeats, setEditorCustomSeats] = useState<{ [seatKey: string]: "empty" | "dbox" }>({});
+  const [editorCustomSeatNumbers, setEditorCustomSeatNumbers] = useState<{ [seatKey: string]: number }>({});
   const [editorInvertSeats, setEditorInvertSeats] = useState<boolean>(false);
-  const [paintTool, setPaintTool] = useState<"seat" | "dbox" | "empty">("empty");
+  const [paintTool, setPaintTool] = useState<"seat" | "dbox" | "empty" | "number">("empty");
+  const [editingSeatNumber, setEditingSeatNumber] = useState<{ row: string; colIndex: number; currentNumber: number } | null>(null);
+  const [newSeatNumberInput, setNewSeatNumberInput] = useState<string>("");
 
   const [salasCount, setSalasCount] = useState<number>(12);
 
@@ -452,6 +463,7 @@ export default function ControlSalasScreen() {
 
     const seats: { [row: string]: SeatInfo[] } = {};
     const customSeats = dbLayout.customSeats || {};
+    const customSeatNumbers = dbLayout.customSeatNumbers || {};
     const invertSeats = dbLayout.invertSeats || false;
 
     for (const row of dbLayout.rows) {
@@ -469,7 +481,8 @@ export default function ControlSalasScreen() {
           isDbox = true;
         }
 
-        const seatNumber = invertSeats ? (dbLayout.maxCol - c + 1) : c;
+        const customNum = customSeatNumbers[key];
+        const seatNumber = customNum !== undefined ? customNum : (invertSeats ? (dbLayout.maxCol - c + 1) : c);
 
         rowSeats.push({
           row,
@@ -486,6 +499,7 @@ export default function ControlSalasScreen() {
       rows: dbLayout.rows,
       maxCol: dbLayout.maxCol,
       aisles: dbLayout.aisles || [],
+      rowAisles: dbLayout.rowAisles || [],
       seats,
       invertSeats,
     };
@@ -512,10 +526,10 @@ export default function ControlSalasScreen() {
   };
 
   // Open editor modal for a specific seat (Normal Inspection Mode)
-  const handleSeatPress = (row: string, num: number, isDbox?: boolean, colIndex?: number) => {
+  const handleSeatPress = (row: string, num: number, isDbox?: boolean, colIndex?: number, type?: "seat" | "empty") => {
     if (isLayoutEditorMode) {
       // If we are in layout configuration mode, clicking paints/modifies the seat layout!
-      handleGridSeatClickInEditorMode(row, colIndex || num);
+      handleGridSeatClickInEditorMode(row, colIndex || num, num, type || "seat");
       return;
     }
 
@@ -608,13 +622,28 @@ export default function ControlSalasScreen() {
   };
 
   // Toggle seat types on click during layout editor mode
-  const handleGridSeatClickInEditorMode = (row: string, colNum: number) => {
+  const handleGridSeatClickInEditorMode = (row: string, colNum: number, currentSeatNumber: number, type: "seat" | "empty") => {
+    if (paintTool === "number") {
+      if (type === "empty") {
+        Alert.alert("Acción no permitida", "No podés asignar un número a un espacio vacío.");
+        return;
+      }
+      const key = `${row}-${colNum}`;
+      const customNum = editorCustomSeatNumbers[key];
+      const currentVal = customNum !== undefined ? customNum : currentSeatNumber;
+      
+      setEditingSeatNumber({ row, colIndex: colNum, currentNumber: currentVal });
+      setNewSeatNumberInput(String(currentVal));
+      return;
+    }
+
     const currentMaxCol = parseInt(editorMaxColInput, 10) || 1;
     if (colNum > currentMaxCol) {
       setEditorMaxColInput(String(colNum));
     }
 
     const newCustomSeats = { ...editorCustomSeats };
+    const newCustomSeatNumbers = { ...editorCustomSeatNumbers };
     const key = `${row}-${colNum}`;
     const current = newCustomSeats[key];
 
@@ -623,12 +652,13 @@ export default function ControlSalasScreen() {
       if (paintTool === "seat") {
         delete newCustomSeats[key];
       } else {
-        newCustomSeats[key] = paintTool;
+        newCustomSeats[key] = paintTool as "empty" | "dbox";
       }
     } else {
       // Toggle logic for existing seats
       if (!current) {
         newCustomSeats[key] = "empty";
+        delete newCustomSeatNumbers[key];
       } else if (current === "empty") {
         newCustomSeats[key] = "dbox";
       } else {
@@ -636,6 +666,7 @@ export default function ControlSalasScreen() {
       }
     }
     setEditorCustomSeats(newCustomSeats);
+    setEditorCustomSeatNumbers(newCustomSeatNumbers);
   };
 
   // Enter Layout Editor Mode for the active room
@@ -645,7 +676,9 @@ export default function ControlSalasScreen() {
     setEditorRowsInput(layout.rows.join(","));
     setEditorMaxColInput(String(layout.maxCol));
     setEditorAislesInput(layout.aisles.join(","));
+    setEditorRowAislesInput(dbLayout?.rowAisles?.join(",") || "");
     setEditorCustomSeats(dbLayout?.customSeats || convertLayoutToFirestoreSchema(selectedSala).customSeats || {});
+    setEditorCustomSeatNumbers(dbLayout?.customSeatNumbers || {});
     setEditorInvertSeats(layout.invertSeats || false);
     setIsLayoutEditorMode(true);
   };
@@ -663,6 +696,10 @@ export default function ControlSalasScreen() {
       .split(",")
       .map((a) => parseInt(a.trim(), 10))
       .filter((num) => !isNaN(num));
+    const rowAisles = editorRowAislesInput
+      .split(",")
+      .map((r) => r.trim().toUpperCase())
+      .filter(Boolean);
 
     if (rows.length === 0 || isNaN(maxCol) || maxCol <= 0) {
       Alert.alert("Campos inválidos", "Por favor ingresá un listado de filas válido y un número de columnas mayor a 0.");
@@ -678,6 +715,8 @@ export default function ControlSalasScreen() {
         aisles,
         customSeats: editorCustomSeats,
         invertSeats: editorInvertSeats,
+        rowAisles,
+        customSeatNumbers: editorCustomSeatNumbers,
       };
       await setDoc(ref, payload);
       setIsLayoutEditorMode(false);
@@ -701,8 +740,10 @@ export default function ControlSalasScreen() {
     setEditorRowsInput(schema.rows.join(","));
     setEditorMaxColInput(String(schema.maxCol));
     setEditorAislesInput(schema.aisles.join(","));
+    setEditorRowAislesInput(schema.rowAisles?.join(",") || "");
     setEditorCustomSeats(schema.customSeats);
     setEditorInvertSeats(schema.invertSeats || false);
+    setEditorCustomSeatNumbers(schema.customSeatNumbers || {});
   };
 
   // Upload/Migrate default layouts to Firestore for the current cinema
@@ -1145,7 +1186,7 @@ export default function ControlSalasScreen() {
             isSelected && styles.seatSelected,
             isEditorEmpty && styles.seatEditorEmpty,
           ]}
-          onPress={() => handleSeatPress(seat.row, seat.number, isDbox, seat.colIndex)}
+          onPress={() => handleSeatPress(seat.row, seat.number, isDbox, seat.colIndex, seat.type)}
           activeOpacity={0.8}
         >
           {isEditorEmpty ? (
@@ -1218,27 +1259,30 @@ export default function ControlSalasScreen() {
               sections.push(rowSeats.slice(prev, layout.maxCol));
 
               return (
-                <View key={rowName} style={styles.rowContainer}>
-                  {/* Left row letter */}
-                  <View style={styles.rowLetterWrap}>
-                    <Text style={styles.rowLetterText}>{rowName}</Text>
-                  </View>
+                <React.Fragment key={rowName}>
+                  <View style={styles.rowContainer}>
+                    {/* Left row letter */}
+                    <View style={styles.rowLetterWrap}>
+                      <Text style={styles.rowLetterText}>{rowName}</Text>
+                    </View>
 
-                  {/* Render sections separated by aisles */}
-                  {sections.map((section, idx) => (
-                    <React.Fragment key={idx}>
-                      {idx > 0 && <View style={styles.aisleSpace} />}
-                      <View style={styles.sectionWrap}>
-                        {section.map((seat, idxSeat) => renderSeat(seat, idxSeat))}
-                      </View>
-                    </React.Fragment>
-                  ))}
+                    {/* Render sections separated by aisles */}
+                    {sections.map((section, idx) => (
+                      <React.Fragment key={idx}>
+                        {idx > 0 && <View style={styles.aisleSpace} />}
+                        <View style={styles.sectionWrap}>
+                          {section.map((seat, idxSeat) => renderSeat(seat, idxSeat))}
+                        </View>
+                      </React.Fragment>
+                    ))}
 
-                  {/* Right row letter */}
-                  <View style={styles.rowLetterWrap}>
-                    <Text style={styles.rowLetterText}>{rowName}</Text>
+                    {/* Right row letter */}
+                    <View style={styles.rowLetterWrap}>
+                      <Text style={styles.rowLetterText}>{rowName}</Text>
+                    </View>
                   </View>
-                </View>
+                  {layout.rowAisles?.includes(rowName) && <View style={styles.rowAisleSpace} />}
+                </React.Fragment>
               );
             })}
           </View>
@@ -1309,13 +1353,24 @@ export default function ControlSalasScreen() {
               />
             </View>
             <View style={styles.editorFormCol}>
-              <Text style={styles.editorLabel}>Pasillos (después de columna, separados por coma)</Text>
+              <Text style={styles.editorLabel}>Pasillos de Columnas (después de col, sep. coma)</Text>
               <TextInput
                 value={editorAislesInput}
                 onChangeText={setEditorAislesInput}
                 style={styles.editorTextInput}
                 placeholder="Ej. 4,17"
                 placeholderTextColor={COLORS.muted}
+              />
+            </View>
+            <View style={styles.editorFormCol}>
+              <Text style={styles.editorLabel}>Pasillos de Filas (después de fila, sep. coma)</Text>
+              <TextInput
+                value={editorRowAislesInput}
+                onChangeText={setEditorRowAislesInput}
+                style={styles.editorTextInput}
+                placeholder="Ej. D,H"
+                placeholderTextColor={COLORS.muted}
+                autoCapitalize="characters"
               />
             </View>
           </View>
@@ -1387,6 +1442,21 @@ export default function ControlSalasScreen() {
               Pintar Vacío (Espacio)
             </Text>
           </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.paintToolBtn, paintTool === "number" && styles.paintToolBtnActive]}
+            onPress={() => setPaintTool("number")}
+            activeOpacity={0.8}
+          >
+            <MaterialCommunityIcons 
+              name="numeric" 
+              size={14} 
+              color={paintTool === "number" ? COLORS.primary : COLORS.muted} 
+            />
+            <Text style={[styles.paintToolText, paintTool === "number" && styles.paintToolTextActive]}>
+              Cambiar Número
+            </Text>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.editorBtnRow}>
@@ -1421,6 +1491,10 @@ export default function ControlSalasScreen() {
       .split(",")
       .map((a) => parseInt(a.trim(), 10))
       .filter((num) => !isNaN(num));
+    const rowAisles = editorRowAislesInput
+      .split(",")
+      .map((r) => r.trim().toUpperCase())
+      .filter(Boolean);
 
     const seats: { [row: string]: SeatInfo[] } = {};
     const colsToRender = maxCol + 1; // Always show one extra column on the right for expanding in editor mode!
@@ -1442,9 +1516,11 @@ export default function ControlSalasScreen() {
           isDbox = true;
         }
 
+        const customNum = editorCustomSeatNumbers[key];
+        const defaultSeatNum = editorInvertSeats ? (maxCol - c + 1) : c;
         const seatNumber = c > maxCol
           ? (editorInvertSeats ? 0 : c)
-          : (editorInvertSeats ? (maxCol - c + 1) : c);
+          : (customNum !== undefined ? customNum : defaultSeatNum);
 
         rowSeats.push({
           row,
@@ -1457,7 +1533,14 @@ export default function ControlSalasScreen() {
       seats[row] = rowSeats;
     }
 
-    return { rows, maxCol: colsToRender, aisles, seats, invertSeats: editorInvertSeats };
+    return { 
+      rows, 
+      maxCol: colsToRender, 
+      aisles, 
+      rowAisles, 
+      seats, 
+      invertSeats: editorInvertSeats 
+    };
   };
 
   return (
@@ -1733,6 +1816,95 @@ export default function ControlSalasScreen() {
           </View>
         )}
       </Modal>
+
+      {/* Seat Number Edit Modal */}
+      <Modal
+        visible={editingSeatNumber !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEditingSeatNumber(null)}
+      >
+        {editingSeatNumber !== null && (
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalCard}>
+              <Text style={styles.modalTitle}>
+                Modificar Número de Butaca
+              </Text>
+              <Text style={styles.modalSubtitle}>
+                Fila {editingSeatNumber.row} - Columna {editingSeatNumber.colIndex}
+              </Text>
+
+              <View style={styles.modalInputBlock}>
+                <Text style={styles.modalInputLabel}>Número de Butaca</Text>
+                <TextInput
+                  value={newSeatNumberInput}
+                  onChangeText={setNewSeatNumberInput}
+                  keyboardType="number-pad"
+                  style={styles.modalDetailsInput}
+                  placeholder="Ej. 15"
+                  placeholderTextColor={COLORS.muted}
+                />
+              </View>
+
+              <View style={[styles.modalActions, { flexDirection: "column", gap: 8 }]}>
+                <View style={{ flexDirection: "row", gap: 12 }}>
+                  <TouchableOpacity
+                    style={[styles.modalBtn, styles.modalBtnCancel]}
+                    onPress={() => setEditingSeatNumber(null)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.modalBtnCancelText}>Cancelar</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.modalBtn, styles.modalBtnPrimary]}
+                    onPress={() => {
+                      const parsed = parseInt(newSeatNumberInput.trim(), 10);
+                      if (isNaN(parsed) || parsed < 0) {
+                        Alert.alert("Error", "Por favor ingrese un número válido.");
+                        return;
+                      }
+                      const key = `${editingSeatNumber.row}-${editingSeatNumber.colIndex}`;
+                      setEditorCustomSeatNumbers(prev => ({
+                        ...prev,
+                        [key]: parsed,
+                      }));
+                      setEditingSeatNumber(null);
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.modalBtnPrimaryText}>Guardar</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <TouchableOpacity
+                  style={[
+                    styles.modalBtn, 
+                    { 
+                      backgroundColor: "transparent", 
+                      borderWidth: 1, 
+                      borderColor: COLORS.border,
+                      marginTop: 4
+                    }
+                  ]}
+                  onPress={() => {
+                    const key = `${editingSeatNumber.row}-${editingSeatNumber.colIndex}`;
+                    setEditorCustomSeatNumbers(prev => {
+                      const copy = { ...prev };
+                      delete copy[key];
+                      return copy;
+                    });
+                    setEditingSeatNumber(null);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={{ color: COLORS.muted, fontWeight: "700" }}>Restaurar por Defecto</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        )}
+      </Modal>
     </View>
   );
 }
@@ -1958,6 +2130,9 @@ const styles = StyleSheet.create({
     width: 24,
     alignItems: "center",
     justifyContent: "center",
+  },
+  rowAisleSpace: {
+    height: 14,
   },
   rowLetterText: {
     fontSize: 11,
