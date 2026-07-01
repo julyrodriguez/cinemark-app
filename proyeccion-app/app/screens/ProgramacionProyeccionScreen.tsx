@@ -1077,7 +1077,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
         }
 
         const rate = sold / show.capacity;
-        if (rate < 0.02) {
+        if (rate < 0.02 && sold > 0) {
           recordingRiskShows.push(show);
         } else if (rate > 0.60) {
           guideNeededShows.push(show);
@@ -1431,9 +1431,10 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
                 {show.isSimulated && (() => {
                   const rate = show.capacity !== undefined && show.capacity > 0 && show.soldSeats !== undefined ? show.soldSeats / show.capacity : 0;
+                  const sold = show.soldSeats ?? 0;
                   let alertColor = "";
                   let alertText = "";
-                  if (rate < 0.02) {
+                  if (rate < 0.02 && sold > 0) {
                     alertColor = "#EF4444";
                     alertText = "⚠️ Riesgo de grabación";
                   } else if (rate > 0.60) {
@@ -1907,9 +1908,10 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                                   </Text>
                                   {show.isSimulated && (() => {
                                     const rate = show.capacity !== undefined && show.capacity > 0 && show.soldSeats !== undefined ? show.soldSeats / show.capacity : 0;
+                                    const sold = show.soldSeats ?? 0;
                                     let alertColor = "";
                                     let alertText = "";
-                                    if (rate < 0.02) {
+                                    if (rate < 0.02 && sold > 0) {
                                       alertColor = "#EF4444";
                                       alertText = "⚠️ Riesgo";
                                     } else if (rate > 0.60) {
@@ -2155,7 +2157,8 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                     {/* Dynamic alert block */}
                     {selectedShow.isSimulated && (() => {
                       const rate = selectedShow.capacity !== undefined && selectedShow.capacity > 0 && selectedShow.soldSeats !== undefined ? selectedShow.soldSeats / selectedShow.capacity : 0;
-                      if (rate < 0.02) {
+                      const sold = selectedShow.soldSeats ?? 0;
+                      if (rate < 0.02 && sold > 0) {
                         return (
                           <View style={[styles.detailRow, { backgroundColor: "rgba(239, 68, 68, 0.08)", borderRadius: 8, padding: 8, marginTop: 4, marginBottom: 8 }]}>
                             <MaterialCommunityIcons name="alert-circle-outline" size={22} color="#EF4444" style={styles.detailIcon} />
