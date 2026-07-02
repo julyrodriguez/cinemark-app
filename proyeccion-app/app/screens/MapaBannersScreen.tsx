@@ -327,7 +327,11 @@ export default function MapaBannersScreen() {
   const assignPoster = (movieTitle: string, posterPath: string | null | undefined) => {
     if (!selectedElementId || !activeFloor) return;
 
-    const posterUrl = posterPath ? `https://image.tmdb.org/t/p/w500${posterPath}` : "";
+    const posterUrl = posterPath
+      ? posterPath.startsWith("http")
+        ? posterPath
+        : `https://image.tmdb.org/t/p/w500${posterPath}`
+      : "";
 
     const updatedFloors = floors.map((f) => {
       if (f.id === selectedFloorId) {
@@ -1169,7 +1173,11 @@ export default function MapaBannersScreen() {
                     >
                       {movie.poster_path ? (
                         <Image
-                          source={{ uri: `https://image.tmdb.org/t/p/w92${movie.poster_path}` }}
+                          source={{
+                            uri: movie.poster_path.startsWith("http")
+                              ? movie.poster_path
+                              : `https://image.tmdb.org/t/p/w92${movie.poster_path}`,
+                          }}
                           style={s.searchResultThumb as any}
                         />
                       ) : (

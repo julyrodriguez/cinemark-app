@@ -1963,28 +1963,55 @@ export const searchMoviePoster = onCall({ cors: true }, async (request) => {
   if (!query) {
     throw new HttpsError("invalid-argument", "Query parameter is required.");
   }
-  const apiKey = "c42b1851122312440c20aacc720d05c0";
-  const currentYear = new Date().getFullYear();
 
   try {
-    const url = `https://api.themoviedb.org/3/search/movie?api_key=${apiKey}&query=${encodeURIComponent(
-      query
-    )}&year=${currentYear}&language=es-AR`;
-    
-    let res = await fetch(url);
-    let data = (await res.json()) as any;
-    let results = data.results || [];
+    // We search Bing Images for the movie name and its poster preferring cinesargentinos
+    const searchUrl = `https://www.bing.com/images/search?q=${encodeURIComponent(query)}+movie+poster+cinesargentinos`;
+    const res = await fetch(searchUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+      }
+    });
 
-    if (results.length === 0) {
-      const urlFallback = `https://api.themoviedb.org/3/search/movie?api_key=${apiKey}&query=${encodeURIComponent(
-        query
-      )}&language=es-AR`;
-      res = await fetch(urlFallback);
-      data = (await res.json()) as any;
-      results = data.results || [];
+    if (!res.ok) {
+      throw new Error(`Bing search failed with status ${res.status}`);
     }
 
-    return { results: results.slice(0, 5) };
+    const html = await res.text();
+    // Regex to match Bing thumbnail CDN URLs: https://tsX.mm.bing.net/th?id=OIP...
+    const regex = /https:\/\/[a-zA-Z0-9.-]+\.mm\.bing\.net\/th\?id=OIP\.[a-zA-Z0-9-_]+/g;
+    const matches = html.match(regex) || [];
+
+    // Remove duplicates
+    const uniqueMatches = Array.from(new Set(matches));
+
+    // If we have few or no matches from cinesargentinos, attempt a general search
+    let finalMatches = uniqueMatches;
+    if (finalMatches.length < 2) {
+      const fallbackUrl = `https://www.bing.com/images/search?q=${encodeURIComponent(query)}+movie+poster+argentina`;
+      const fallbackRes = await fetch(fallbackUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+        }
+      });
+      if (fallbackRes.ok) {
+        const fallbackHtml = await fallbackRes.text();
+        const fallbackMatches = fallbackHtml.match(regex) || [];
+        finalMatches = Array.from(new Set([...finalMatches, ...fallbackMatches]));
+      }
+    }
+
+    // Map to the frontend expected format
+    const results = finalMatches.slice(0, 5).map((imgUrl, index) => {
+      return {
+        id: `bing-${index}-${Date.now()}`,
+        title: `${query} (Opción ${index + 1})`,
+        release_date: "",
+        poster_path: imgUrl, // Full URL to be processed by frontend
+      };
+    });
+
+    return { results };
   } catch (error: any) {
     console.error("Error in searchMoviePoster:", error);
     throw new HttpsError("internal", error.message || "Failed to search movie poster");
