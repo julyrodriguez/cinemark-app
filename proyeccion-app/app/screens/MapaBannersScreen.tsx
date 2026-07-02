@@ -305,23 +305,48 @@ export default function MapaBannersScreen() {
       const currentYear = new Date().getFullYear();
       const apiKey = "c42b1851122312440c20aacc720d05c0";
 
-      // Attempt 1: Search with current year
-      const url = `https://api.themoviedb.org/3/search/movie?api_key=${apiKey}&query=${encodeURIComponent(
-        searchQuery
-      )}&year=${currentYear}&language=es-AR`;
-      const res = await fetch(url);
-      const data = await res.json();
+      let results: TmdbResult[] = [];
 
-      let results: TmdbResult[] = data.results || [];
-
-      // Attempt 2: If no results, search without year constraint
-      if (results.length === 0) {
-        const urlFallback = `https://api.themoviedb.org/3/search/movie?api_key=${apiKey}&query=${encodeURIComponent(
+      try {
+        // Attempt 1: Search via CORS proxy (bypasses CORS and adblockers)
+        const queryUrl = `https://api.themoviedb.org/3/search/movie?api_key=${apiKey}&query=${encodeURIComponent(
           searchQuery
-        )}&language=es-AR`;
-        const resFallback = await fetch(urlFallback);
-        const dataFallback = await resFallback.json();
-        results = dataFallback.results || [];
+        )}&year=${currentYear}&language=es-AR`;
+        const url = `https://api.allorigins.win/get?url=${encodeURIComponent(queryUrl)}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        const parsedData = JSON.parse(data.contents);
+        results = parsedData.results || [];
+
+        // Attempt 2: Without year (via proxy)
+        if (results.length === 0) {
+          const queryUrlFallback = `https://api.themoviedb.org/3/search/movie?api_key=${apiKey}&query=${encodeURIComponent(
+            searchQuery
+          )}&language=es-AR`;
+          const urlFallback = `https://api.allorigins.win/get?url=${encodeURIComponent(queryUrlFallback)}`;
+          const resFallback = await fetch(urlFallback);
+          const dataFallback = await resFallback.json();
+          const parsedDataFallback = JSON.parse(dataFallback.contents);
+          results = parsedDataFallback.results || [];
+        }
+      } catch (proxyError) {
+        console.warn("Proxy failed, falling back to direct fetch:", proxyError);
+        // Fallback to direct fetch (without proxy)
+        const urlDirect = `https://api.themoviedb.org/3/search/movie?api_key=${apiKey}&query=${encodeURIComponent(
+          searchQuery
+        )}&year=${currentYear}&language=es-AR`;
+        const resDirect = await fetch(urlDirect);
+        const dataDirect = await resDirect.json();
+        results = dataDirect.results || [];
+
+        if (results.length === 0) {
+          const urlDirectFallback = `https://api.themoviedb.org/3/search/movie?api_key=${apiKey}&query=${encodeURIComponent(
+            searchQuery
+          )}&language=es-AR`;
+          const resDirectFallback = await fetch(urlDirectFallback);
+          const dataDirectFallback = await resDirectFallback.json();
+          results = dataDirectFallback.results || [];
+        }
       }
 
       setSearchResults(results.slice(0, 5));
