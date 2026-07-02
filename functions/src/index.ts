@@ -1595,7 +1595,7 @@ async function getOccupiedSeats(
     "accept": "application/json",
     "content-type": "application/json",
     "country": "AR",
-    "member-session-id": "28fbb5dc-1ced-4b44-8d7f-ced5010a95db",
+    "member-session-id": "63f3a214-1dab-4366-9c33-3faa337c9efb",
     "origin": "https://www.cinemark.com.ar",
     "referer": "https://www.cinemark.com.ar/",
     "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -1887,7 +1887,7 @@ export const getCinemarkSeatMap = onCall({ cors: true }, async (request) => {
     "accept": "application/json",
     "content-type": "application/json",
     "country": "AR",
-    "member-session-id": "28fbb5dc-1ced-4b44-8d7f-ced5010a95db",
+    "member-session-id": "63f3a214-1dab-4366-9c33-3faa337c9efb",
     "origin": "https://www.cinemark.com.ar",
     "referer": "https://www.cinemark.com.ar/",
     "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"

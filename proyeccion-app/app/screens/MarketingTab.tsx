@@ -550,6 +550,11 @@ export default function MarketingTab() {
                         {hasMovement ? (
                           <Text style={s.movementSource}>
                             Puede moverse de sala {item.possibleSourceSalas!.join("/")}
+                            {item.cantidad > item.possibleSourceSalas!.length ? (
+                              ` - Bajar ${item.cantidad - item.possibleSourceSalas!.length} sí o sí de marketing`
+                            ) : item.possibleSourceSalas!.length > item.cantidad ? (
+                              ` - Devolver ${item.possibleSourceSalas!.length - item.cantidad} a marketing`
+                            ) : ""}
                           </Text>
                         ) : (
                           <Text style={s.movementSource}>Poster nuevo sin movimiento posible</Text>
@@ -593,7 +598,7 @@ export default function MarketingTab() {
                   </Text>
                   <Text style={s.retireMeta}>
                     x{item.cantidad} → {item.cantidad === 1 ? "Sala" : "Salas"}{" "}
-                    {item.salas.join(", ")}
+                    {item.salas.join(", ")} - Devolver {item.cantidad} a marketing
                   </Text>
                 </View>
               ))}

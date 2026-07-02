@@ -72,7 +72,13 @@ export function buildMarketingPrintHtml(
                       ? `<div class="movement-subtitle muted">
                           Puede moverse de sala ${esc(
                             p.possibleSourceSalas!.join("/")
-                          )}
+                          )}${
+                            p.cantidad > p.possibleSourceSalas!.length
+                              ? ` - Bajar ${p.cantidad - p.possibleSourceSalas!.length} sí o sí de marketing`
+                              : p.possibleSourceSalas!.length > p.cantidad
+                              ? ` - Devolver ${p.possibleSourceSalas!.length - p.cantidad} a marketing`
+                              : ""
+                          }
                         </div>`
                       : ``
                   }
@@ -99,7 +105,7 @@ export function buildMarketingPrintHtml(
           (p) =>
             `<li>${esc(p.pelicula)} <span class="muted">x${p.cantidad} → ${
               p.cantidad === 1 ? "Sala" : "Salas"
-            } ${p.salas.join(", ")}</span></li>`
+            } ${p.salas.join(", ")} - Devolver ${p.cantidad} a marketing</span></li>`
         )
         .join("")}</ul>`
     : `<div class="muted">No hay películas que salgan de cartelera.</div>`;

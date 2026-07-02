@@ -242,14 +242,20 @@ export function compareMarketingWeeks(
       totalDejar += 1;
     }
 
+    const N = targetOnly.length;
+    const M = sourceOnly.length;
+
     for (const sala of targetOnly) {
       const orderedSources = orderRoomsByDistance(sourceOnly, sala);
-      const detalle =
-        orderedSources.length > 0
-          ? `Traer de MKT (puede moverse de sala ${formatSalaListWithSlash(
-              orderedSources
-            )})`
-          : "Traer de MKT";
+      let detalle = "Traer de MKT";
+      if (orderedSources.length > 0) {
+        detalle = `Traer de MKT (puede moverse de sala ${formatSalaListWithSlash(
+          orderedSources
+        )})`;
+        if (N > M) {
+          detalle += ` - Bajar ${N - M} sí o sí de marketing`;
+        }
+      }
 
       roomPlansMap.get(sala)!.funciones.push({
         pelicula: title,
@@ -278,10 +284,15 @@ export function compareMarketingWeeks(
 
     for (const sala of sourceOnly) {
       const orderedTargets = orderRoomsByDistance(targetOnly, sala);
-      const detalle =
-        orderedTargets.length > 0
-          ? `Puede ser reutilizado en sala ${formatSalaListWithSlash(orderedTargets)}`
-          : "Ya no se da";
+      let detalle = "Ya no se da";
+      if (orderedTargets.length > 0) {
+        detalle = `Puede ser reutilizado en sala ${formatSalaListWithSlash(orderedTargets)}`;
+        if (M > N) {
+          detalle += ` - Devolver ${M - N} a marketing`;
+        }
+      } else {
+        detalle = `Ya no se da - Devolver ${M} a marketing`;
+      }
 
       roomPlansMap.get(sala)!.dataExtra.push({
         pelicula: title,
