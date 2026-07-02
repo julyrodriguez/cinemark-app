@@ -1958,4 +1958,37 @@ export const getCinemarkSeatMap = onCall({ cors: true }, async (request) => {
   }
 });
 
+export const searchMoviePoster = onCall({ cors: true }, async (request) => {
+  const query = request.data.query;
+  if (!query) {
+    throw new HttpsError("invalid-argument", "Query parameter is required.");
+  }
+  const apiKey = "c42b1851122312440c20aacc720d05c0";
+  const currentYear = new Date().getFullYear();
+
+  try {
+    const url = `https://api.themoviedb.org/3/search/movie?api_key=${apiKey}&query=${encodeURIComponent(
+      query
+    )}&year=${currentYear}&language=es-AR`;
+    
+    let res = await fetch(url);
+    let data = (await res.json()) as any;
+    let results = data.results || [];
+
+    if (results.length === 0) {
+      const urlFallback = `https://api.themoviedb.org/3/search/movie?api_key=${apiKey}&query=${encodeURIComponent(
+        query
+      )}&language=es-AR`;
+      res = await fetch(urlFallback);
+      data = (await res.json()) as any;
+      results = data.results || [];
+    }
+
+    return { results: results.slice(0, 5) };
+  } catch (error: any) {
+    console.error("Error in searchMoviePoster:", error);
+    throw new HttpsError("internal", error.message || "Failed to search movie poster");
+  }
+});
+
 

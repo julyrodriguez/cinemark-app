@@ -14,8 +14,9 @@ import {
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Print from "expo-print";
 import { doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
+import { httpsCallable } from "firebase/functions";
 
-import { db, CINES_COLLECTION } from "../../lib/firebaseConfig";
+import { db, functions, CINES_COLLECTION } from "../../lib/firebaseConfig";
 import { COLORS, THEME } from "../../lib/theme";
 import { useAuthUser } from "../../lib/useAuthUser";
 
@@ -302,54 +303,15 @@ export default function MapaBannersScreen() {
     try {
       setSearchingPoster(true);
       setSearchResults([]);
-      const currentYear = new Date().getFullYear();
-      const apiKey = "c42b1851122312440c20aacc720d05c0";
 
-      let results: TmdbResult[] = [];
+      const searchPosterFunc = httpsCallable<{ query: string }, { results: TmdbResult[] }>(
+        functions,
+        "searchMoviePoster"
+      );
+      const response = await searchPosterFunc({ query: searchQuery });
+      const results = response.data.results || [];
 
-      try {
-        // Attempt 1: Search via CORS proxy (bypasses CORS and adblockers)
-        const queryUrl = `https://api.themoviedb.org/3/search/movie?api_key=${apiKey}&query=${encodeURIComponent(
-          searchQuery
-        )}&year=${currentYear}&language=es-AR`;
-        const url = `https://api.allorigins.win/get?url=${encodeURIComponent(queryUrl)}`;
-        const res = await fetch(url);
-        const data = await res.json();
-        const parsedData = JSON.parse(data.contents);
-        results = parsedData.results || [];
-
-        // Attempt 2: Without year (via proxy)
-        if (results.length === 0) {
-          const queryUrlFallback = `https://api.themoviedb.org/3/search/movie?api_key=${apiKey}&query=${encodeURIComponent(
-            searchQuery
-          )}&language=es-AR`;
-          const urlFallback = `https://api.allorigins.win/get?url=${encodeURIComponent(queryUrlFallback)}`;
-          const resFallback = await fetch(urlFallback);
-          const dataFallback = await resFallback.json();
-          const parsedDataFallback = JSON.parse(dataFallback.contents);
-          results = parsedDataFallback.results || [];
-        }
-      } catch (proxyError) {
-        console.warn("Proxy failed, falling back to direct fetch:", proxyError);
-        // Fallback to direct fetch (without proxy)
-        const urlDirect = `https://api.themoviedb.org/3/search/movie?api_key=${apiKey}&query=${encodeURIComponent(
-          searchQuery
-        )}&year=${currentYear}&language=es-AR`;
-        const resDirect = await fetch(urlDirect);
-        const dataDirect = await resDirect.json();
-        results = dataDirect.results || [];
-
-        if (results.length === 0) {
-          const urlDirectFallback = `https://api.themoviedb.org/3/search/movie?api_key=${apiKey}&query=${encodeURIComponent(
-            searchQuery
-          )}&language=es-AR`;
-          const resDirectFallback = await fetch(urlDirectFallback);
-          const dataDirectFallback = await resDirectFallback.json();
-          results = dataDirectFallback.results || [];
-        }
-      }
-
-      setSearchResults(results.slice(0, 5));
+      setSearchResults(results);
       if (results.length === 0) {
         Alert.alert("Sin resultados", "No encontramos películas que coincidan con la búsqueda.");
       }
