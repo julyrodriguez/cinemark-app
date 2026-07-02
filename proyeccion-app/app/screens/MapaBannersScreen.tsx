@@ -30,6 +30,7 @@ interface BannerElement {
   y: number; // percentage (0 - 100)
   width?: number; // percentage width
   height?: number; // percentage height
+  locked?: boolean; // toggle to lock dragging
 }
 
 interface FloorPlan {
@@ -211,6 +212,7 @@ export default function MapaBannersScreen() {
       y: 45, // center y
       width: 8, // default width
       height: 12, // default height
+      locked: false, // default unlocked
     };
 
     const updatedFloors = floors.map((f) => {
@@ -265,6 +267,13 @@ export default function MapaBannersScreen() {
   // Drag handlers for Web (using direct mouse events for absolute smoothness)
   const handleMouseMove = (e: any) => {
     if (!activeDragId || !canvasLayout || Platform.OS !== "web") return;
+
+    // Safety check to ensure we do not drag a locked element
+    const element = activeFloor?.elements.find((el) => el.id === activeDragId);
+    if (element?.locked) {
+      setActiveDragId(null);
+      return;
+    }
 
     const rect = e.currentTarget.getBoundingClientRect();
     const clientX = e.clientX - rect.left;
@@ -847,7 +856,7 @@ export default function MapaBannersScreen() {
                   onPress={() => setSelectedElementId(el.id)}
                   onPressIn={() => {
                     setSelectedElementId(el.id);
-                    if (Platform.OS === "web") {
+                    if (Platform.OS === "web" && !el.locked) {
                       setActiveDragId(el.id);
                     }
                   }}
@@ -860,6 +869,11 @@ export default function MapaBannersScreen() {
                   <View style={[s.elementMarkerNumberBadge, { backgroundColor: meta.color }]}>
                     <Text style={s.elementMarkerNumberText}>{index + 1}</Text>
                   </View>
+                  {el.locked && (
+                    <View style={s.lockBadge}>
+                      <MaterialCommunityIcons name="lock" size={10} color="#fff" />
+                    </View>
+                  )}
                   <Text style={s.elementMarkerLabel} numberOfLines={1}>
                     {el.name}
                   </Text>
@@ -880,9 +894,39 @@ export default function MapaBannersScreen() {
             <ScrollView contentContainerStyle={s.sidebarContent}>
               <View style={s.sidebarHeader}>
                 <Text style={s.sidebarTitle}>Editar Elemento</Text>
-                <Pressable style={s.deleteBtn} onPress={() => handleDeleteElement(selectedElement.id)}>
-                  <MaterialCommunityIcons name="delete-outline" size={20} color={COLORS.danger} />
-                </Pressable>
+                <View style={s.sidebarActionsHeader}>
+                  <Pressable
+                    style={[s.lockToggleBtn, selectedElement.locked && s.lockToggleBtnActive]}
+                    onPress={() => {
+                      const updated = floors.map((f) => {
+                        if (f.id === selectedFloorId) {
+                          return {
+                            ...f,
+                            elements: f.elements.map((el) =>
+                              el.id === selectedElement.id ? { ...el, locked: !el.locked } : el
+                            ),
+                          };
+                        }
+                        return f;
+                      });
+                      setFloors(updated);
+                      handleSaveChanges(updated);
+                    }}
+                  >
+                    <MaterialCommunityIcons
+                      name={selectedElement.locked ? "lock" : "lock-open-outline"}
+                      size={14}
+                      color={selectedElement.locked ? "#fff" : COLORS.muted}
+                    />
+                    <Text style={[s.lockToggleBtnText, selectedElement.locked && { color: "#fff" }]}>
+                      {selectedElement.locked ? "Fijo" : "Fijar"}
+                    </Text>
+                  </Pressable>
+
+                  <Pressable style={s.deleteBtn} onPress={() => handleDeleteElement(selectedElement.id)}>
+                    <MaterialCommunityIcons name="delete-outline" size={20} color={COLORS.danger} />
+                  </Pressable>
+                </View>
               </View>
 
               <View style={s.field}>
@@ -941,50 +985,128 @@ export default function MapaBannersScreen() {
               <View style={s.sizeControlRow}>
                 <View style={s.sizeControlField}>
                   <Text style={s.fieldLabel}>Ancho (Plano)</Text>
-                  <View style={s.stepper}>
+                  <View style={s.stepperRow}>
                     <Pressable
-                      style={s.stepperBtn}
+                      style={s.stepperSmallBtn}
+                      onPress={() => {
+                        const newWidth = Math.max(3, (selectedElement.width || 8) - 5);
+                        updateElementSize(selectedElement.id, newWidth, selectedElement.height || 12);
+                      }}
+                    >
+                      <Text style={s.stepperSmallBtnText}>-5</Text>
+                    </Pressable>
+                    <Pressable
+                      style={s.stepperSmallBtn}
                       onPress={() => {
                         const newWidth = Math.max(3, (selectedElement.width || 8) - 1);
                         updateElementSize(selectedElement.id, newWidth, selectedElement.height || 12);
                       }}
                     >
-                      <Text style={s.stepperBtnText}>-</Text>
+                      <Text style={s.stepperSmallBtnText}>-1</Text>
                     </Pressable>
-                    <Text style={s.stepperValue}>{selectedElement.width || 8}%</Text>
+                    
+                    <TextInput
+                      style={s.stepperInput}
+                      keyboardType="numeric"
+                      value={selectedElement.width === 0 ? "" : String(selectedElement.width || 8)}
+                      onChangeText={(val) => {
+                        const parsed = parseInt(val, 10);
+                        if (!isNaN(parsed)) {
+                          const constrained = Math.max(1, Math.min(100, parsed));
+                          updateElementSize(selectedElement.id, constrained, selectedElement.height || 12);
+                        } else if (val === "") {
+                          updateElementSize(selectedElement.id, 0, selectedElement.height || 12);
+                        }
+                      }}
+                      onBlur={() => {
+                        if (!selectedElement.width) {
+                          updateElementSize(selectedElement.id, 8, selectedElement.height || 12);
+                        }
+                      }}
+                    />
+                    <Text style={s.percentSymbol}>%</Text>
+
                     <Pressable
-                      style={s.stepperBtn}
+                      style={s.stepperSmallBtn}
                       onPress={() => {
-                        const newWidth = Math.min(50, (selectedElement.width || 8) + 1);
+                        const newWidth = Math.min(100, (selectedElement.width || 8) + 1);
                         updateElementSize(selectedElement.id, newWidth, selectedElement.height || 12);
                       }}
                     >
-                      <Text style={s.stepperBtnText}>+</Text>
+                      <Text style={s.stepperSmallBtnText}>+1</Text>
+                    </Pressable>
+                    <Pressable
+                      style={s.stepperSmallBtn}
+                      onPress={() => {
+                        const newWidth = Math.min(100, (selectedElement.width || 8) + 5);
+                        updateElementSize(selectedElement.id, newWidth, selectedElement.height || 12);
+                      }}
+                    >
+                      <Text style={s.stepperSmallBtnText}>+5</Text>
                     </Pressable>
                   </View>
                 </View>
 
                 <View style={s.sizeControlField}>
                   <Text style={s.fieldLabel}>Alto (Plano)</Text>
-                  <View style={s.stepper}>
+                  <View style={s.stepperRow}>
                     <Pressable
-                      style={s.stepperBtn}
+                      style={s.stepperSmallBtn}
+                      onPress={() => {
+                        const newHeight = Math.max(3, (selectedElement.height || 12) - 5);
+                        updateElementSize(selectedElement.id, selectedElement.width || 8, newHeight);
+                      }}
+                    >
+                      <Text style={s.stepperSmallBtnText}>-5</Text>
+                    </Pressable>
+                    <Pressable
+                      style={s.stepperSmallBtn}
                       onPress={() => {
                         const newHeight = Math.max(3, (selectedElement.height || 12) - 1);
                         updateElementSize(selectedElement.id, selectedElement.width || 8, newHeight);
                       }}
                     >
-                      <Text style={s.stepperBtnText}>-</Text>
+                      <Text style={s.stepperSmallBtnText}>-1</Text>
                     </Pressable>
-                    <Text style={s.stepperValue}>{selectedElement.height || 12}%</Text>
+                    
+                    <TextInput
+                      style={s.stepperInput}
+                      keyboardType="numeric"
+                      value={selectedElement.height === 0 ? "" : String(selectedElement.height || 12)}
+                      onChangeText={(val) => {
+                        const parsed = parseInt(val, 10);
+                        if (!isNaN(parsed)) {
+                          const constrained = Math.max(1, Math.min(100, parsed));
+                          updateElementSize(selectedElement.id, selectedElement.width || 8, constrained);
+                        } else if (val === "") {
+                          updateElementSize(selectedElement.id, selectedElement.width || 8, 0);
+                        }
+                      }}
+                      onBlur={() => {
+                        if (!selectedElement.height) {
+                          updateElementSize(selectedElement.id, selectedElement.width || 8, 12);
+                        }
+                      }}
+                    />
+                    <Text style={s.percentSymbol}>%</Text>
+
                     <Pressable
-                      style={s.stepperBtn}
+                      style={s.stepperSmallBtn}
                       onPress={() => {
-                        const newHeight = Math.min(50, (selectedElement.height || 12) + 1);
+                        const newHeight = Math.min(100, (selectedElement.height || 12) + 1);
                         updateElementSize(selectedElement.id, selectedElement.width || 8, newHeight);
                       }}
                     >
-                      <Text style={s.stepperBtnText}>+</Text>
+                      <Text style={s.stepperSmallBtnText}>+1</Text>
+                    </Pressable>
+                    <Pressable
+                      style={s.stepperSmallBtn}
+                      onPress={() => {
+                        const newHeight = Math.min(100, (selectedElement.height || 12) + 5);
+                        updateElementSize(selectedElement.id, selectedElement.width || 8, newHeight);
+                      }}
+                    >
+                      <Text style={s.stepperSmallBtnText}>+5</Text>
                     </Pressable>
                   </View>
                 </View>
@@ -1593,7 +1715,7 @@ const s = StyleSheet.create({
     flex: 1,
     gap: 6,
   },
-  stepper: {
+  stepperRow: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: COLORS.bg,
@@ -1603,23 +1725,71 @@ const s = StyleSheet.create({
     height: 38,
     overflow: "hidden",
   },
-  stepperBtn: {
-    width: 32,
+  stepperSmallBtn: {
+    width: 28,
     height: "100%",
     backgroundColor: COLORS.border,
     alignItems: "center",
     justifyContent: "center",
   },
-  stepperBtnText: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: COLORS.text,
-  },
-  stepperValue: {
-    flex: 1,
-    textAlign: "center",
-    fontSize: 12.5,
+  stepperSmallBtnText: {
+    fontSize: 11,
     fontWeight: "800",
     color: COLORS.text,
+  },
+  stepperInput: {
+    flex: 1,
+    textAlign: "center",
+    fontSize: 12,
+    fontWeight: "900",
+    color: COLORS.text,
+    padding: 0,
+    height: "100%",
+  },
+  percentSymbol: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: COLORS.muted,
+    marginRight: 4,
+  },
+  sidebarActionsHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  lockToggleBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    height: 32,
+    backgroundColor: COLORS.bg,
+  },
+  lockToggleBtnActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  lockToggleBtnText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: COLORS.muted,
+  },
+  lockBadge: {
+    position: "absolute",
+    top: -8,
+    right: -8,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: COLORS.danger,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1.5,
+    borderColor: "#fff",
+    zIndex: 5,
+    ...THEME.shadow.soft,
   },
 });
