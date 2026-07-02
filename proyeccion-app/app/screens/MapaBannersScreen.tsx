@@ -28,6 +28,8 @@ interface BannerElement {
   posterUrl: string;
   x: number; // percentage (0 - 100)
   y: number; // percentage (0 - 100)
+  width?: number; // percentage width
+  height?: number; // percentage height
 }
 
 interface FloorPlan {
@@ -207,6 +209,8 @@ export default function MapaBannersScreen() {
       posterUrl: "",
       x: 45, // center x
       y: 45, // center y
+      width: 8, // default width
+      height: 12, // default height
     };
 
     const updatedFloors = floors.map((f) => {
@@ -363,6 +367,20 @@ export default function MapaBannersScreen() {
     );
   };
 
+  const updateElementSize = (id: string, width: number, height: number) => {
+    const updated = floors.map((f) => {
+      if (f.id === selectedFloorId) {
+        return {
+          ...f,
+          elements: f.elements.map((el) => (el.id === id ? { ...el, width, height } : el)),
+        };
+      }
+      return f;
+    });
+    setFloors(updated);
+    handleSaveChanges(updated);
+  };
+
   // Print PDF Layout Generator
   const handlePrint = async () => {
     try {
@@ -387,7 +405,7 @@ export default function MapaBannersScreen() {
                   return `
                   <tr>
                     <td><strong>#${index + 1}</strong></td>
-                    <td>${esc(el.name)}</td>
+                    <td>${esc(el.name)}<br/><span class="muted" style="font-size: 8px;">Tamaño: ${el.width || 8}% x ${el.height || 12}%</span></td>
                     <td class="type-badge ${el.type}">${typeLabel}</td>
                     <td>${esc(el.movieName) || '<span class="empty">Vacío / Sin asignar</span>'}</td>
                     <td>${posterImg}</td>
@@ -402,7 +420,7 @@ export default function MapaBannersScreen() {
             .map((el, index) => {
               const color = ELEMENT_TYPE_META[el.type]?.color || "#6b7280";
               return `
-              <div class="print-marker" style="left: ${el.x}%; top: ${el.y}%; background: ${color};">
+              <div class="print-marker" style="left: ${el.x}%; top: ${el.y}%; width: ${el.width || 8}%; height: ${el.height || 12}%; background: ${color};">
                 ${index + 1}
               </div>
             `;
@@ -547,9 +565,6 @@ export default function MapaBannersScreen() {
             }
             .print-marker {
               position: absolute;
-              width: 22px;
-              height: 22px;
-              border-radius: 50%;
               color: #fff;
               font-size: 10px;
               font-weight: bold;
@@ -557,8 +572,9 @@ export default function MapaBannersScreen() {
               align-items: center;
               justify-content: center;
               transform: translate(-50%, -50%);
-              border: 2px solid #fff;
-              box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+              border: 1.5px solid #fff;
+              box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+              border-radius: 4px;
             }
             .legend-row {
               display: flex;
@@ -819,8 +835,10 @@ export default function MapaBannersScreen() {
                   style={[
                     s.elementMarker,
                     {
-                      left: `${el.x}%`,
-                      top: `${el.y}%`,
+                      width: `${el.width || 8}%`,
+                      height: `${el.height || 12}%`,
+                      left: `${el.x - (el.width || 8) / 2}%`,
+                      top: `${el.y - (el.height || 12) / 2}%`,
                       borderColor: isSelected ? COLORS.primary : meta.color,
                       backgroundColor: isSelected ? COLORS.primarySoft : COLORS.card,
                     },
@@ -916,6 +934,59 @@ export default function MapaBannersScreen() {
                       </Pressable>
                     );
                   })}
+                </View>
+              </View>
+
+              {/* TAMAÑO / DIMENSIONES */}
+              <View style={s.sizeControlRow}>
+                <View style={s.sizeControlField}>
+                  <Text style={s.fieldLabel}>Ancho (Plano)</Text>
+                  <View style={s.stepper}>
+                    <Pressable
+                      style={s.stepperBtn}
+                      onPress={() => {
+                        const newWidth = Math.max(3, (selectedElement.width || 8) - 1);
+                        updateElementSize(selectedElement.id, newWidth, selectedElement.height || 12);
+                      }}
+                    >
+                      <Text style={s.stepperBtnText}>-</Text>
+                    </Pressable>
+                    <Text style={s.stepperValue}>{selectedElement.width || 8}%</Text>
+                    <Pressable
+                      style={s.stepperBtn}
+                      onPress={() => {
+                        const newWidth = Math.min(50, (selectedElement.width || 8) + 1);
+                        updateElementSize(selectedElement.id, newWidth, selectedElement.height || 12);
+                      }}
+                    >
+                      <Text style={s.stepperBtnText}>+</Text>
+                    </Pressable>
+                  </View>
+                </View>
+
+                <View style={s.sizeControlField}>
+                  <Text style={s.fieldLabel}>Alto (Plano)</Text>
+                  <View style={s.stepper}>
+                    <Pressable
+                      style={s.stepperBtn}
+                      onPress={() => {
+                        const newHeight = Math.max(3, (selectedElement.height || 12) - 1);
+                        updateElementSize(selectedElement.id, selectedElement.width || 8, newHeight);
+                      }}
+                    >
+                      <Text style={s.stepperBtnText}>-</Text>
+                    </Pressable>
+                    <Text style={s.stepperValue}>{selectedElement.height || 12}%</Text>
+                    <Pressable
+                      style={s.stepperBtn}
+                      onPress={() => {
+                        const newHeight = Math.min(50, (selectedElement.height || 12) + 1);
+                        updateElementSize(selectedElement.id, selectedElement.width || 8, newHeight);
+                      }}
+                    >
+                      <Text style={s.stepperBtnText}>+</Text>
+                    </Pressable>
+                  </View>
                 </View>
               </View>
 
@@ -1230,14 +1301,11 @@ const s = StyleSheet.create({
   },
   elementMarker: {
     position: "absolute",
-    width: 80,
-    height: 100,
     borderRadius: 8,
     borderWidth: 2,
     alignItems: "center",
     justifyContent: "center",
     padding: 6,
-    transform: [{ translateX: -40 }, { translateY: -50 }],
     backgroundColor: COLORS.card,
     ...THEME.shadow.soft,
     ...Platform.select({
@@ -1515,5 +1583,43 @@ const s = StyleSheet.create({
     color: COLORS.muted,
     textAlign: "center",
     lineHeight: 18,
+  },
+  sizeControlRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  sizeControlField: {
+    flex: 1,
+    gap: 6,
+  },
+  stepper: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.bg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 8,
+    height: 38,
+    overflow: "hidden",
+  },
+  stepperBtn: {
+    width: 32,
+    height: "100%",
+    backgroundColor: COLORS.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stepperBtnText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: COLORS.text,
+  },
+  stepperValue: {
+    flex: 1,
+    textAlign: "center",
+    fontSize: 12.5,
+    fontWeight: "800",
+    color: COLORS.text,
   },
 });
