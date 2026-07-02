@@ -864,7 +864,9 @@ export default function MapaBannersScreen() {
                   {hasPoster ? (
                     <Image source={{ uri: el.posterUrl }} style={s.elementPosterBg as any} resizeMode="cover" />
                   ) : (
-                    <MaterialCommunityIcons name={meta.icon} size={18} color={meta.color} />
+                    <Text style={s.elementMarkerCenterText} numberOfLines={4}>
+                      {el.movieName || el.name}
+                    </Text>
                   )}
                   <View style={[s.elementMarkerNumberBadge, { backgroundColor: meta.color }]}>
                     <Text style={s.elementMarkerNumberText}>{index + 1}</Text>
@@ -873,14 +875,6 @@ export default function MapaBannersScreen() {
                     <View style={s.lockBadge}>
                       <MaterialCommunityIcons name="lock" size={10} color="#fff" />
                     </View>
-                  )}
-                  <Text style={s.elementMarkerLabel} numberOfLines={1}>
-                    {el.name}
-                  </Text>
-                  {!!el.movieName && (
-                    <Text style={s.elementMarkerMovie} numberOfLines={1}>
-                      {el.movieName}
-                    </Text>
                   )}
                 </Pressable>
               );
@@ -1464,25 +1458,12 @@ const s = StyleSheet.create({
     fontWeight: "900",
     color: "#fff",
   },
-  elementMarkerLabel: {
-    fontSize: 10,
+  elementMarkerCenterText: {
+    fontSize: 9,
     fontWeight: "900",
     color: COLORS.text,
     textAlign: "center",
-    marginTop: 2,
-    backgroundColor: "rgba(255,255,255,0.85)",
-    paddingHorizontal: 3,
-    borderRadius: 3,
-  },
-  elementMarkerMovie: {
-    fontSize: 9,
-    fontWeight: "700",
-    color: COLORS.primary,
-    textAlign: "center",
-    marginTop: 2,
-    backgroundColor: "rgba(255,255,255,0.9)",
     paddingHorizontal: 2,
-    borderRadius: 2,
   },
   sidebar: {
     width: Platform.OS === "web" ? 300 : "100%",
@@ -1707,8 +1688,7 @@ const s = StyleSheet.create({
     lineHeight: 18,
   },
   sizeControlRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+    flexDirection: "column",
     gap: 12,
   },
   sizeControlField: {
