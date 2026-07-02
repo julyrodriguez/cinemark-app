@@ -46,10 +46,11 @@ import CierreMesScreen from "./screens/CierreMesScreen";
 import MantenimientosScreen from "./screens/MantenimientosScreen";
 import ProgramacionProyeccionScreen from "./screens/ProgramacionProyeccionScreen";
 import ControlSalasScreen from "./screens/ControlSalasScreen";
+import MapaBannersScreen from "./screens/MapaBannersScreen";
 
 type MainTab = "PROGRAMACIÓN" | "CALENDARIO" | "EVENTOS" | "PROYECCIÓN" | "SERVICIOS" | "COORDINADORES";
 type ProyeccionTab = "RMA" | "MANTENIMIENTOS" | "CREDITOS" | "DCP" | "TRAILERS_SEMANALES" | "CHEQUEO_COPIAS" | "CONTROL_SEMANAL" | "LAMPARAS" | "CIERRE_MES";
-type MarketingSubTab = "MKT" | "PROGRAMACION" | "CONTROL_SALAS";
+type MarketingSubTab = "MKT" | "PROGRAMACION" | "CONTROL_SALAS" | "MAPA_BANNERS";
 type CoordinadoresSubTab = "QUIMICOS" | "LENTES_3D" | "PROXIMAMENTE";
 
 const MAIN_TAB_META = {
@@ -77,6 +78,7 @@ const SUB_TABS = {
     { key: "PROGRAMACION", label: "Programaciones", icon: "clipboard-text-outline" },
     { key: "MKT", label: "Marketing", icon: "bullhorn-outline" },
     { key: "CONTROL_SALAS", label: "Control de Salas", icon: "sofa-single-outline" },
+    { key: "MAPA_BANNERS", label: "Banners y Marquesinas", icon: "map-marker-outline" },
   ],
   COORDINADORES: [
     { key: "QUIMICOS", label: "Químicos", icon: "flask-outline" },
@@ -805,6 +807,7 @@ export default function Home() {
             {marketingTab === "MKT" && <MarketingTab />}
             {marketingTab === "PROGRAMACION" && <ProgramacionTab />}
             {marketingTab === "CONTROL_SALAS" && <ControlSalasScreen />}
+            {marketingTab === "MAPA_BANNERS" && <MapaBannersScreen />}
           </View>
         </View>
       );
