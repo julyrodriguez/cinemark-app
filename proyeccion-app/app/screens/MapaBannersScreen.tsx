@@ -303,26 +303,23 @@ export default function MapaBannersScreen() {
       setSearchingPoster(true);
       setSearchResults([]);
       const currentYear = new Date().getFullYear();
-      const headers = {
-        Authorization: "Bearer eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJjNDJiMTg1MTEyMjMxMjQ0MGMyMGFhY2M3MjBkMDVjMCIsIm5iZiI6MTcwOTQwNTYzMi4zMjA5OTk5LCJzdWIiOiI2NWUzNzVjMGE2NzI1NDAxODVhOTdjMzIiLCJzY29wZXMiOlsiYXBpX3JlYWQiXSwidmVyc2lvbiI6MX0.CMV7YI5LiUxHBV7Ow_xSVIPB-SYY9LQ8X8uqGGDx6W4",
-        Accept: "application/json",
-      };
+      const apiKey = "c42b1851122312440c20aacc720d05c0";
 
       // Attempt 1: Search with current year
-      const url = `https://api.themoviedb.org/3/search/movie?query=${encodeURIComponent(
+      const url = `https://api.themoviedb.org/3/search/movie?api_key=${apiKey}&query=${encodeURIComponent(
         searchQuery
       )}&year=${currentYear}&language=es-AR`;
-      const res = await fetch(url, { headers });
+      const res = await fetch(url);
       const data = await res.json();
 
       let results: TmdbResult[] = data.results || [];
 
       // Attempt 2: If no results, search without year constraint
       if (results.length === 0) {
-        const urlFallback = `https://api.themoviedb.org/3/search/movie?query=${encodeURIComponent(
+        const urlFallback = `https://api.themoviedb.org/3/search/movie?api_key=${apiKey}&query=${encodeURIComponent(
           searchQuery
         )}&language=es-AR`;
-        const resFallback = await fetch(urlFallback, { headers });
+        const resFallback = await fetch(urlFallback);
         const dataFallback = await resFallback.json();
         results = dataFallback.results || [];
       }
