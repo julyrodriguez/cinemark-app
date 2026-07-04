@@ -1,0 +1,21 @@
+{
+  "short_name": "Cines",
+  "name": "Cines App",
+  "icons": [
+    {
+      "src": "logo192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "logo512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#0a0f1d",
+  "theme_color": "#0a0f1d",
+  "display": "standalone",
+  "orientation": "portrait"
+}

@@ -13,6 +13,24 @@ export default function Layout() {
     if (Platform.OS === "web") {
       document.title = "Cines";
 
+      // Vincular manifest.json de forma dinámica si no está presente
+      if (!document.getElementById("pwa-manifest")) {
+        const link = document.createElement("link");
+        link.id = "pwa-manifest";
+        link.rel = "manifest";
+        link.href = "/manifest.json";
+        document.head.appendChild(link);
+      }
+
+      // Registrar Service Worker
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("/sw.js")
+            .then((reg) => console.log("Service Worker registrado con éxito:", reg.scope))
+            .catch((err) => console.error("Error al registrar Service Worker:", err));
+        });
+      }
+
       // Inyectar estilo global para ocultar barras de scroll
       const style = document.createElement("style");
       style.textContent = `
