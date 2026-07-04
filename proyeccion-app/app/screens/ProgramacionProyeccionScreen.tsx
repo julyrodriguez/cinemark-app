@@ -150,6 +150,7 @@ function getCurrentTimeMins(): number {
 function getTheaterId(cineId: string): string {
   const mapping: Record<string, string> = {
     "abasto": "103",
+    "parquebrown": "2016",
   };
   return mapping[cineId.toLowerCase()] || "103"; // fallback to Abasto (103)
 }
