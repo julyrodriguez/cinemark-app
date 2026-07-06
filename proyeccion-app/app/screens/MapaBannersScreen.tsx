@@ -87,6 +87,7 @@ export default function MapaBannersScreen() {
   const [saving, setSaving] = useState(false);
   const [printing, setPrinting] = useState(false);
   const isMovingWithKeysRef = useRef(false);
+  const [snapToGrid, setSnapToGrid] = useState(false);
 
   // TMDB Poster Search state
   const [searchQuery, setSearchQuery] = useState("");
@@ -366,6 +367,12 @@ export default function MapaBannersScreen() {
 
     let x = (clientX / canvasLayout.width) * 100;
     let y = (clientY / canvasLayout.height) * 100;
+
+    if (snapToGrid) {
+      const snapStep = 2.5;
+      x = Math.round(x / snapStep) * snapStep;
+      y = Math.round(y / snapStep) * snapStep;
+    }
 
     x = Math.max(1, Math.min(99, x));
     y = Math.max(1, Math.min(99, y));
@@ -793,9 +800,24 @@ export default function MapaBannersScreen() {
 
         {/* DRAG AND DROP CANVAS */}
         <View style={s.canvasContainer}>
-          <Text style={s.canvasHelpText}>
-            Arrastrá los elementos en el mapa para posicionarlos en el plano de la planta.
-          </Text>
+          <View style={s.canvasHeader}>
+            <Text style={s.canvasHelpText}>
+              Arrastrá los elementos en el mapa para posicionarlos en el plano de la planta.
+            </Text>
+            <Pressable
+              style={[s.snapToggleBtn, snapToGrid && s.snapToggleBtnActive]}
+              onPress={() => setSnapToGrid(!snapToGrid)}
+            >
+              <MaterialCommunityIcons
+                name={snapToGrid ? "grid" : "grid-off"}
+                size={14}
+                color={snapToGrid ? "#fff" : COLORS.muted}
+              />
+              <Text style={[s.snapToggleText, snapToGrid && { color: "#fff" }]}>
+                Ajustar a Cuadrícula (2.5%)
+              </Text>
+            </Pressable>
+          </View>
 
           <View
             style={s.canvas}
@@ -1093,6 +1115,132 @@ export default function MapaBannersScreen() {
                       onPress={() => {
                         const newHeight = Math.min(100, (selectedElement.height || 12) + 5);
                         updateElementSize(selectedElement.id, selectedElement.width || 8, newHeight);
+                      }}
+                    >
+                      <Text style={s.stepperSmallBtnText}>+5</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              </View>
+
+              <View style={s.sizeControlRow}>
+                <View style={s.sizeControlField}>
+                  <Text style={s.fieldLabel}>Posición X (Centro)</Text>
+                  <View style={s.stepperRow}>
+                    <Pressable
+                      style={s.stepperSmallBtn}
+                      onPress={() => {
+                        const newX = Math.max(0, (selectedElement.x) - 5);
+                        updateElementPosition(selectedElement.id, newX, selectedElement.y);
+                        handleSaveChanges();
+                      }}
+                    >
+                      <Text style={s.stepperSmallBtnText}>-5</Text>
+                    </Pressable>
+                    <Pressable
+                      style={s.stepperSmallBtn}
+                      onPress={() => {
+                        const newX = Math.max(0, (selectedElement.x) - 1);
+                        updateElementPosition(selectedElement.id, newX, selectedElement.y);
+                        handleSaveChanges();
+                      }}
+                    >
+                      <Text style={s.stepperSmallBtnText}>-1</Text>
+                    </Pressable>
+                    
+                    <TextInput
+                      style={s.stepperInput}
+                      keyboardType="numeric"
+                      value={String(selectedElement.x)}
+                      onChangeText={(val) => {
+                        const parsed = parseFloat(val);
+                        if (!isNaN(parsed)) {
+                          const constrained = Math.max(0, Math.min(100, parsed));
+                          updateElementPosition(selectedElement.id, constrained, selectedElement.y);
+                        }
+                      }}
+                      onBlur={() => handleSaveChanges()}
+                    />
+                    <Text style={s.percentSymbol}>%</Text>
+
+                    <Pressable
+                      style={s.stepperSmallBtn}
+                      onPress={() => {
+                        const newX = Math.min(100, (selectedElement.x) + 1);
+                        updateElementPosition(selectedElement.id, newX, selectedElement.y);
+                        handleSaveChanges();
+                      }}
+                    >
+                      <Text style={s.stepperSmallBtnText}>+1</Text>
+                    </Pressable>
+                    <Pressable
+                      style={s.stepperSmallBtn}
+                      onPress={() => {
+                        const newX = Math.min(100, (selectedElement.x) + 5);
+                        updateElementPosition(selectedElement.id, newX, selectedElement.y);
+                        handleSaveChanges();
+                      }}
+                    >
+                      <Text style={s.stepperSmallBtnText}>+5</Text>
+                    </Pressable>
+                  </View>
+                </View>
+
+                <View style={s.sizeControlField}>
+                  <Text style={s.fieldLabel}>Posición Y (Centro)</Text>
+                  <View style={s.stepperRow}>
+                    <Pressable
+                      style={s.stepperSmallBtn}
+                      onPress={() => {
+                        const newY = Math.max(0, (selectedElement.y) - 5);
+                        updateElementPosition(selectedElement.id, selectedElement.x, newY);
+                        handleSaveChanges();
+                      }}
+                    >
+                      <Text style={s.stepperSmallBtnText}>-5</Text>
+                    </Pressable>
+                    <Pressable
+                      style={s.stepperSmallBtn}
+                      onPress={() => {
+                        const newY = Math.max(0, (selectedElement.y) - 1);
+                        updateElementPosition(selectedElement.id, selectedElement.x, newY);
+                        handleSaveChanges();
+                      }}
+                    >
+                      <Text style={s.stepperSmallBtnText}>-1</Text>
+                    </Pressable>
+                    
+                    <TextInput
+                      style={s.stepperInput}
+                      keyboardType="numeric"
+                      value={String(selectedElement.y)}
+                      onChangeText={(val) => {
+                        const parsed = parseFloat(val);
+                        if (!isNaN(parsed)) {
+                          const constrained = Math.max(0, Math.min(100, parsed));
+                          updateElementPosition(selectedElement.id, selectedElement.x, constrained);
+                        }
+                      }}
+                      onBlur={() => handleSaveChanges()}
+                    />
+                    <Text style={s.percentSymbol}>%</Text>
+
+                    <Pressable
+                      style={s.stepperSmallBtn}
+                      onPress={() => {
+                        const newY = Math.min(100, (selectedElement.y) + 1);
+                        updateElementPosition(selectedElement.id, selectedElement.x, newY);
+                        handleSaveChanges();
+                      }}
+                    >
+                      <Text style={s.stepperSmallBtnText}>+1</Text>
+                    </Pressable>
+                    <Pressable
+                      style={s.stepperSmallBtn}
+                      onPress={() => {
+                        const newY = Math.min(100, (selectedElement.y) + 5);
+                        updateElementPosition(selectedElement.id, selectedElement.x, newY);
+                        handleSaveChanges();
                       }}
                     >
                       <Text style={s.stepperSmallBtnText}>+5</Text>
@@ -1806,5 +1954,32 @@ const s = StyleSheet.create({
     fontSize: 12,
     fontWeight: "bold",
     textAlign: "center",
+  },
+  canvasHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  snapToggleBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: COLORS.bg,
+  },
+  snapToggleBtnActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  snapToggleText: {
+    fontSize: 11,
+    color: COLORS.muted,
+    fontWeight: "700",
   },
 });
