@@ -94,6 +94,11 @@ export default function MapaBannersScreen() {
   const panStartRef = useRef({ x: 0, y: 0 });
   const panOffsetRef = useRef({ x: 0, y: 0 });
 
+  const activeDragIdRef = useRef<string | null>(null);
+  const elementStartPosRef = useRef({ x: 0, y: 0 });
+  const touchStartRef = useRef({ x: 0, y: 0 });
+  const panStartOffsetRef = useRef({ x: 0, y: 0 });
+
   // TMDB Poster Search state
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<TmdbResult[]>([]);
@@ -429,6 +434,7 @@ export default function MapaBannersScreen() {
     }
     if (activeDragId) {
       setActiveDragId(null);
+      activeDragIdRef.current = null;
       handleSaveChanges();
     }
   };
@@ -438,6 +444,71 @@ export default function MapaBannersScreen() {
       setIsPanning(false);
     }
     if (activeDragId) {
+      setActiveDragId(null);
+      activeDragIdRef.current = null;
+      handleSaveChanges();
+    }
+  };
+
+  // Touch handlers for mobile devices (works on both Web and Native)
+  const handleTouchStart = (e: any) => {
+    const touch = e.nativeEvent.touches?.[0];
+    if (!touch) return;
+
+    touchStartRef.current = { x: touch.pageX, y: touch.pageY };
+
+    if (!activeDragIdRef.current) {
+      setIsPanning(true);
+      panStartOffsetRef.current = { ...panOffset };
+    } else {
+      const el = activeFloor?.elements.find((item) => item.id === activeDragIdRef.current);
+      if (el) {
+        elementStartPosRef.current = { x: el.x, y: el.y };
+      }
+    }
+  };
+
+  const handleTouchMove = (e: any) => {
+    const touch = e.nativeEvent.touches?.[0];
+    if (!touch || !canvasLayout) return;
+
+    const dx = touch.pageX - touchStartRef.current.x;
+    const dy = touch.pageY - touchStartRef.current.y;
+
+    if (activeDragIdRef.current) {
+      const el = activeFloor?.elements.find((item) => item.id === activeDragIdRef.current);
+      if (el && !el.locked) {
+        let deltaXPercent = (dx / canvasLayout.width) * 100;
+        let deltaYPercent = (dy / canvasLayout.height) * 100;
+
+        let newX = elementStartPosRef.current.x + deltaXPercent;
+        let newY = elementStartPosRef.current.y + deltaYPercent;
+
+        if (snapToGrid) {
+          const snapStep = 2.5;
+          newX = Math.round(newX / snapStep) * snapStep;
+          newY = Math.round(newY / snapStep) * snapStep;
+        }
+
+        newX = Math.max(1, Math.min(99, newX));
+        newY = Math.max(1, Math.min(99, newY));
+
+        updateElementPosition(activeDragIdRef.current, newX, newY);
+      }
+    } else if (isPanning) {
+      setPanOffset({
+        x: panStartOffsetRef.current.x + dx,
+        y: panStartOffsetRef.current.y + dy,
+      });
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (isPanning) {
+      setIsPanning(false);
+    }
+    if (activeDragIdRef.current) {
+      activeDragIdRef.current = null;
       setActiveDragId(null);
       handleSaveChanges();
     }
@@ -755,6 +826,8 @@ export default function MapaBannersScreen() {
     );
   }
 
+  const isDraggingOrPanning = isPanning || activeDragId !== null;
+
   const workspaceContent = (
     <>
       {/* ELEMENT GENERATOR PALETTE */}
@@ -764,22 +837,42 @@ export default function MapaBannersScreen() {
           width: "100%",
           borderRightWidth: 0,
           borderBottomWidth: 1,
-          padding: 12,
+          padding: 10,
+          gap: 8,
         }
       ]}>
         <Text style={s.paletteTitle}>Añadir Elemento</Text>
-        <View style={[s.paletteButtons, isMobile && { flexDirection: "row" }]}>
-          {Object.entries(ELEMENT_TYPE_META).map(([key, meta]) => (
-            <Pressable
-              key={key}
-              style={[s.paletteBtn, { borderLeftColor: meta.color }]}
-              onPress={() => handleAddElement(key as any)}
-            >
-              <MaterialCommunityIcons name={meta.icon} size={18} color={meta.color} />
-              <Text style={s.paletteBtnText}>{meta.label}</Text>
-            </Pressable>
-          ))}
-        </View>
+        {isMobile ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap: 8, paddingVertical: 4 }}
+          >
+            {Object.entries(ELEMENT_TYPE_META).map(([key, meta]) => (
+              <Pressable
+                key={key}
+                style={[s.paletteBtn, { borderLeftColor: meta.color, minWidth: 110 }]}
+                onPress={() => handleAddElement(key as any)}
+              >
+                <MaterialCommunityIcons name={meta.icon} size={18} color={meta.color} />
+                <Text style={s.paletteBtnText}>{meta.label}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        ) : (
+          <View style={s.paletteButtons}>
+            {Object.entries(ELEMENT_TYPE_META).map(([key, meta]) => (
+              <Pressable
+                key={key}
+                style={[s.paletteBtn, { borderLeftColor: meta.color }]}
+                onPress={() => handleAddElement(key as any)}
+              >
+                <MaterialCommunityIcons name={meta.icon} size={18} color={meta.color} />
+                <Text style={s.paletteBtnText}>{meta.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
       </View>
 
       {/* DRAG AND DROP CANVAS */}
@@ -845,6 +938,10 @@ export default function MapaBannersScreen() {
               const { width, height } = e.nativeEvent.layout;
               setCanvasLayout({ width, height });
             }}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+            onTouchCancel={handleTouchEnd}
             {...({
               onMouseDown: handleCanvasMouseDown,
               onMouseMove: handleMouseMove,
@@ -881,8 +978,13 @@ export default function MapaBannersScreen() {
                   onPress={() => setSelectedElementId(el.id)}
                   onPressIn={() => {
                     setSelectedElementId(el.id);
-                    if (Platform.OS === "web" && !el.locked) {
+                    if (!el.locked) {
                       setActiveDragId(el.id);
+                      activeDragIdRef.current = el.id;
+                      const startEl = activeFloor?.elements.find(item => item.id === el.id);
+                      if (startEl) {
+                        elementStartPosRef.current = { x: startEl.x, y: startEl.y };
+                      }
                     }
                   }}
                 >
@@ -1451,10 +1553,10 @@ export default function MapaBannersScreen() {
       </View>
 
       {isMobile && (
-        <View style={s.mobileWarningBanner}>
-          <MaterialCommunityIcons name="monitor-screenshot" size={16} color="#856404" />
-          <Text style={s.mobileWarningText}>
-            Se recomienda diseñar el mapa desde una computadora para mayor comodidad.
+        <View style={[s.mobileWarningBanner, { backgroundColor: COLORS.primarySoft, borderColor: COLORS.primary }]}>
+          <MaterialCommunityIcons name="gesture-swipe" size={16} color={COLORS.primary} />
+          <Text style={[s.mobileWarningText, { color: COLORS.primary }]}>
+            ¡Arrastrá el fondo con un dedo para navegar por el plano y los elementos para reposicionarlos!
           </Text>
         </View>
       )}
@@ -1463,6 +1565,7 @@ export default function MapaBannersScreen() {
         <ScrollView
           style={[s.mainWorkspace, { flexDirection: "column" }]}
           contentContainerStyle={{ paddingBottom: 40 }}
+          scrollEnabled={!isDraggingOrPanning}
         >
           {workspaceContent}
         </ScrollView>
