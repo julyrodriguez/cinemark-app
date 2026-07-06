@@ -99,6 +99,9 @@ export default function MapaBannersScreen() {
   const touchStartRef = useRef({ x: 0, y: 0 });
   const panStartOffsetRef = useRef({ x: 0, y: 0 });
 
+  const pinchStartDistanceRef = useRef<number | null>(null);
+  const pinchStartScaleRef = useRef<number>(100);
+
   // TMDB Poster Search state
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<TmdbResult[]>([]);
@@ -452,6 +455,21 @@ export default function MapaBannersScreen() {
 
   // Touch handlers for mobile devices (works on both Web and Native)
   const handleTouchStart = (e: any) => {
+    if (e.nativeEvent.touches && e.nativeEvent.touches.length === 2) {
+      const t1 = e.nativeEvent.touches[0];
+      const t2 = e.nativeEvent.touches[1];
+      const dx = t2.pageX - t1.pageX;
+      const dy = t2.pageY - t1.pageY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      pinchStartDistanceRef.current = dist;
+      pinchStartScaleRef.current = canvasWidthScale;
+
+      setIsPanning(false);
+      activeDragIdRef.current = null;
+      setActiveDragId(null);
+      return;
+    }
+
     const touch = e.nativeEvent.touches?.[0];
     if (!touch) return;
 
@@ -469,6 +487,23 @@ export default function MapaBannersScreen() {
   };
 
   const handleTouchMove = (e: any) => {
+    if (e.nativeEvent.touches && e.nativeEvent.touches.length === 2) {
+      if (pinchStartDistanceRef.current !== null && pinchStartDistanceRef.current > 0) {
+        const t1 = e.nativeEvent.touches[0];
+        const t2 = e.nativeEvent.touches[1];
+        const dx = t2.pageX - t1.pageX;
+        const dy = t2.pageY - t1.pageY;
+        const currentDist = Math.sqrt(dx * dx + dy * dy);
+
+        const ratio = currentDist / pinchStartDistanceRef.current;
+        let newScale = Math.round(pinchStartScaleRef.current * ratio);
+
+        newScale = Math.max(100, Math.min(300, newScale));
+        setCanvasWidthScale(newScale);
+      }
+      return;
+    }
+
     const touch = e.nativeEvent.touches?.[0];
     if (!touch || !canvasLayout) return;
 
@@ -504,6 +539,7 @@ export default function MapaBannersScreen() {
   };
 
   const handleTouchEnd = () => {
+    pinchStartDistanceRef.current = null;
     if (isPanning) {
       setIsPanning(false);
     }
