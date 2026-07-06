@@ -1383,15 +1383,22 @@ export default function MapaBannersScreen() {
                     },
                     hasPoster && s.elementMarkerWithPoster,
                   ]}
-                  onPress={() => handleSelectElement(el.id)}
+                  onPress={() => {
+                    if (multiSelectMode) {
+                      handleSelectElement(el.id);
+                    }
+                  }}
                   onPressIn={() => {
-                    handleSelectElement(el.id);
-                    if (!el.locked && !multiSelectMode) {
-                      setActiveDragId(el.id);
-                      activeDragIdRef.current = el.id;
-                      const startEl = activeFloor?.elements.find(item => item.id === el.id);
-                      if (startEl) {
-                        elementStartPosRef.current = { x: startEl.x, y: startEl.y };
+                    if (!multiSelectMode) {
+                      setSelectedElementId(el.id);
+                      setSelectedElementIds([el.id]);
+                      if (!el.locked) {
+                        setActiveDragId(el.id);
+                        activeDragIdRef.current = el.id;
+                        const startEl = activeFloor?.elements.find(item => item.id === el.id);
+                        if (startEl) {
+                          elementStartPosRef.current = { x: startEl.x, y: startEl.y };
+                        }
                       }
                     }
                   }}
