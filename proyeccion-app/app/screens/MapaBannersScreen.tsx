@@ -24,7 +24,7 @@ import { useAuthUser } from "../../lib/useAuthUser";
 interface BannerElement {
   id: string;
   name: string;
-  type: "marquesina" | "banner" | "columna" | "standee" | "otro";
+  type: "banner" | "poster" | "proximamente" | "standee" | "estructura" | "otro";
   movieName: string;
   posterUrl: string;
   x: number; // percentage (0 - 100)
@@ -47,10 +47,11 @@ interface MarketingMapsConfig {
 }
 
 const ELEMENT_TYPE_META = {
-  marquesina: { label: "Marquesina", icon: "window-maximize" as const, color: "#3b82f6" },
   banner: { label: "Banner", icon: "image-filter-frames" as const, color: "#10b981" },
-  columna: { label: "Columna", icon: "pillar" as const, color: "#f59e0b" },
+  poster: { label: "Poster", icon: "picture-in-picture-bottom-right" as const, color: "#3b82f6" },
+  proximamente: { label: "Proximamente", icon: "clock-outline" as const, color: "#ec4899" },
   standee: { label: "Standee", icon: "human-male-board" as const, color: "#8b5cf6" },
+  estructura: { label: "Estructura", icon: "pillar" as const, color: "#f59e0b" },
   otro: { label: "Otro", icon: "help-box" as const, color: "#6b7280" },
 };
 
@@ -97,10 +98,19 @@ export default function MapaBannersScreen() {
     const unsubscribe = onSnapshot(
       docRef,
       (snapshot) => {
-        if (snapshot.exists()) {
-          const data = snapshot.data() as MarketingMapsConfig;
-          if (data.floors && data.floors.length > 0) {
-            setFloors(data.floors);
+          if (snapshot.exists()) {
+            const data = snapshot.data() as MarketingMapsConfig;
+            if (data.floors && data.floors.length > 0) {
+              const sanitizedFloors = data.floors.map(floor => ({
+                ...floor,
+                elements: (floor.elements || []).map(el => {
+                  let type: any = el.type;
+                  if (type === "marquesina") type = "poster";
+                  if (type === "columna") type = "estructura";
+                  return { ...el, type };
+                })
+              }));
+              setFloors(sanitizedFloors);
             // Verify if selected floor still exists
             const exists = data.floors.some((f) => f.id === selectedFloorId);
             if (!exists) {
@@ -472,19 +482,23 @@ export default function MapaBannersScreen() {
           const canvasRepresentation = floor.elements
             .map((el, index) => {
               const color = ELEMENT_TYPE_META[el.type]?.color || "#6b7280";
+              const showZocalo = ["banner", "poster", "standee", "proximamente"].includes(el.type);
               const posterContent = el.posterUrl
                 ? `<img class="print-poster-img" src="${el.posterUrl}" alt="Poster" />`
-                : `<div class="print-marker-fallback" style="background-color: ${color};">
+                : `<div class="print-marker-fallback" style="background-color: ${color}; ${showZocalo ? 'padding-bottom: 12px;' : ''}">
                      <span class="fallback-text">${esc(el.movieName || el.name)}</span>
                    </div>`;
               const width = el.width || 8;
               const height = el.height || 12;
               const left = el.x - width / 2;
               const top = el.y - height / 2;
+              const zocaloHtml = showZocalo
+                ? `<div class="print-marker-zocalo" style="background-color: ${color};">${esc(ELEMENT_TYPE_META[el.type]?.label || el.type)}</div>`
+                : "";
               return `
               <div class="print-marker" style="left: ${left}%; top: ${top}%; width: ${width}%; height: ${height}%; border-color: ${color};">
                 ${posterContent}
-                <div class="print-marker-badge" style="background-color: ${color};">${index + 1}</div>
+                ${zocaloHtml}
               </div>
             `;
             })
@@ -589,7 +603,8 @@ export default function MapaBannersScreen() {
             .print-poster-img {
               width: 100%;
               height: 100%;
-              object-fit: cover;
+              object-fit: contain;
+              background-color: #ffffff;
             }
             .print-marker-fallback {
               width: 100%;
@@ -608,22 +623,22 @@ export default function MapaBannersScreen() {
               line-height: 1.2;
               word-break: break-word;
             }
-            .print-marker-badge {
+            .print-marker-zocalo {
               position: absolute;
-              top: 3px;
-              left: 3px;
-              width: 16px;
-              height: 16px;
-              border-radius: 8px;
+              bottom: 0;
+              left: 0;
+              width: 100%;
+              height: 12px;
               color: #ffffff;
-              font-size: 9px;
-              font-weight: 800;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              border: 1px solid #ffffff;
-              box-shadow: 0 1px 3px rgba(0,0,0,0.4);
-              z-index: 10;
+              font-size: 7px;
+              font-weight: bold;
+              text-align: center;
+              text-transform: uppercase;
+              line-height: 12px;
+              white-space: nowrap;
+              overflow: hidden;
+              text-overflow: ellipsis;
+              z-index: 5;
             }
           </style>
         </head>
@@ -779,9 +794,10 @@ export default function MapaBannersScreen() {
 
             {/* Elements markers */}
             {activeFloor?.elements.map((el, index) => {
-              const meta = ELEMENT_TYPE_META[el.type];
+              const meta = ELEMENT_TYPE_META[el.type] || ELEMENT_TYPE_META.otro;
               const isSelected = el.id === selectedElementId;
               const hasPoster = !!el.posterUrl;
+              const showZocalo = ["banner", "poster", "standee", "proximamente"].includes(el.type);
 
               return (
                 <Pressable
@@ -807,11 +823,18 @@ export default function MapaBannersScreen() {
                   }}
                 >
                   {hasPoster ? (
-                    <Image source={{ uri: el.posterUrl }} style={s.elementPosterBg as any} resizeMode="cover" />
+                    <Image source={{ uri: el.posterUrl }} style={s.elementPosterBg as any} resizeMode="contain" />
                   ) : (
-                    <Text style={s.elementMarkerCenterText} numberOfLines={4}>
+                    <Text style={[s.elementMarkerCenterText, showZocalo && { paddingBottom: 12 }]} numberOfLines={4}>
                       {el.movieName || el.name}
                     </Text>
+                  )}
+                  {showZocalo && (
+                    <View style={[s.elementZocalo, { backgroundColor: meta.color }]}>
+                      <Text style={s.elementZocaloText} numberOfLines={1}>
+                        {meta.label}
+                      </Text>
+                    </View>
                   )}
                   <View style={[s.elementMarkerNumberBadge, { backgroundColor: meta.color }]}>
                     <Text style={s.elementMarkerNumberText}>{index + 1}</Text>
@@ -1415,6 +1438,24 @@ const s = StyleSheet.create({
     color: COLORS.text,
     textAlign: "center",
     paddingHorizontal: 2,
+  },
+  elementZocalo: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 16,
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 10,
+    borderBottomLeftRadius: 5,
+    borderBottomRightRadius: 5,
+  },
+  elementZocaloText: {
+    color: "#fff",
+    fontSize: 7.5,
+    fontWeight: "bold",
+    textTransform: "uppercase",
   },
   sidebar: {
     width: Platform.OS === "web" ? 300 : "100%",
