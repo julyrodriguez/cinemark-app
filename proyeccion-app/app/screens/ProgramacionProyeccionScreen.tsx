@@ -1068,12 +1068,14 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
     const movieSales: Record<string, number> = {};
     const roomSales: Record<number, number> = {};
     const daySales: Record<string, number> = {};
+    const day3DSales: Record<string, number> = {};
     let maxOccupationSession: any = null;
     let maxOccupationSessionRate = -1;
 
-    // Initialize all days in daySales to 0 to ensure they all exist in chart even if 0 sales
+    // Initialize all days in daySales and day3DSales to 0 to ensure they all exist in chart even if 0 sales
     DAYS_OF_WEEK.forEach(day => {
       daySales[day.key] = 0;
+      day3DSales[day.key] = 0;
     });
 
     apiData.forEach((session) => {
@@ -1112,6 +1114,9 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
       const sessionDay = map[dayNum];
       if (sessionDay) {
         daySales[sessionDay] = (daySales[sessionDay] || 0) + sold;
+        if (is3D) {
+          day3DSales[sessionDay] = (day3DSales[sessionDay] || 0) + sold;
+        }
       }
 
       // Most full session
@@ -1213,6 +1218,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
       movieSales,
       roomSales,
       daySales,
+      day3DSales,
       mostViewedMovie,
       mostViewedMovieCount,
       leastViewedMovie,
@@ -1631,6 +1637,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
     const maxMovieSales = stats.mostViewedMovieCount > 0 ? stats.mostViewedMovieCount : 1;
     const maxDaySales = stats.bestDaySales > 0 ? stats.bestDaySales : 1;
     const maxRoomSales = stats.bestRoomSales > 0 ? stats.bestRoomSales : 1;
+    const maxDay3DSales = Math.max(...Object.values(stats.day3DSales || {}), 1);
 
     return (
       <View style={styles.statsPanelContainer}>
@@ -1699,16 +1706,6 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
             <Text style={styles.statsMiniCardTitle} numberOfLines={1}>{stats.weekly3DSold}</Text>
             <Text style={styles.statsMiniCardValue}>Total en la semana</Text>
           </View>
-
-          {/* Card 6: Lentes 3D del Día */}
-          <View style={[styles.statsMiniCard, isMobile && { width: "100%", minWidth: "100%" }]}>
-            <View style={styles.statsMiniCardHeader}>
-              <MaterialCommunityIcons name="sunglasses" size={16} color="#EC4899" />
-              <Text style={styles.statsMiniCardLabel}>Lentes 3D del Día</Text>
-            </View>
-            <Text style={styles.statsMiniCardTitle} numberOfLines={1}>{stats.daily3DSold}</Text>
-            <Text style={styles.statsMiniCardValue}>{selectedDay.charAt(0).toUpperCase() + selectedDay.slice(1)} (Hoy)</Text>
-          </View>
         </View>
 
         {/* Function Más Llena Highlight */}
@@ -1776,9 +1773,9 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
         </View>
 
         {/* Charts Container */}
-        <View style={[styles.chartsGrid, windowWidth < 990 && { flexDirection: "column" }]}>
+        <View style={[styles.chartsGrid, windowWidth < 1200 && { flexDirection: "column" }]}>
           {/* Chart 1: Ranking Peliculas */}
-          <View style={[styles.chartContainer, { flex: windowWidth < 990 ? undefined : 1 }, windowWidth < 990 && { width: "100%" }]}>
+          <View style={[styles.chartContainer, { flex: windowWidth < 1200 ? undefined : 1 }, windowWidth < 1200 && { width: "100%" }]}>
             <Text style={styles.chartTitle}>Top 5 Películas de la Semana (Tickets)</Text>
             <View style={styles.chartBody}>
               {sortedMovies.map(([movie, sales], index) => {
@@ -1801,7 +1798,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
           </View>
 
           {/* Chart 2: Ventas por Dia */}
-          <View style={[styles.chartContainer, { flex: windowWidth < 990 ? undefined : 1, marginLeft: windowWidth < 990 ? 0 : 16, marginTop: windowWidth < 990 ? 16 : 0 }, windowWidth < 990 && { width: "100%" }]}>
+          <View style={[styles.chartContainer, { flex: windowWidth < 1200 ? undefined : 1, marginLeft: windowWidth < 1200 ? 0 : 16, marginTop: windowWidth < 1200 ? 16 : 0 }, windowWidth < 1200 && { width: "100%" }]}>
             <Text style={styles.chartTitle}>Ventas por Día de la Semana (Tickets)</Text>
             <View style={styles.chartBody}>
               {DAYS_OF_WEEK.map((day) => {
@@ -1817,6 +1814,30 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                     </View>
                     <View style={styles.chartBarTrack}>
                       <View style={[styles.chartBarFill, { width: `${percentage}%`, backgroundColor: "#10B981" }]} />
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* Chart 4: Lentes 3D por Dia */}
+          <View style={[styles.chartContainer, { flex: windowWidth < 1200 ? undefined : 1, marginLeft: windowWidth < 1200 ? 0 : 16, marginTop: windowWidth < 1200 ? 16 : 0 }, windowWidth < 1200 && { width: "100%" }]}>
+            <Text style={styles.chartTitle}>Lentes 3D por Día de la Semana</Text>
+            <View style={styles.chartBody}>
+              {DAYS_OF_WEEK.map((day) => {
+                const sales = stats.day3DSales[day.key] || 0;
+                const percentage = maxDay3DSales > 0 ? (sales / maxDay3DSales) * 100 : 0;
+                return (
+                  <View key={day.key} style={styles.chartRow}>
+                    <View style={styles.chartRowInfo}>
+                      <Text style={styles.chartRowName} numberOfLines={1}>
+                        {day.label}
+                      </Text>
+                      <Text style={styles.chartRowValue}>{sales}</Text>
+                    </View>
+                    <View style={styles.chartBarTrack}>
+                      <View style={[styles.chartBarFill, { width: `${percentage}%`, backgroundColor: "#8B5CF6" }]} />
                     </View>
                   </View>
                 );
