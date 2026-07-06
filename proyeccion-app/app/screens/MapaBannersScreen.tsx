@@ -327,10 +327,14 @@ export default function MapaBannersScreen() {
   const assignPoster = (movieTitle: string, posterPath: string | null | undefined) => {
     if (!selectedElementId || !activeFloor) return;
 
-    const posterUrl = posterPath
+    const originalUrl = posterPath
       ? posterPath.startsWith("http")
         ? posterPath
         : `https://image.tmdb.org/t/p/w500${posterPath}`
+      : "";
+
+    const posterUrl = originalUrl
+      ? `https://apivacas.jariel.com.ar/api/cinemark/poster?url=${encodeURIComponent(originalUrl)}`
       : "";
 
     const updatedFloors = floors.map((f) => {
@@ -1174,9 +1178,11 @@ export default function MapaBannersScreen() {
                       {movie.poster_path ? (
                         <Image
                           source={{
-                            uri: movie.poster_path.startsWith("http")
-                              ? movie.poster_path
-                              : `https://image.tmdb.org/t/p/w92${movie.poster_path}`,
+                            uri: `https://apivacas.jariel.com.ar/api/cinemark/poster?url=${encodeURIComponent(
+                              movie.poster_path.startsWith("http")
+                                ? movie.poster_path
+                                : `https://image.tmdb.org/t/p/w92${movie.poster_path}`
+                            )}`,
                           }}
                           style={s.searchResultThumb as any}
                         />
