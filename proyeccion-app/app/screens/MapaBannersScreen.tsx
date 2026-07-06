@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -80,6 +80,7 @@ export default function MapaBannersScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [printing, setPrinting] = useState(false);
+  const isMovingWithKeysRef = useRef(false);
 
   // TMDB Poster Search state
   const [searchQuery, setSearchQuery] = useState("");
@@ -146,6 +147,74 @@ export default function MapaBannersScreen() {
       setSaving(false);
     }
   };
+
+  // Listen to arrow keys to move selected element on Web
+  useEffect(() => {
+    if (Platform.OS !== "web" || !selectedElementId || !activeFloor) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Avoid moving if typing inside input fields
+      const target = e.target as HTMLElement;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
+        return;
+      }
+
+      let dx = 0;
+      let dy = 0;
+      const step = 0.5; // step size in percentage
+
+      if (e.key === "ArrowUp") {
+        dy = -step;
+        e.preventDefault();
+      } else if (e.key === "ArrowDown") {
+        dy = step;
+        e.preventDefault();
+      } else if (e.key === "ArrowLeft") {
+        dx = -step;
+        e.preventDefault();
+      } else if (e.key === "ArrowRight") {
+        dx = step;
+        e.preventDefault();
+      }
+
+      if (dx !== 0 || dy !== 0) {
+        const el = activeFloor.elements.find(item => item.id === selectedElementId);
+        if (el && !el.locked) {
+          isMovingWithKeysRef.current = true;
+          const newX = Math.max(0, Math.min(100, el.x + dx));
+          const newY = Math.max(0, Math.min(100, el.y + dy));
+
+          setFloors((prevFloors) =>
+            prevFloors.map((f) => {
+              if (f.id === selectedFloorId) {
+                return {
+                  ...f,
+                  elements: f.elements.map((item) =>
+                    item.id === selectedElementId ? { ...item, x: newX, y: newY } : item
+                  ),
+                };
+              }
+              return f;
+            })
+          );
+        }
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (isMovingWithKeysRef.current && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+        isMovingWithKeysRef.current = false;
+        handleSaveChanges();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
+  }, [selectedElementId, activeFloor, selectedFloorId, floors, handleSaveChanges]);
 
   // Add Floor
   const handleAddFloor = () => {
@@ -399,34 +468,23 @@ export default function MapaBannersScreen() {
 
       const floorsHtml = floors
         .map((floor) => {
-          const elementsTable = floor.elements.length
-            ? floor.elements
-                .map((el, index) => {
-                  const typeLabel = ELEMENT_TYPE_META[el.type]?.label || el.type;
-                  const posterImg = el.posterUrl
-                    ? `<img class="print-poster" src="${el.posterUrl}" alt="Poster" />`
-                    : `<div class="print-no-poster">Sin Póster</div>`;
-
-                  return `
-                  <tr>
-                    <td><strong>#${index + 1}</strong></td>
-                    <td>${esc(el.name)}<br/><span class="muted" style="font-size: 8px;">Tamaño: ${el.width || 8}% x ${el.height || 12}%</span></td>
-                    <td class="type-badge ${el.type}">${typeLabel}</td>
-                    <td>${esc(el.movieName) || '<span class="empty">Vacío / Sin asignar</span>'}</td>
-                    <td>${posterImg}</td>
-                  </tr>
-                `;
-                })
-                .join("")
-            : `<tr><td colspan="5" class="empty-table">No hay elementos configurados en este piso.</td></tr>`;
-
           // Generate marker badges on canvas representation
           const canvasRepresentation = floor.elements
             .map((el, index) => {
               const color = ELEMENT_TYPE_META[el.type]?.color || "#6b7280";
+              const posterContent = el.posterUrl
+                ? `<img class="print-poster-img" src="${el.posterUrl}" alt="Poster" />`
+                : `<div class="print-marker-fallback" style="background-color: ${color};">
+                     <span class="fallback-text">${esc(el.movieName || el.name)}</span>
+                   </div>`;
+              const width = el.width || 8;
+              const height = el.height || 12;
+              const left = el.x - width / 2;
+              const top = el.y - height / 2;
               return `
-              <div class="print-marker" style="left: ${el.x}%; top: ${el.y}%; width: ${el.width || 8}%; height: ${el.height || 12}%; background: ${color};">
-                ${index + 1}
+              <div class="print-marker" style="left: ${left}%; top: ${top}%; width: ${width}%; height: ${height}%; border-color: ${color};">
+                ${posterContent}
+                <div class="print-marker-badge" style="background-color: ${color};">${index + 1}</div>
               </div>
             `;
             })
@@ -435,46 +493,10 @@ export default function MapaBannersScreen() {
           return `
             <div class="floor-section">
               <h2>${esc(floor.name)}</h2>
-              
-              <div class="print-row">
-                <!-- Visual Map Left -->
-                <div class="print-canvas-col">
-                  <div class="print-canvas">
-                    <div class="canvas-grid-line h"></div>
-                    <div class="canvas-grid-line v"></div>
-                    ${canvasRepresentation}
-                  </div>
-                  <div class="legend-row">
-                    ${Object.entries(ELEMENT_TYPE_META)
-                      .map(
-                        ([key, meta]) => `
-                      <span class="legend-item">
-                        <span class="legend-color" style="background: ${meta.color};"></span>
-                        ${meta.label}
-                      </span>
-                    `
-                      )
-                      .join("")}
-                  </div>
-                </div>
-
-                <!-- Table Right -->
-                <div class="print-table-col">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th style="width: 40px;">No.</th>
-                        <th>Elemento</th>
-                        <th style="width: 100px;">Tipo</th>
-                        <th>Película / Contenido</th>
-                        <th style="width: 70px;">Póster</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      ${elementsTable}
-                    </tbody>
-                  </table>
-                </div>
+              <div class="print-canvas">
+                <div class="canvas-grid-line h"></div>
+                <div class="canvas-grid-line v"></div>
+                ${canvasRepresentation}
               </div>
             </div>
           `;
@@ -486,7 +508,7 @@ export default function MapaBannersScreen() {
         <html>
         <head>
           <meta charset="utf-8" />
-          <title>Reporte de Banners y Marquesinas</title>
+          <title>Plano de Banners y Marquesinas</title>
           <style>
             @page {
               size: A4 landscape;
@@ -497,60 +519,43 @@ export default function MapaBannersScreen() {
               color: #1e293b;
               margin: 0;
               padding: 0;
-              font-size: 11px;
               background: #fff;
-            }
-            header {
-              border-bottom: 2px solid #890404;
-              padding-bottom: 10px;
-              margin-bottom: 20px;
               display: flex;
-              justify-content: space-between;
-              align-items: flex-end;
-            }
-            header h1 {
-              margin: 0;
-              font-size: 22px;
-              color: #890404;
-            }
-            header .meta {
-              text-align: right;
-              font-size: 10px;
-              color: #64748b;
+              flex-direction: column;
+              align-items: center;
             }
             .floor-section {
               page-break-after: always;
-              margin-bottom: 30px;
+              width: 100%;
+              max-width: 1000px;
+              margin-bottom: 40px;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
             }
             .floor-section:last-child {
               page-break-after: avoid;
+              margin-bottom: 0;
             }
             .floor-section h2 {
-              font-size: 16px;
-              margin-top: 0;
-              margin-bottom: 12px;
-              border-bottom: 1px solid #e2e8f0;
-              padding-bottom: 6px;
+              font-size: 20px;
+              margin-top: 10px;
+              margin-bottom: 15px;
               color: #0f172a;
-            }
-            .print-row {
-              display: flex;
-              gap: 20px;
-            }
-            .print-canvas-col {
-              flex: 0 0 45%;
-            }
-            .print-table-col {
-              flex: 1;
+              text-align: center;
+              font-weight: 700;
             }
             .print-canvas {
               width: 100%;
-              height: 320px;
-              background: #f8fafc;
-              border: 1px dashed #cbd5e1;
+              aspect-ratio: 16/9;
+              background-color: #f8fafc;
+              background-image: radial-gradient(#cbd5e1 1.2px, #f8fafc 1.2px);
+              background-size: 20px 20px;
+              border: 2px solid #94a3b8;
               border-radius: 8px;
               position: relative;
               overflow: hidden;
+              box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
             }
             .canvas-grid-line {
               position: absolute;
@@ -559,126 +564,70 @@ export default function MapaBannersScreen() {
             .canvas-grid-line.h {
               width: 100%;
               height: 0;
-              border-top: 1px dashed #64748b;
+              border-top: 1.5px dashed #64748b;
               top: 50%;
             }
             .canvas-grid-line.v {
               width: 0;
               height: 100%;
-              border-left: 1px dashed #64748b;
+              border-left: 1.5px dashed #64748b;
               left: 50%;
             }
             .print-marker {
               position: absolute;
-              color: #fff;
-              font-size: 10px;
-              font-weight: bold;
+              box-sizing: border-box;
+              border-width: 2.5px;
+              border-style: solid;
+              border-radius: 6px;
+              overflow: hidden;
+              background-color: #ffffff;
+              box-shadow: 0 2px 4px rgba(0,0,0,0.12);
               display: flex;
               align-items: center;
               justify-content: center;
-              transform: translate(-50%, -50%);
-              border: 1.5px solid #fff;
-              box-shadow: 0 1px 3px rgba(0,0,0,0.15);
-              border-radius: 4px;
             }
-            .legend-row {
-              display: flex;
-              flex-wrap: wrap;
-              gap: 12px;
-              margin-top: 10px;
-              font-size: 9px;
-              color: #64748b;
-            }
-            .legend-item {
-              display: flex;
-              align-items: center;
-              gap: 4px;
-            }
-            .legend-color {
-              width: 10px;
-              height: 10px;
-              border-radius: 2px;
-              display: inline-block;
-            }
-            table {
+            .print-poster-img {
               width: 100%;
-              border-collapse: collapse;
-              margin-bottom: 20px;
+              height: 100%;
+              object-fit: cover;
             }
-            th, td {
-              border: 1px solid #e2e8f0;
-              padding: 6px 8px;
-              text-align: left;
-              vertical-align: middle;
-            }
-            th {
-              background: #f1f5f9;
-              font-weight: 800;
-              font-size: 10px;
-              text-transform: uppercase;
-              color: #475569;
-            }
-            tr:nth-child(even) {
-              background: #f8fafc;
-            }
-            .type-badge {
-              font-size: 9px;
-              font-weight: 700;
-              text-transform: uppercase;
-              padding: 2px 6px;
-              border-radius: 4px;
-              display: inline-block;
-              color: #fff;
-            }
-            .type-badge.marquesina { background: #3b82f6; }
-            .type-badge.banner { background: #10b981; }
-            .type-badge.columna { background: #f59e0b; }
-            .type-badge.standee { background: #8b5cf6; }
-            .type-badge.otro { background: #6b7280; }
-            .print-poster {
-              width: 45px;
-              height: auto;
-              border-radius: 4px;
-              box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-              display: block;
-            }
-            .print-no-poster {
-              width: 45px;
-              height: 45px;
-              background: #f1f5f9;
-              border-radius: 4px;
-              border: 1px dashed #cbd5e1;
-              color: #94a3b8;
-              font-size: 7.5px;
-              text-align: center;
+            .print-marker-fallback {
+              width: 100%;
+              height: 100%;
               display: flex;
               align-items: center;
               justify-content: center;
+              padding: 4px;
+              box-sizing: border-box;
             }
-            .empty {
-              color: #94a3b8;
-              font-style: italic;
-            }
-            .empty-table {
+            .fallback-text {
+              color: #ffffff;
+              font-size: 9px;
+              font-weight: bold;
               text-align: center;
-              color: #94a3b8;
-              padding: 20px;
-              font-style: italic;
+              line-height: 1.2;
+              word-break: break-word;
+            }
+            .print-marker-badge {
+              position: absolute;
+              top: 3px;
+              left: 3px;
+              width: 16px;
+              height: 16px;
+              border-radius: 8px;
+              color: #ffffff;
+              font-size: 9px;
+              font-weight: 800;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              border: 1px solid #ffffff;
+              box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+              z-index: 10;
             }
           </style>
         </head>
         <body>
-          <header>
-            <div>
-              <h1>Plano de Banners y Marquesinas</h1>
-              <div style="font-weight: 600; margin-top: 3px;">Cinemark Abasto</div>
-            </div>
-            <div class="meta">
-              Reporte generado el: ${new Date().toLocaleDateString("es-AR")} ${new Date().toLocaleTimeString("es-AR")}<br />
-              Creado por: ${userEmail || "Cine Abasto User"}
-            </div>
-          </header>
-          
           ${floorsHtml}
         </body>
         </html>
