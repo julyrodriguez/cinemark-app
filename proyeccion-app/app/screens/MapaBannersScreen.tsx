@@ -354,17 +354,6 @@ export default function MapaBannersScreen() {
         `;
       }
 
-      svgElements += `
-        <circle cx="${x}" cy="${y}" r="10" fill="${color}" stroke="#ffffff" stroke-width="1.5" />
-        <text x="${x}" y="${y}" font-family="Helvetica, Arial, sans-serif" font-size="9" font-weight="bold" fill="#ffffff" text-anchor="middle" dominant-baseline="central">${index + 1}</text>
-      `;
-
-      if (el.locked) {
-        svgElements += `
-          <circle cx="${x + width}" cy="${y}" r="10" fill="#ef4444" stroke="#ffffff" stroke-width="1.5" />
-          <text x="${x + width}" y="${y}" font-family="Helvetica, Arial, sans-serif" font-size="8" font-weight="bold" fill="#ffffff" text-anchor="middle" dominant-baseline="central">L</text>
-        `;
-      }
     });
 
     const svgXml = `
