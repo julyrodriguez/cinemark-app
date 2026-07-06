@@ -548,9 +548,9 @@ export default function Home() {
   const contentAreaStyle = [
     styles.content,
     {
-      paddingHorizontal: mainTab === "PROGRAMACIÓN" ? 0 : (isMobile ? 12 : isTablet ? 16 : pagePadding),
+      paddingHorizontal: mainTab === "PROGRAMACIÓN" ? (isMobile ? 10 : 16) : (isMobile ? 12 : isTablet ? 16 : pagePadding),
       paddingTop: mainTab === "PROGRAMACIÓN" ? 0 : (isMobile ? 12 : THEME.spacing.lg),
-      paddingBottom: mainTab === "PROGRAMACIÓN" ? 0 : ((isMobile ? 12 : pagePadding) + 8),
+      paddingBottom: mainTab === "PROGRAMACIÓN" ? 16 : ((isMobile ? 12 : pagePadding) + 8),
     },
   ];
 
@@ -892,7 +892,7 @@ export default function Home() {
           <View
             style={[
               styles.contentInner,
-              isWeb && { maxWidth: mainTab === "PROGRAMACIÓN" ? "100%" : contentMaxWidth },
+              isWeb && { maxWidth: mainTab === "PROGRAMACIÓN" ? "98%" : contentMaxWidth },
             ]}
           >
             <View style={contentAreaStyle}>{renderContent()}</View>
