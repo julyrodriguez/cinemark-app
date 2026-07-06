@@ -385,6 +385,27 @@ export default function MapaBannersScreen() {
       }
     };
 
+    const wrapTextIntoLines = (text: string, maxCharsPerLine: number): string[] => {
+      const words = text.split(" ");
+      const lines: string[] = [];
+      let currentLine = "";
+
+      words.forEach((word) => {
+        if (word.length > maxCharsPerLine && !currentLine) {
+          lines.push(word);
+          return;
+        }
+        if ((currentLine + " " + word).trim().length <= maxCharsPerLine) {
+          currentLine = (currentLine + " " + word).trim();
+        } else {
+          if (currentLine) lines.push(currentLine);
+          currentLine = word;
+        }
+      });
+      if (currentLine) lines.push(currentLine);
+      return lines;
+    };
+
     // Pre-fetch all images concurrently and convert to Base64 to bypass browser security sandbox inside SVGs
     const base64Posters: Record<string, string> = {};
     await Promise.all(
@@ -426,9 +447,23 @@ export default function MapaBannersScreen() {
         `;
       } else {
         const nameText = el.movieName || el.name || "";
+        const maxChars = Math.max(8, Math.floor((width - 12) / 6));
+        const lines = wrapTextIntoLines(nameText, maxChars);
+        const fontSize = Math.min(10, Math.max(7, Math.floor(width / 8)));
+        const lineHeight = fontSize + 2;
+        const totalHeight = lines.length * lineHeight;
+        const startY = y + (height - (showZocalo ? 17 : 6)) / 2 + 3 - (totalHeight / 2) + (fontSize / 2);
+
+        let tspanElements = "";
+        lines.forEach((line, idx) => {
+          tspanElements += `
+            <tspan x="${x + width / 2}" dy="${idx === 0 ? 0 : lineHeight}">${esc(line)}</tspan>
+          `;
+        });
+
         svgElements += `
           <rect x="${x + 3}" y="${y + 3}" width="${width - 6}" height="${height - (showZocalo ? 17 : 6)}" rx="5" ry="5" fill="${color}" opacity="0.15" />
-          <text x="${x + width / 2}" y="${y + height / 2 - (showZocalo ? 4 : 0)}" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" fill="#1e293b" text-anchor="middle" dominant-baseline="middle">${esc(nameText)}</text>
+          <text x="${x + width / 2}" y="${startY}" font-family="Helvetica, Arial, sans-serif" font-size="${fontSize}" font-weight="bold" fill="#1e293b" text-anchor="middle" dominant-baseline="central">${tspanElements}</text>
         `;
       }
 
