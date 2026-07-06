@@ -271,6 +271,21 @@ export default function MapaBannersScreen() {
     handleSaveChanges(updated);
   };
 
+  const handleLockAllElements = (lock: boolean) => {
+    if (!activeFloor) return;
+    const updatedFloors = floors.map((f) => {
+      if (f.id === selectedFloorId) {
+        return {
+          ...f,
+          elements: f.elements.map((el) => ({ ...el, locked: lock })),
+        };
+      }
+      return f;
+    });
+    setFloors(updatedFloors);
+    handleSaveChanges(updatedFloors);
+  };
+
   const handleExportPNG = async () => {
     if (!activeFloor) return;
 
@@ -1199,6 +1214,22 @@ export default function MapaBannersScreen() {
                 }}
               />
             </View>
+
+            {/* Lock/Unlock All Banners */}
+            <Pressable
+              style={s.lockAllBtn}
+              onPress={() => handleLockAllElements(true)}
+            >
+              <MaterialCommunityIcons name="lock" size={14} color={COLORS.muted} />
+              <Text style={s.lockAllText}>Fijar Todos</Text>
+            </Pressable>
+            <Pressable
+              style={s.lockAllBtn}
+              onPress={() => handleLockAllElements(false)}
+            >
+              <MaterialCommunityIcons name="lock-open-outline" size={14} color={COLORS.muted} />
+              <Text style={s.lockAllText}>Soltar Todos</Text>
+            </Pressable>
           </View>
         </View>
 
@@ -2552,5 +2583,21 @@ const s = StyleSheet.create({
     borderColor: COLORS.border,
     borderRadius: 4,
     padding: 0,
+  },
+  lockAllBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    height: 28,
+    backgroundColor: COLORS.bg,
+  },
+  lockAllText: {
+    fontSize: 11,
+    color: COLORS.muted,
+    fontWeight: "700",
   },
 });
