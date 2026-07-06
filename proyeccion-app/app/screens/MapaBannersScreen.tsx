@@ -316,11 +316,7 @@ export default function MapaBannersScreen() {
     // Construct SVG representation
     let svgElements = "";
 
-    // Center guides
-    svgElements += `
-      <line x1="0" y1="${floorHeight / 2}" x2="${floorWidth}" y2="${floorHeight / 2}" stroke="#cbd5e1" stroke-dasharray="5,5" stroke-width="1.5" opacity="0.6" />
-      <line x1="${floorWidth / 2}" y1="0" x2="${floorWidth / 2}" y2="${floorHeight}" stroke="#cbd5e1" stroke-dasharray="5,5" stroke-width="1.5" opacity="0.6" />
-    `;
+    // Center guides omitted to show only elements on a solid white background
 
     // Markers
     activeFloor.elements.forEach((el, index) => {
@@ -376,13 +372,7 @@ export default function MapaBannersScreen() {
         <style>
           text { user-select: none; }
         </style>
-        <rect width="${floorWidth}" height="${floorHeight}" fill="#f8fafc" />
-        <defs>
-          <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
-            <circle cx="2" cy="2" r="1.2" fill="#cbd5e1" />
-          </pattern>
-        </defs>
-        <rect width="${floorWidth}" height="${floorHeight}" fill="url(#grid)" />
+        <rect width="${floorWidth}" height="${floorHeight}" fill="#ffffff" />
         ${svgElements}
       </svg>
     `;
