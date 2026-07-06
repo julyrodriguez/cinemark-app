@@ -1644,7 +1644,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
         <View style={[styles.statsCardsRow, isMobile && { flexDirection: "column" }]}>
           {/* Card 1: Más Vista */}
           {stats.mostViewedMovie ? (
-            <View style={styles.statsMiniCard}>
+            <View style={[styles.statsMiniCard, isMobile && { width: "100%", minWidth: "100%" }]}>
               <View style={styles.statsMiniCardHeader}>
                 <MaterialCommunityIcons name="crown" size={16} color="#EAB308" />
                 <Text style={styles.statsMiniCardLabel}>Película Más Vista</Text>
@@ -1656,7 +1656,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
           {/* Card 2: Menos Vista */}
           {stats.leastViewedMovie ? (
-            <View style={styles.statsMiniCard}>
+            <View style={[styles.statsMiniCard, isMobile && { width: "100%", minWidth: "100%" }]}>
               <View style={styles.statsMiniCardHeader}>
                 <MaterialCommunityIcons name="trending-down" size={16} color="#EF4444" />
                 <Text style={styles.statsMiniCardLabel}>Película Menos Vista</Text>
@@ -1668,7 +1668,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
           {/* Card 3: Día Estrella */}
           {stats.bestDayLabel ? (
-            <View style={styles.statsMiniCard}>
+            <View style={[styles.statsMiniCard, isMobile && { width: "100%", minWidth: "100%" }]}>
               <View style={styles.statsMiniCardHeader}>
                 <MaterialCommunityIcons name="calendar-star" size={16} color="#10B981" />
                 <Text style={styles.statsMiniCardLabel}>Día de Mayor Venta</Text>
@@ -1680,7 +1680,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
           {/* Card 4: Sala Estrella */}
           {stats.bestRoom !== -1 ? (
-            <View style={styles.statsMiniCard}>
+            <View style={[styles.statsMiniCard, isMobile && { width: "100%", minWidth: "100%" }]}>
               <View style={styles.statsMiniCardHeader}>
                 <MaterialCommunityIcons name="theater" size={16} color="#3B82F6" />
                 <Text style={styles.statsMiniCardLabel}>Sala con Más Ventas</Text>
@@ -1758,7 +1758,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
         {/* Charts Container */}
         <View style={[styles.chartsGrid, windowWidth < 990 && { flexDirection: "column" }]}>
           {/* Chart 1: Ranking Peliculas */}
-          <View style={[styles.chartContainer, { flex: 1 }]}>
+          <View style={[styles.chartContainer, { flex: windowWidth < 990 ? 0 : 1 }, windowWidth < 990 && { width: "100%" }]}>
             <Text style={styles.chartTitle}>Top 5 Películas de la Semana (Tickets)</Text>
             <View style={styles.chartBody}>
               {sortedMovies.map(([movie, sales], index) => {
@@ -1781,7 +1781,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
           </View>
 
           {/* Chart 2: Ventas por Dia */}
-          <View style={[styles.chartContainer, { flex: 1, marginLeft: windowWidth < 990 ? 0 : 16, marginTop: windowWidth < 990 ? 16 : 0 }]}>
+          <View style={[styles.chartContainer, { flex: windowWidth < 990 ? 0 : 1, marginLeft: windowWidth < 990 ? 0 : 16, marginTop: windowWidth < 990 ? 16 : 0 }, windowWidth < 990 && { width: "100%" }]}>
             <Text style={styles.chartTitle}>Ventas por Día de la Semana (Tickets)</Text>
             <View style={styles.chartBody}>
               {DAYS_OF_WEEK.map((day) => {
@@ -3289,6 +3289,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     paddingHorizontal: 16,
     marginBottom: 16,
+    width: "100%",
   },
   chartContainer: {
     backgroundColor: COLORS.card,
