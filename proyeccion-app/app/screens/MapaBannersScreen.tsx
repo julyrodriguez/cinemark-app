@@ -755,6 +755,639 @@ export default function MapaBannersScreen() {
     );
   }
 
+  const workspaceContent = (
+    <>
+      {/* ELEMENT GENERATOR PALETTE */}
+      <View style={[
+        s.paletteCard,
+        isMobile && {
+          width: "100%",
+          borderRightWidth: 0,
+          borderBottomWidth: 1,
+          padding: 12,
+        }
+      ]}>
+        <Text style={s.paletteTitle}>Añadir Elemento</Text>
+        <View style={[s.paletteButtons, isMobile && { flexDirection: "row" }]}>
+          {Object.entries(ELEMENT_TYPE_META).map(([key, meta]) => (
+            <Pressable
+              key={key}
+              style={[s.paletteBtn, { borderLeftColor: meta.color }]}
+              onPress={() => handleAddElement(key as any)}
+            >
+              <MaterialCommunityIcons name={meta.icon} size={18} color={meta.color} />
+              <Text style={s.paletteBtnText}>{meta.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+
+      {/* DRAG AND DROP CANVAS */}
+      <View style={s.canvasContainer}>
+        <View style={s.canvasHeader}>
+          <Text style={s.canvasHelpText}>
+            Arrastrá los elementos para posicionarlos. Mové el fondo del plano para desplazarte.
+          </Text>
+          
+          <View style={s.canvasControlsRow}>
+            {/* Zoom width controller */}
+            <View style={s.zoomSliderContainer}>
+              <Text style={s.zoomLabel}>Ancho: {canvasWidthScale}%</Text>
+              <Pressable
+                style={s.zoomBtn}
+                onPress={() => {
+                  setCanvasWidthScale(prev => Math.max(100, prev - 25));
+                  if (canvasWidthScale <= 125) {
+                    setPanOffset({ x: 0, y: 0 });
+                  }
+                }}
+              >
+                <Text style={s.zoomBtnText}>-</Text>
+              </Pressable>
+              <Pressable
+                style={s.zoomBtn}
+                onPress={() => setCanvasWidthScale(prev => Math.min(300, prev + 25))}
+              >
+                <Text style={s.zoomBtnText}>+</Text>
+              </Pressable>
+            </View>
+
+            <Pressable
+              style={[s.snapToggleBtn, snapToGrid && s.snapToggleBtnActive]}
+              onPress={() => setSnapToGrid(!snapToGrid)}
+            >
+              <MaterialCommunityIcons
+                name={snapToGrid ? "grid" : "grid-off"}
+                size={14}
+                color={snapToGrid ? "#fff" : COLORS.muted}
+              />
+              <Text style={[s.snapToggleText, snapToGrid && { color: "#fff" }]}>
+                Cuadrícula
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+
+        <View style={s.canvasViewport}>
+          <View
+            style={[
+              s.canvas,
+              {
+                width: `${canvasWidthScale}%`,
+                left: panOffset.x,
+                top: panOffset.y,
+                ...(Platform.OS === "web" && {
+                  cursor: isPanning ? "grabbing" : (activeDragId ? "move" : "grab"),
+                }),
+              } as any
+            ]}
+            onLayout={(e) => {
+              const { width, height } = e.nativeEvent.layout;
+              setCanvasLayout({ width, height });
+            }}
+            {...({
+              onMouseDown: handleCanvasMouseDown,
+              onMouseMove: handleMouseMove,
+              onMouseUp: handleMouseUp,
+              onMouseLeave: handleMouseLeave,
+            } as any)}
+          >
+            {/* Center guides */}
+            <View style={s.guideLineH} />
+            <View style={s.guideLineV} />
+
+            {/* Elements markers */}
+            {activeFloor?.elements.map((el, index) => {
+              const meta = ELEMENT_TYPE_META[el.type] || ELEMENT_TYPE_META.otro;
+              const isSelected = el.id === selectedElementId;
+              const hasPoster = !!el.posterUrl;
+              const showZocalo = ["banner", "poster", "standee", "proximamente"].includes(el.type);
+
+              return (
+                <Pressable
+                  key={el.id}
+                  style={[
+                    s.elementMarker,
+                    {
+                      width: `${el.width || 8}%`,
+                      height: `${el.height || 12}%`,
+                      left: `${el.x - (el.width || 8) / 2}%`,
+                      top: `${el.y - (el.height || 12) / 2}%`,
+                      borderColor: isSelected ? COLORS.primary : meta.color,
+                      backgroundColor: isSelected ? COLORS.primarySoft : COLORS.card,
+                    },
+                    hasPoster && s.elementMarkerWithPoster,
+                  ]}
+                  onPress={() => setSelectedElementId(el.id)}
+                  onPressIn={() => {
+                    setSelectedElementId(el.id);
+                    if (Platform.OS === "web" && !el.locked) {
+                      setActiveDragId(el.id);
+                    }
+                  }}
+                >
+                  {hasPoster ? (
+                    <Image source={{ uri: el.posterUrl }} style={s.elementPosterBg as any} resizeMode="contain" />
+                  ) : (
+                    <Text style={[s.elementMarkerCenterText, showZocalo && { paddingBottom: 12 }]} numberOfLines={4}>
+                      {el.movieName || el.name}
+                    </Text>
+                  )}
+                  {showZocalo && (
+                    <View style={[s.elementZocalo, { backgroundColor: meta.color }]}>
+                      <Text style={s.elementZocaloText} numberOfLines={1}>
+                        {meta.label}
+                      </Text>
+                    </View>
+                  )}
+                  <View style={[s.elementMarkerNumberBadge, { backgroundColor: meta.color }]}>
+                    <Text style={s.elementMarkerNumberText}>{index + 1}</Text>
+                  </View>
+                  {el.locked && (
+                    <View style={s.lockBadge}>
+                      <MaterialCommunityIcons name="lock" size={10} color="#fff" />
+                    </View>
+                  )}
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      </View>
+
+      {/* SIDEBAR PROPERTIES EDITOR */}
+      <View style={[
+        s.sidebar,
+        isMobile && {
+          width: "100%",
+          borderLeftWidth: 0,
+          borderTopWidth: 1,
+        }
+      ]}>
+        {selectedElement ? (
+          <ScrollView contentContainerStyle={s.sidebarContent}>
+            <View style={s.sidebarHeader}>
+              <Text style={s.sidebarTitle}>Editar Elemento</Text>
+              <View style={s.sidebarActionsHeader}>
+                <Pressable
+                  style={[s.lockToggleBtn, selectedElement.locked && s.lockToggleBtnActive]}
+                  onPress={() => {
+                    const updated = floors.map((f) => {
+                      if (f.id === selectedFloorId) {
+                        return {
+                          ...f,
+                          elements: f.elements.map((el) =>
+                            el.id === selectedElement.id ? { ...el, locked: !el.locked } : el
+                          ),
+                        };
+                      }
+                      return f;
+                    });
+                    setFloors(updated);
+                    handleSaveChanges(updated);
+                  }}
+                >
+                  <MaterialCommunityIcons
+                    name={selectedElement.locked ? "lock" : "lock-open-outline"}
+                    size={14}
+                    color={selectedElement.locked ? "#fff" : COLORS.muted}
+                  />
+                  <Text style={[s.lockToggleBtnText, selectedElement.locked && { color: "#fff" }]}>
+                    {selectedElement.locked ? "Bloqueado" : "Bloquear"}
+                  </Text>
+                </Pressable>
+
+                <Pressable style={s.deleteBtn} onPress={() => handleDeleteElement(selectedElement.id)}>
+                  <MaterialCommunityIcons name="delete-outline" size={20} color={COLORS.danger} />
+                </Pressable>
+              </View>
+            </View>
+
+            <View style={s.field}>
+              <Text style={s.fieldLabel}>Nombre del Elemento</Text>
+              <TextInput
+                style={s.textInput}
+                value={selectedElement.name}
+                onChangeText={(val) => updateElementDetail(selectedElement.id, "name", val)}
+                onBlur={() => handleSaveChanges()}
+              />
+            </View>
+
+            <View style={s.field}>
+              <Text style={s.fieldLabel}>Tipo de Banner</Text>
+              <View style={s.typesRow}>
+                {Object.entries(ELEMENT_TYPE_META).map(([key, meta]) => {
+                  const isActive = selectedElement.type === key;
+                  return (
+                    <Pressable
+                      key={key}
+                      style={[
+                        s.typeSelectBtn,
+                        isActive && { backgroundColor: meta.color + "22", borderColor: meta.color },
+                      ]}
+                      onPress={() => {
+                        const updated = floors.map((f) => {
+                          if (f.id === selectedFloorId) {
+                            return {
+                              ...f,
+                              elements: f.elements.map((el) =>
+                                el.id === selectedElement.id ? { ...el, type: key as any } : el
+                              ),
+                            };
+                          }
+                          return f;
+                        });
+                        setFloors(updated);
+                        handleSaveChanges(updated);
+                      }}
+                    >
+                      <MaterialCommunityIcons
+                        name={meta.icon}
+                        size={16}
+                        color={isActive ? meta.color : COLORS.muted}
+                      />
+                      <Text style={[s.typeSelectText, isActive && { color: meta.color, fontWeight: "800" }]}>
+                        {meta.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+
+            <View style={s.divider} />
+
+            {/* TAMAÑO / DIMENSIONES */}
+            <View style={s.sizeControlRow}>
+              <View style={s.sizeControlField}>
+                <Text style={s.fieldLabel}>Ancho (Plano)</Text>
+                <View style={s.stepperRow}>
+                  <Pressable
+                    style={s.stepperSmallBtn}
+                    onPress={() => {
+                      const newWidth = Math.max(3, (selectedElement.width || 8) - 5);
+                      updateElementSize(selectedElement.id, newWidth, selectedElement.height || 12);
+                    }}
+                  >
+                    <Text style={s.stepperSmallBtnText}>-5</Text>
+                  </Pressable>
+                  <Pressable
+                    style={s.stepperSmallBtn}
+                    onPress={() => {
+                      const newWidth = Math.max(3, (selectedElement.width || 8) - 1);
+                      updateElementSize(selectedElement.id, newWidth, selectedElement.height || 12);
+                    }}
+                  >
+                    <Text style={s.stepperSmallBtnText}>-1</Text>
+                  </Pressable>
+                  
+                  <TextInput
+                    style={s.stepperInput}
+                    keyboardType="numeric"
+                    value={selectedElement.width === 0 ? "" : String(selectedElement.width || 8)}
+                    onChangeText={(val) => {
+                      const parsed = parseInt(val, 10);
+                      if (!isNaN(parsed)) {
+                        const constrained = Math.max(1, Math.min(100, parsed));
+                        updateElementSize(selectedElement.id, constrained, selectedElement.height || 12);
+                      } else if (val === "") {
+                        updateElementSize(selectedElement.id, 0, selectedElement.height || 12);
+                      }
+                    }}
+                    onBlur={() => {
+                      if (!selectedElement.width) {
+                        updateElementSize(selectedElement.id, 8, selectedElement.height || 12);
+                      }
+                    }}
+                  />
+                  <Text style={s.percentSymbol}>%</Text>
+
+                  <Pressable
+                    style={s.stepperSmallBtn}
+                    onPress={() => {
+                      const newWidth = Math.min(100, (selectedElement.width || 8) + 1);
+                      updateElementSize(selectedElement.id, newWidth, selectedElement.height || 12);
+                    }}
+                  >
+                    <Text style={s.stepperSmallBtnText}>+1</Text>
+                  </Pressable>
+                  <Pressable
+                    style={s.stepperSmallBtn}
+                    onPress={() => {
+                      const newWidth = Math.min(100, (selectedElement.width || 8) + 5);
+                      updateElementSize(selectedElement.id, newWidth, selectedElement.height || 12);
+                    }}
+                  >
+                    <Text style={s.stepperSmallBtnText}>+5</Text>
+                  </Pressable>
+                </View>
+              </View>
+
+              <View style={s.sizeControlField}>
+                <Text style={s.fieldLabel}>Alto (Plano)</Text>
+                <View style={s.stepperRow}>
+                  <Pressable
+                    style={s.stepperSmallBtn}
+                    onPress={() => {
+                      const newHeight = Math.max(3, (selectedElement.height || 12) - 5);
+                      updateElementSize(selectedElement.id, selectedElement.width || 8, newHeight);
+                    }}
+                  >
+                    <Text style={s.stepperSmallBtnText}>-5</Text>
+                  </Pressable>
+                  <Pressable
+                    style={s.stepperSmallBtn}
+                    onPress={() => {
+                      const newHeight = Math.max(3, (selectedElement.height || 12) - 1);
+                      updateElementSize(selectedElement.id, selectedElement.width || 8, newHeight);
+                    }}
+                  >
+                    <Text style={s.stepperSmallBtnText}>-1</Text>
+                  </Pressable>
+                  
+                  <TextInput
+                    style={s.stepperInput}
+                    keyboardType="numeric"
+                    value={selectedElement.height === 0 ? "" : String(selectedElement.height || 12)}
+                    onChangeText={(val) => {
+                      const parsed = parseInt(val, 10);
+                      if (!isNaN(parsed)) {
+                        const constrained = Math.max(1, Math.min(100, parsed));
+                        updateElementSize(selectedElement.id, selectedElement.width || 8, constrained);
+                      } else if (val === "") {
+                        updateElementSize(selectedElement.id, selectedElement.width || 8, 0);
+                      }
+                    }}
+                    onBlur={() => {
+                      if (!selectedElement.height) {
+                        updateElementSize(selectedElement.id, selectedElement.width || 8, 12);
+                      }
+                    }}
+                  />
+                  <Text style={s.percentSymbol}>%</Text>
+
+                  <Pressable
+                    style={s.stepperSmallBtn}
+                    onPress={() => {
+                      const newHeight = Math.min(100, (selectedElement.height || 12) + 1);
+                      updateElementSize(selectedElement.id, selectedElement.width || 8, newHeight);
+                    }}
+                  >
+                    <Text style={s.stepperSmallBtnText}>+1</Text>
+                  </Pressable>
+                  <Pressable
+                    style={s.stepperSmallBtn}
+                    onPress={() => {
+                      const newHeight = Math.min(100, (selectedElement.height || 12) + 5);
+                      updateElementSize(selectedElement.id, selectedElement.width || 8, newHeight);
+                    }}
+                  >
+                    <Text style={s.stepperSmallBtnText}>+5</Text>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+
+            <View style={s.sizeControlRow}>
+              <View style={s.sizeControlField}>
+                <Text style={s.fieldLabel}>Posición X (Centro)</Text>
+                <View style={s.stepperRow}>
+                  <Pressable
+                    style={s.stepperSmallBtn}
+                    onPress={() => {
+                      const newX = Math.max(0, (selectedElement.x) - 5);
+                      updateElementPosition(selectedElement.id, newX, selectedElement.y);
+                      handleSaveChanges();
+                    }}
+                  >
+                    <Text style={s.stepperSmallBtnText}>-5</Text>
+                  </Pressable>
+                  <Pressable
+                    style={s.stepperSmallBtn}
+                    onPress={() => {
+                      const newX = Math.max(0, (selectedElement.x) - 1);
+                      updateElementPosition(selectedElement.id, newX, selectedElement.y);
+                      handleSaveChanges();
+                    }}
+                  >
+                    <Text style={s.stepperSmallBtnText}>-1</Text>
+                  </Pressable>
+                  
+                  <TextInput
+                    style={s.stepperInput}
+                    keyboardType="numeric"
+                    value={String(selectedElement.x)}
+                    onChangeText={(val) => {
+                      const parsed = parseFloat(val);
+                      if (!isNaN(parsed)) {
+                        const constrained = Math.max(0, Math.min(100, parsed));
+                        updateElementPosition(selectedElement.id, constrained, selectedElement.y);
+                      }
+                    }}
+                    onBlur={() => handleSaveChanges()}
+                  />
+                  <Text style={s.percentSymbol}>%</Text>
+
+                  <Pressable
+                    style={s.stepperSmallBtn}
+                    onPress={() => {
+                      const newX = Math.min(100, (selectedElement.x) + 1);
+                      updateElementPosition(selectedElement.id, newX, selectedElement.y);
+                      handleSaveChanges();
+                    }}
+                  >
+                    <Text style={s.stepperSmallBtnText}>+1</Text>
+                  </Pressable>
+                  <Pressable
+                    style={s.stepperSmallBtn}
+                    onPress={() => {
+                      const newX = Math.min(100, (selectedElement.x) + 5);
+                      updateElementPosition(selectedElement.id, newX, selectedElement.y);
+                      handleSaveChanges();
+                    }}
+                  >
+                    <Text style={s.stepperSmallBtnText}>+5</Text>
+                  </Pressable>
+                </View>
+              </View>
+
+              <View style={s.sizeControlField}>
+                <Text style={s.fieldLabel}>Posición Y (Centro)</Text>
+                <View style={s.stepperRow}>
+                  <Pressable
+                    style={s.stepperSmallBtn}
+                    onPress={() => {
+                      const newY = Math.max(0, (selectedElement.y) - 5);
+                      updateElementPosition(selectedElement.id, selectedElement.x, newY);
+                      handleSaveChanges();
+                    }}
+                  >
+                    <Text style={s.stepperSmallBtnText}>-5</Text>
+                  </Pressable>
+                  <Pressable
+                    style={s.stepperSmallBtn}
+                    onPress={() => {
+                      const newY = Math.max(0, (selectedElement.y) - 1);
+                      updateElementPosition(selectedElement.id, selectedElement.x, newY);
+                      handleSaveChanges();
+                    }}
+                  >
+                    <Text style={s.stepperSmallBtnText}>-1</Text>
+                  </Pressable>
+                  
+                  <TextInput
+                    style={s.stepperInput}
+                    keyboardType="numeric"
+                    value={String(selectedElement.y)}
+                    onChangeText={(val) => {
+                      const parsed = parseFloat(val);
+                      if (!isNaN(parsed)) {
+                        const constrained = Math.max(0, Math.min(100, parsed));
+                        updateElementPosition(selectedElement.id, selectedElement.x, constrained);
+                      }
+                    }}
+                    onBlur={() => handleSaveChanges()}
+                  />
+                  <Text style={s.percentSymbol}>%</Text>
+
+                  <Pressable
+                    style={s.stepperSmallBtn}
+                    onPress={() => {
+                      const newY = Math.min(100, (selectedElement.y) + 1);
+                      updateElementPosition(selectedElement.id, selectedElement.x, newY);
+                      handleSaveChanges();
+                    }}
+                  >
+                    <Text style={s.stepperSmallBtnText}>+1</Text>
+                  </Pressable>
+                  <Pressable
+                    style={s.stepperSmallBtn}
+                    onPress={() => {
+                      const newY = Math.min(100, (selectedElement.y) + 5);
+                      updateElementPosition(selectedElement.id, selectedElement.x, newY);
+                      handleSaveChanges();
+                    }}
+                  >
+                    <Text style={s.stepperSmallBtnText}>+5</Text>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+
+            <View style={s.divider} />
+
+            {/* MOVIE ASSIGNMENT & TMDB POSTER FETCH */}
+            <View style={s.field}>
+              <Text style={s.sidebarSectionTitle}>Asignar Película / Poster</Text>
+              {selectedElement.posterUrl ? (
+                <View style={s.currentPosterContainer}>
+                  <Image source={{ uri: selectedElement.posterUrl }} style={s.currentPosterImage as any} />
+                  <View style={s.currentPosterInfo}>
+                    <Text style={s.currentPosterMovieName}>{selectedElement.movieName}</Text>
+                    <Pressable
+                      style={s.removePosterBtn}
+                      onPress={() => {
+                        const updated = floors.map((f) => {
+                          if (f.id === selectedFloorId) {
+                            return {
+                              ...f,
+                              elements: f.elements.map((el) =>
+                                el.id === selectedElement.id
+                                  ? { ...el, movieName: "", posterUrl: "" }
+                                  : el
+                              ),
+                            };
+                          }
+                          return f;
+                        });
+                        setFloors(updated);
+                        handleSaveChanges(updated);
+                      }}
+                    >
+                      <MaterialCommunityIcons name="image-remove" size={14} color={COLORS.danger} />
+                      <Text style={s.removePosterBtnText}>Quitar Póster</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : (
+                <View style={s.noPosterBadge}>
+                  <Text style={s.noPosterText}>No hay póster asignado</Text>
+                </View>
+              )}
+
+              <View style={s.searchFieldWrap}>
+                <TextInput
+                  style={s.textInputSearch}
+                  placeholder="Escribir título de la película..."
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  onSubmitEditing={handleSearchPoster}
+                />
+                <Pressable
+                  style={[s.searchSubmitBtn, searchingPoster && s.searchSubmitBtnDisabled]}
+                  onPress={handleSearchPoster}
+                  disabled={searchingPoster}
+                >
+                  {searchingPoster ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <MaterialCommunityIcons name="magnify" size={18} color="#fff" />
+                  )}
+                </Pressable>
+              </View>
+            </View>
+
+            {/* SEARCH SUGGESTIONS */}
+            {searchResults.length > 0 && (
+              <View style={s.searchResultsCard}>
+                <Text style={s.searchResultsTitle}>Resultados de Búsqueda:</Text>
+                {searchResults.map((movie) => (
+                  <Pressable
+                    key={movie.id}
+                    style={s.searchResultRow}
+                    onPress={() => assignPoster(movie.title, movie.poster_path)}
+                  >
+                    {movie.poster_path ? (
+                      <Image
+                        source={{
+                          uri: `https://apivacas.jariel.com.ar/api/cinemark/poster?url=${encodeURIComponent(
+                            movie.poster_path.startsWith("http")
+                              ? movie.poster_path
+                              : `https://image.tmdb.org/t/p/w92${movie.poster_path}`
+                          )}`,
+                        }}
+                        style={s.searchResultThumb as any}
+                      />
+                    ) : (
+                      <View style={s.searchResultThumbFallback}>
+                        <MaterialCommunityIcons name="movie-outline" size={14} color={COLORS.muted} />
+                      </View>
+                    )}
+                    <View style={s.searchResultTextContainer}>
+                      <Text style={s.searchResultName} numberOfLines={1}>
+                        {movie.title}
+                      </Text>
+                      {!!movie.release_date && (
+                        <Text style={s.searchResultMeta}>Año: {movie.release_date.split("-")[0]}</Text>
+                      )}
+                    </View>
+                  </Pressable>
+                ))}
+              </View>
+            )}
+          </ScrollView>
+        ) : (
+          <View style={s.sidebarEmpty}>
+            <MaterialCommunityIcons name="gesture-tap" size={32} color={COLORS.muted} />
+            <Text style={s.sidebarEmptyText}>
+              Hacé clic en cualquier elemento del mapa para editar sus detalles o asignarle una película.
+            </Text>
+          </View>
+        )}
+      </View>
+    </>
+  );
+
   return (
     <View style={s.container}>
       {/* HEADER CONTROLS */}
@@ -826,635 +1459,18 @@ export default function MapaBannersScreen() {
         </View>
       )}
 
-      {/* CANVAS + EDITOR SIDEBAR */}
-      <WorkspaceContainer style={[s.mainWorkspace, isMobile && { flexDirection: "column" }]} contentContainerStyle={isMobile ? { paddingBottom: 40 } : undefined}>
-        
-        {/* ELEMENT GENERATOR PALETTE */}
-        <View style={[
-          s.paletteCard,
-          isMobile && {
-            width: "100%",
-            borderRightWidth: 0,
-            borderBottomWidth: 1,
-            padding: 12,
-          }
-        ]}>
-          <Text style={s.paletteTitle}>Añadir Elemento</Text>
-          <View style={[s.paletteButtons, isMobile && { flexDirection: "row" }]}>
-            {Object.entries(ELEMENT_TYPE_META).map(([key, meta]) => (
-              <Pressable
-                key={key}
-                style={[s.paletteBtn, { borderLeftColor: meta.color }]}
-                onPress={() => handleAddElement(key as any)}
-              >
-                <MaterialCommunityIcons name={meta.icon} size={18} color={meta.color} />
-                <Text style={s.paletteBtnText}>{meta.label}</Text>
-              </Pressable>
-            ))}
-          </View>
+      {isMobile ? (
+        <ScrollView
+          style={[s.mainWorkspace, { flexDirection: "column" }]}
+          contentContainerStyle={{ paddingBottom: 40 }}
+        >
+          {workspaceContent}
+        </ScrollView>
+      ) : (
+        <View style={s.mainWorkspace}>
+          {workspaceContent}
         </View>
-
-        {/* DRAG AND DROP CANVAS */}
-        <View style={s.canvasContainer}>
-          <View style={s.canvasHeader}>
-            <Text style={s.canvasHelpText}>
-              Arrastrá los elementos para posicionarlos. Mové el fondo del plano para desplazarte.
-            </Text>
-            
-            <View style={s.canvasControlsRow}>
-              {/* Zoom width controller */}
-              <View style={s.zoomSliderContainer}>
-                <Text style={s.zoomLabel}>Ancho: {canvasWidthScale}%</Text>
-                <Pressable
-                  style={s.zoomBtn}
-                  onPress={() => {
-                    setCanvasWidthScale(prev => Math.max(100, prev - 25));
-                    if (canvasWidthScale <= 125) {
-                      setPanOffset({ x: 0, y: 0 });
-                    }
-                  }}
-                >
-                  <Text style={s.zoomBtnText}>-</Text>
-                </Pressable>
-                <Pressable
-                  style={s.zoomBtn}
-                  onPress={() => setCanvasWidthScale(prev => Math.min(300, prev + 25))}
-                >
-                  <Text style={s.zoomBtnText}>+</Text>
-                </Pressable>
-              </View>
-
-              <Pressable
-                style={[s.snapToggleBtn, snapToGrid && s.snapToggleBtnActive]}
-                onPress={() => setSnapToGrid(!snapToGrid)}
-              >
-                <MaterialCommunityIcons
-                  name={snapToGrid ? "grid" : "grid-off"}
-                  size={14}
-                  color={snapToGrid ? "#fff" : COLORS.muted}
-                />
-                <Text style={[s.snapToggleText, snapToGrid && { color: "#fff" }]}>
-                  Cuadrícula
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-
-          <View style={s.canvasViewport}>
-            <View
-              style={[
-                s.canvas,
-                {
-                  width: `${canvasWidthScale}%`,
-                  left: panOffset.x,
-                  top: panOffset.y,
-                  cursor: isPanning ? "grabbing" : (activeDragId ? "move" : "grab"),
-                } as any
-              ]}
-              onLayout={(e) => {
-                const { width, height } = e.nativeEvent.layout;
-                setCanvasLayout({ width, height });
-              }}
-              {...({
-                onMouseDown: handleCanvasMouseDown,
-                onMouseMove: handleMouseMove,
-                onMouseUp: handleMouseUp,
-                onMouseLeave: handleMouseLeave,
-              } as any)}
-            >
-            {/* Center guides */}
-            <View style={s.guideLineH} />
-            <View style={s.guideLineV} />
-
-            {/* Elements markers */}
-            {activeFloor?.elements.map((el, index) => {
-              const meta = ELEMENT_TYPE_META[el.type] || ELEMENT_TYPE_META.otro;
-              const isSelected = el.id === selectedElementId;
-              const hasPoster = !!el.posterUrl;
-              const showZocalo = ["banner", "poster", "standee", "proximamente"].includes(el.type);
-
-              return (
-                <Pressable
-                  key={el.id}
-                  style={[
-                    s.elementMarker,
-                    {
-                      width: `${el.width || 8}%`,
-                      height: `${el.height || 12}%`,
-                      left: `${el.x - (el.width || 8) / 2}%`,
-                      top: `${el.y - (el.height || 12) / 2}%`,
-                      borderColor: isSelected ? COLORS.primary : meta.color,
-                      backgroundColor: isSelected ? COLORS.primarySoft : COLORS.card,
-                    },
-                    hasPoster && s.elementMarkerWithPoster,
-                  ]}
-                  onPress={() => setSelectedElementId(el.id)}
-                  onPressIn={() => {
-                    setSelectedElementId(el.id);
-                    if (Platform.OS === "web" && !el.locked) {
-                      setActiveDragId(el.id);
-                    }
-                  }}
-                >
-                  {hasPoster ? (
-                    <Image source={{ uri: el.posterUrl }} style={s.elementPosterBg as any} resizeMode="contain" />
-                  ) : (
-                    <Text style={[s.elementMarkerCenterText, showZocalo && { paddingBottom: 12 }]} numberOfLines={4}>
-                      {el.movieName || el.name}
-                    </Text>
-                  )}
-                  {showZocalo && (
-                    <View style={[s.elementZocalo, { backgroundColor: meta.color }]}>
-                      <Text style={s.elementZocaloText} numberOfLines={1}>
-                        {meta.label}
-                      </Text>
-                    </View>
-                  )}
-                  <View style={[s.elementMarkerNumberBadge, { backgroundColor: meta.color }]}>
-                    <Text style={s.elementMarkerNumberText}>{index + 1}</Text>
-                  </View>
-                  {el.locked && (
-                    <View style={s.lockBadge}>
-                      <MaterialCommunityIcons name="lock" size={10} color="#fff" />
-                    </View>
-                  )}
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-      </View>
-
-        {/* SIDEBAR PROPERTIES EDITOR */}
-        <View style={[
-          s.sidebar,
-          isMobile && {
-            width: "100%",
-            borderLeftWidth: 0,
-            borderTopWidth: 1,
-          }
-        ]}>
-          {selectedElement ? (
-            <ScrollView contentContainerStyle={s.sidebarContent}>
-              <View style={s.sidebarHeader}>
-                <Text style={s.sidebarTitle}>Editar Elemento</Text>
-                <View style={s.sidebarActionsHeader}>
-                  <Pressable
-                    style={[s.lockToggleBtn, selectedElement.locked && s.lockToggleBtnActive]}
-                    onPress={() => {
-                      const updated = floors.map((f) => {
-                        if (f.id === selectedFloorId) {
-                          return {
-                            ...f,
-                            elements: f.elements.map((el) =>
-                              el.id === selectedElement.id ? { ...el, locked: !el.locked } : el
-                            ),
-                          };
-                        }
-                        return f;
-                      });
-                      setFloors(updated);
-                      handleSaveChanges(updated);
-                    }}
-                  >
-                    <MaterialCommunityIcons
-                      name={selectedElement.locked ? "lock" : "lock-open-outline"}
-                      size={14}
-                      color={selectedElement.locked ? "#fff" : COLORS.muted}
-                    />
-                    <Text style={[s.lockToggleBtnText, selectedElement.locked && { color: "#fff" }]}>
-                      {selectedElement.locked ? "Fijo" : "Fijar"}
-                    </Text>
-                  </Pressable>
-
-                  <Pressable style={s.deleteBtn} onPress={() => handleDeleteElement(selectedElement.id)}>
-                    <MaterialCommunityIcons name="delete-outline" size={20} color={COLORS.danger} />
-                  </Pressable>
-                </View>
-              </View>
-
-              <View style={s.field}>
-                <Text style={s.fieldLabel}>Nombre del Elemento</Text>
-                <TextInput
-                  style={s.textInput}
-                  value={selectedElement.name}
-                  onChangeText={(val) => updateElementDetail(selectedElement.id, "name", val)}
-                  onBlur={() => handleSaveChanges()}
-                />
-              </View>
-
-              <View style={s.field}>
-                <Text style={s.fieldLabel}>Tipo de Banner</Text>
-                <View style={s.typesRow}>
-                  {Object.entries(ELEMENT_TYPE_META).map(([key, meta]) => {
-                    const isActive = selectedElement.type === key;
-                    return (
-                      <Pressable
-                        key={key}
-                        style={[
-                          s.typeSelectBtn,
-                          isActive && { backgroundColor: meta.color + "22", borderColor: meta.color },
-                        ]}
-                        onPress={() => {
-                          const updated = floors.map((f) => {
-                            if (f.id === selectedFloorId) {
-                              return {
-                                ...f,
-                                elements: f.elements.map((el) =>
-                                  el.id === selectedElement.id ? { ...el, type: key as any } : el
-                                ),
-                              };
-                            }
-                            return f;
-                          });
-                          setFloors(updated);
-                          handleSaveChanges(updated);
-                        }}
-                      >
-                        <MaterialCommunityIcons
-                          name={meta.icon}
-                          size={16}
-                          color={isActive ? meta.color : COLORS.muted}
-                        />
-                        <Text style={[s.typeSelectText, isActive && { color: meta.color, fontWeight: "800" }]}>
-                          {meta.label}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              </View>
-
-              {/* TAMAÑO / DIMENSIONES */}
-              <View style={s.sizeControlRow}>
-                <View style={s.sizeControlField}>
-                  <Text style={s.fieldLabel}>Ancho (Plano)</Text>
-                  <View style={s.stepperRow}>
-                    <Pressable
-                      style={s.stepperSmallBtn}
-                      onPress={() => {
-                        const newWidth = Math.max(3, (selectedElement.width || 8) - 5);
-                        updateElementSize(selectedElement.id, newWidth, selectedElement.height || 12);
-                      }}
-                    >
-                      <Text style={s.stepperSmallBtnText}>-5</Text>
-                    </Pressable>
-                    <Pressable
-                      style={s.stepperSmallBtn}
-                      onPress={() => {
-                        const newWidth = Math.max(3, (selectedElement.width || 8) - 1);
-                        updateElementSize(selectedElement.id, newWidth, selectedElement.height || 12);
-                      }}
-                    >
-                      <Text style={s.stepperSmallBtnText}>-1</Text>
-                    </Pressable>
-                    
-                    <TextInput
-                      style={s.stepperInput}
-                      keyboardType="numeric"
-                      value={selectedElement.width === 0 ? "" : String(selectedElement.width || 8)}
-                      onChangeText={(val) => {
-                        const parsed = parseInt(val, 10);
-                        if (!isNaN(parsed)) {
-                          const constrained = Math.max(1, Math.min(100, parsed));
-                          updateElementSize(selectedElement.id, constrained, selectedElement.height || 12);
-                        } else if (val === "") {
-                          updateElementSize(selectedElement.id, 0, selectedElement.height || 12);
-                        }
-                      }}
-                      onBlur={() => {
-                        if (!selectedElement.width) {
-                          updateElementSize(selectedElement.id, 8, selectedElement.height || 12);
-                        }
-                      }}
-                    />
-                    <Text style={s.percentSymbol}>%</Text>
-
-                    <Pressable
-                      style={s.stepperSmallBtn}
-                      onPress={() => {
-                        const newWidth = Math.min(100, (selectedElement.width || 8) + 1);
-                        updateElementSize(selectedElement.id, newWidth, selectedElement.height || 12);
-                      }}
-                    >
-                      <Text style={s.stepperSmallBtnText}>+1</Text>
-                    </Pressable>
-                    <Pressable
-                      style={s.stepperSmallBtn}
-                      onPress={() => {
-                        const newWidth = Math.min(100, (selectedElement.width || 8) + 5);
-                        updateElementSize(selectedElement.id, newWidth, selectedElement.height || 12);
-                      }}
-                    >
-                      <Text style={s.stepperSmallBtnText}>+5</Text>
-                    </Pressable>
-                  </View>
-                </View>
-
-                <View style={s.sizeControlField}>
-                  <Text style={s.fieldLabel}>Alto (Plano)</Text>
-                  <View style={s.stepperRow}>
-                    <Pressable
-                      style={s.stepperSmallBtn}
-                      onPress={() => {
-                        const newHeight = Math.max(3, (selectedElement.height || 12) - 5);
-                        updateElementSize(selectedElement.id, selectedElement.width || 8, newHeight);
-                      }}
-                    >
-                      <Text style={s.stepperSmallBtnText}>-5</Text>
-                    </Pressable>
-                    <Pressable
-                      style={s.stepperSmallBtn}
-                      onPress={() => {
-                        const newHeight = Math.max(3, (selectedElement.height || 12) - 1);
-                        updateElementSize(selectedElement.id, selectedElement.width || 8, newHeight);
-                      }}
-                    >
-                      <Text style={s.stepperSmallBtnText}>-1</Text>
-                    </Pressable>
-                    
-                    <TextInput
-                      style={s.stepperInput}
-                      keyboardType="numeric"
-                      value={selectedElement.height === 0 ? "" : String(selectedElement.height || 12)}
-                      onChangeText={(val) => {
-                        const parsed = parseInt(val, 10);
-                        if (!isNaN(parsed)) {
-                          const constrained = Math.max(1, Math.min(100, parsed));
-                          updateElementSize(selectedElement.id, selectedElement.width || 8, constrained);
-                        } else if (val === "") {
-                          updateElementSize(selectedElement.id, selectedElement.width || 8, 0);
-                        }
-                      }}
-                      onBlur={() => {
-                        if (!selectedElement.height) {
-                          updateElementSize(selectedElement.id, selectedElement.width || 8, 12);
-                        }
-                      }}
-                    />
-                    <Text style={s.percentSymbol}>%</Text>
-
-                    <Pressable
-                      style={s.stepperSmallBtn}
-                      onPress={() => {
-                        const newHeight = Math.min(100, (selectedElement.height || 12) + 1);
-                        updateElementSize(selectedElement.id, selectedElement.width || 8, newHeight);
-                      }}
-                    >
-                      <Text style={s.stepperSmallBtnText}>+1</Text>
-                    </Pressable>
-                    <Pressable
-                      style={s.stepperSmallBtn}
-                      onPress={() => {
-                        const newHeight = Math.min(100, (selectedElement.height || 12) + 5);
-                        updateElementSize(selectedElement.id, selectedElement.width || 8, newHeight);
-                      }}
-                    >
-                      <Text style={s.stepperSmallBtnText}>+5</Text>
-                    </Pressable>
-                  </View>
-                </View>
-              </View>
-
-              <View style={s.sizeControlRow}>
-                <View style={s.sizeControlField}>
-                  <Text style={s.fieldLabel}>Posición X (Centro)</Text>
-                  <View style={s.stepperRow}>
-                    <Pressable
-                      style={s.stepperSmallBtn}
-                      onPress={() => {
-                        const newX = Math.max(0, (selectedElement.x) - 5);
-                        updateElementPosition(selectedElement.id, newX, selectedElement.y);
-                        handleSaveChanges();
-                      }}
-                    >
-                      <Text style={s.stepperSmallBtnText}>-5</Text>
-                    </Pressable>
-                    <Pressable
-                      style={s.stepperSmallBtn}
-                      onPress={() => {
-                        const newX = Math.max(0, (selectedElement.x) - 1);
-                        updateElementPosition(selectedElement.id, newX, selectedElement.y);
-                        handleSaveChanges();
-                      }}
-                    >
-                      <Text style={s.stepperSmallBtnText}>-1</Text>
-                    </Pressable>
-                    
-                    <TextInput
-                      style={s.stepperInput}
-                      keyboardType="numeric"
-                      value={String(selectedElement.x)}
-                      onChangeText={(val) => {
-                        const parsed = parseFloat(val);
-                        if (!isNaN(parsed)) {
-                          const constrained = Math.max(0, Math.min(100, parsed));
-                          updateElementPosition(selectedElement.id, constrained, selectedElement.y);
-                        }
-                      }}
-                      onBlur={() => handleSaveChanges()}
-                    />
-                    <Text style={s.percentSymbol}>%</Text>
-
-                    <Pressable
-                      style={s.stepperSmallBtn}
-                      onPress={() => {
-                        const newX = Math.min(100, (selectedElement.x) + 1);
-                        updateElementPosition(selectedElement.id, newX, selectedElement.y);
-                        handleSaveChanges();
-                      }}
-                    >
-                      <Text style={s.stepperSmallBtnText}>+1</Text>
-                    </Pressable>
-                    <Pressable
-                      style={s.stepperSmallBtn}
-                      onPress={() => {
-                        const newX = Math.min(100, (selectedElement.x) + 5);
-                        updateElementPosition(selectedElement.id, newX, selectedElement.y);
-                        handleSaveChanges();
-                      }}
-                    >
-                      <Text style={s.stepperSmallBtnText}>+5</Text>
-                    </Pressable>
-                  </View>
-                </View>
-
-                <View style={s.sizeControlField}>
-                  <Text style={s.fieldLabel}>Posición Y (Centro)</Text>
-                  <View style={s.stepperRow}>
-                    <Pressable
-                      style={s.stepperSmallBtn}
-                      onPress={() => {
-                        const newY = Math.max(0, (selectedElement.y) - 5);
-                        updateElementPosition(selectedElement.id, selectedElement.x, newY);
-                        handleSaveChanges();
-                      }}
-                    >
-                      <Text style={s.stepperSmallBtnText}>-5</Text>
-                    </Pressable>
-                    <Pressable
-                      style={s.stepperSmallBtn}
-                      onPress={() => {
-                        const newY = Math.max(0, (selectedElement.y) - 1);
-                        updateElementPosition(selectedElement.id, selectedElement.x, newY);
-                        handleSaveChanges();
-                      }}
-                    >
-                      <Text style={s.stepperSmallBtnText}>-1</Text>
-                    </Pressable>
-                    
-                    <TextInput
-                      style={s.stepperInput}
-                      keyboardType="numeric"
-                      value={String(selectedElement.y)}
-                      onChangeText={(val) => {
-                        const parsed = parseFloat(val);
-                        if (!isNaN(parsed)) {
-                          const constrained = Math.max(0, Math.min(100, parsed));
-                          updateElementPosition(selectedElement.id, selectedElement.x, constrained);
-                        }
-                      }}
-                      onBlur={() => handleSaveChanges()}
-                    />
-                    <Text style={s.percentSymbol}>%</Text>
-
-                    <Pressable
-                      style={s.stepperSmallBtn}
-                      onPress={() => {
-                        const newY = Math.min(100, (selectedElement.y) + 1);
-                        updateElementPosition(selectedElement.id, selectedElement.x, newY);
-                        handleSaveChanges();
-                      }}
-                    >
-                      <Text style={s.stepperSmallBtnText}>+1</Text>
-                    </Pressable>
-                    <Pressable
-                      style={s.stepperSmallBtn}
-                      onPress={() => {
-                        const newY = Math.min(100, (selectedElement.y) + 5);
-                        updateElementPosition(selectedElement.id, selectedElement.x, newY);
-                        handleSaveChanges();
-                      }}
-                    >
-                      <Text style={s.stepperSmallBtnText}>+5</Text>
-                    </Pressable>
-                  </View>
-                </View>
-              </View>
-
-              <View style={s.divider} />
-
-              {/* MOVIE ASSIGNMENT & TMDB POSTER FETCH */}
-              <View style={s.field}>
-                <Text style={s.sidebarSectionTitle}>Asignar Película / Poster</Text>
-                {selectedElement.posterUrl ? (
-                  <View style={s.currentPosterContainer}>
-                    <Image source={{ uri: selectedElement.posterUrl }} style={s.currentPosterImage as any} />
-                    <View style={s.currentPosterInfo}>
-                      <Text style={s.currentPosterMovieName}>{selectedElement.movieName}</Text>
-                      <Pressable
-                        style={s.removePosterBtn}
-                        onPress={() => {
-                          const updated = floors.map((f) => {
-                            if (f.id === selectedFloorId) {
-                              return {
-                                ...f,
-                                elements: f.elements.map((el) =>
-                                  el.id === selectedElement.id
-                                    ? { ...el, movieName: "", posterUrl: "" }
-                                    : el
-                                ),
-                              };
-                            }
-                            return f;
-                          });
-                          setFloors(updated);
-                          handleSaveChanges(updated);
-                        }}
-                      >
-                        <MaterialCommunityIcons name="image-remove" size={14} color={COLORS.danger} />
-                        <Text style={s.removePosterBtnText}>Quitar Póster</Text>
-                      </Pressable>
-                    </View>
-                  </View>
-                ) : (
-                  <View style={s.noPosterBadge}>
-                    <Text style={s.noPosterText}>No hay póster asignado</Text>
-                  </View>
-                )}
-
-                <View style={s.searchFieldWrap}>
-                  <TextInput
-                    style={s.textInputSearch}
-                    placeholder="Escribir título de la película..."
-                    value={searchQuery}
-                    onChangeText={setSearchQuery}
-                    onSubmitEditing={handleSearchPoster}
-                  />
-                  <Pressable
-                    style={[s.searchSubmitBtn, searchingPoster && s.searchSubmitBtnDisabled]}
-                    onPress={handleSearchPoster}
-                    disabled={searchingPoster}
-                  >
-                    {searchingPoster ? (
-                      <ActivityIndicator size="small" color="#fff" />
-                    ) : (
-                      <MaterialCommunityIcons name="magnify" size={18} color="#fff" />
-                    )}
-                  </Pressable>
-                </View>
-              </View>
-
-              {/* SEARCH SUGGESTIONS */}
-              {searchResults.length > 0 && (
-                <View style={s.searchResultsCard}>
-                  <Text style={s.searchResultsTitle}>Resultados de Búsqueda:</Text>
-                  {searchResults.map((movie) => (
-                    <Pressable
-                      key={movie.id}
-                      style={s.searchResultRow}
-                      onPress={() => assignPoster(movie.title, movie.poster_path)}
-                    >
-                      {movie.poster_path ? (
-                        <Image
-                          source={{
-                            uri: `https://apivacas.jariel.com.ar/api/cinemark/poster?url=${encodeURIComponent(
-                              movie.poster_path.startsWith("http")
-                                ? movie.poster_path
-                                : `https://image.tmdb.org/t/p/w92${movie.poster_path}`
-                            )}`,
-                          }}
-                          style={s.searchResultThumb as any}
-                        />
-                      ) : (
-                        <View style={s.searchResultThumbFallback}>
-                          <MaterialCommunityIcons name="movie-outline" size={14} color={COLORS.muted} />
-                        </View>
-                      )}
-                      <View style={s.searchResultTextContainer}>
-                        <Text style={s.searchResultName} numberOfLines={1}>
-                          {movie.title}
-                        </Text>
-                        {!!movie.release_date && (
-                          <Text style={s.searchResultMeta}>Año: {movie.release_date.split("-")[0]}</Text>
-                        )}
-                      </View>
-                    </Pressable>
-                  ))}
-                </View>
-              )}
-            </ScrollView>
-          ) : (
-            <View style={s.sidebarEmpty}>
-              <MaterialCommunityIcons name="gesture-tap" size={32} color={COLORS.muted} />
-              <Text style={s.sidebarEmptyText}>
-                Hacé clic en cualquier elemento del mapa para editar sus detalles o asignarle una película.
-              </Text>
-            </View>
-          )}
-        </View>
-
-      </WorkspaceContainer>
+      )}
     </View>
   );
 }
