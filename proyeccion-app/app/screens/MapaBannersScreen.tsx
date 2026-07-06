@@ -1886,6 +1886,7 @@ const s = StyleSheet.create({
   },
   stepperInput: {
     flex: 1,
+    minWidth: 0,
     textAlign: "center",
     fontSize: 12,
     fontWeight: "900",
