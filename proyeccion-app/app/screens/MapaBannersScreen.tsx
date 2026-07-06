@@ -88,6 +88,11 @@ export default function MapaBannersScreen() {
   const [printing, setPrinting] = useState(false);
   const isMovingWithKeysRef = useRef(false);
   const [snapToGrid, setSnapToGrid] = useState(false);
+  const [canvasWidthScale, setCanvasWidthScale] = useState(100);
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const panStartRef = useRef({ x: 0, y: 0 });
+  const panOffsetRef = useRef({ x: 0, y: 0 });
 
   // TMDB Poster Search state
   const [searchQuery, setSearchQuery] = useState("");
@@ -351,8 +356,46 @@ export default function MapaBannersScreen() {
   };
 
   // Drag handlers for Web (using direct mouse events for absolute smoothness)
+  const handleCanvasMouseDown = (e: any) => {
+    if (Platform.OS !== "web") return;
+
+    // Check if clicked element or any parent is a marker
+    let isMarker = false;
+    let target = e.target;
+    while (target && target !== e.currentTarget) {
+      if (
+        target.getAttribute?.("data-focusable") === "true" ||
+        target.style?.cursor === "pointer" ||
+        target.tagName === "BUTTON"
+      ) {
+        isMarker = true;
+        break;
+      }
+      target = target.parentNode;
+    }
+
+    if (!isMarker) {
+      setIsPanning(true);
+      panStartRef.current = { x: e.clientX, y: e.clientY };
+      panOffsetRef.current = { ...panOffset };
+      if (e.preventDefault) e.preventDefault();
+    }
+  };
+
   const handleMouseMove = (e: any) => {
-    if (!activeDragId || !canvasLayout || Platform.OS !== "web") return;
+    if (Platform.OS !== "web" || !canvasLayout) return;
+
+    if (isPanning) {
+      const dx = e.clientX - panStartRef.current.x;
+      const dy = e.clientY - panStartRef.current.y;
+      setPanOffset({
+        x: panOffsetRef.current.x + dx,
+        y: panOffsetRef.current.y + dy,
+      });
+      return;
+    }
+
+    if (!activeDragId) return;
 
     // Safety check to ensure we do not drag a locked element
     const element = activeFloor?.elements.find((el) => el.id === activeDragId);
@@ -381,6 +424,19 @@ export default function MapaBannersScreen() {
   };
 
   const handleMouseUp = () => {
+    if (isPanning) {
+      setIsPanning(false);
+    }
+    if (activeDragId) {
+      setActiveDragId(null);
+      handleSaveChanges();
+    }
+  };
+
+  const handleMouseLeave = () => {
+    if (isPanning) {
+      setIsPanning(false);
+    }
     if (activeDragId) {
       setActiveDragId(null);
       handleSaveChanges();
@@ -802,34 +858,70 @@ export default function MapaBannersScreen() {
         <View style={s.canvasContainer}>
           <View style={s.canvasHeader}>
             <Text style={s.canvasHelpText}>
-              Arrastrá los elementos en el mapa para posicionarlos en el plano de la planta.
+              Arrastrá los elementos para posicionarlos. Mové el fondo del plano para desplazarte.
             </Text>
-            <Pressable
-              style={[s.snapToggleBtn, snapToGrid && s.snapToggleBtnActive]}
-              onPress={() => setSnapToGrid(!snapToGrid)}
-            >
-              <MaterialCommunityIcons
-                name={snapToGrid ? "grid" : "grid-off"}
-                size={14}
-                color={snapToGrid ? "#fff" : COLORS.muted}
-              />
-              <Text style={[s.snapToggleText, snapToGrid && { color: "#fff" }]}>
-                Ajustar a Cuadrícula (2.5%)
-              </Text>
-            </Pressable>
+            
+            <View style={s.canvasControlsRow}>
+              {/* Zoom width controller */}
+              <View style={s.zoomSliderContainer}>
+                <Text style={s.zoomLabel}>Ancho: {canvasWidthScale}%</Text>
+                <Pressable
+                  style={s.zoomBtn}
+                  onPress={() => {
+                    setCanvasWidthScale(prev => Math.max(100, prev - 25));
+                    if (canvasWidthScale <= 125) {
+                      setPanOffset({ x: 0, y: 0 });
+                    }
+                  }}
+                >
+                  <Text style={s.zoomBtnText}>-</Text>
+                </Pressable>
+                <Pressable
+                  style={s.zoomBtn}
+                  onPress={() => setCanvasWidthScale(prev => Math.min(300, prev + 25))}
+                >
+                  <Text style={s.zoomBtnText}>+</Text>
+                </Pressable>
+              </View>
+
+              <Pressable
+                style={[s.snapToggleBtn, snapToGrid && s.snapToggleBtnActive]}
+                onPress={() => setSnapToGrid(!snapToGrid)}
+              >
+                <MaterialCommunityIcons
+                  name={snapToGrid ? "grid" : "grid-off"}
+                  size={14}
+                  color={snapToGrid ? "#fff" : COLORS.muted}
+                />
+                <Text style={[s.snapToggleText, snapToGrid && { color: "#fff" }]}>
+                  Cuadrícula
+                </Text>
+              </Pressable>
+            </View>
           </View>
 
-          <View
-            style={s.canvas}
-            onLayout={(e) => {
-              const { width, height } = e.nativeEvent.layout;
-              setCanvasLayout({ width, height });
-            }}
-            {...({
-              onMouseMove: handleMouseMove,
-              onMouseUp: handleMouseUp,
-            } as any)}
-          >
+          <View style={s.canvasViewport}>
+            <View
+              style={[
+                s.canvas,
+                {
+                  width: `${canvasWidthScale}%`,
+                  left: panOffset.x,
+                  top: panOffset.y,
+                  cursor: isPanning ? "grabbing" : (activeDragId ? "move" : "grab"),
+                } as any
+              ]}
+              onLayout={(e) => {
+                const { width, height } = e.nativeEvent.layout;
+                setCanvasLayout({ width, height });
+              }}
+              {...({
+                onMouseDown: handleCanvasMouseDown,
+                onMouseMove: handleMouseMove,
+                onMouseUp: handleMouseUp,
+                onMouseLeave: handleMouseLeave,
+              } as any)}
+            >
             {/* Center guides */}
             <View style={s.guideLineH} />
             <View style={s.guideLineV} />
@@ -891,6 +983,7 @@ export default function MapaBannersScreen() {
             })}
           </View>
         </View>
+      </View>
 
         {/* SIDEBAR PROPERTIES EDITOR */}
         <View style={[
@@ -1529,14 +1622,8 @@ const s = StyleSheet.create({
     fontStyle: "italic",
   },
   canvas: {
-    flex: 1,
-    backgroundColor: Platform.OS === "web" ? "#f1f5f9" : "#e2e8f0",
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 16,
-    position: "relative",
-    overflow: "hidden",
-    minHeight: 400,
+    height: "100%",
+    position: "absolute",
     ...Platform.select({
       web: {
         backgroundImage: "radial-gradient(#cbd5e1 1.2px, #f8fafc 1.2px)",
@@ -1982,5 +2069,51 @@ const s = StyleSheet.create({
     fontSize: 11,
     color: COLORS.muted,
     fontWeight: "700",
+  },
+  canvasViewport: {
+    flex: 1,
+    minHeight: 450,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    overflow: "hidden",
+    backgroundColor: "#f1f5f9",
+    position: "relative",
+  },
+  canvasControlsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  zoomSliderContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    height: 28,
+    gap: 6,
+  },
+  zoomLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: COLORS.text,
+    marginRight: 4,
+  },
+  zoomBtn: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    backgroundColor: COLORS.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  zoomBtnText: {
+    fontSize: 12,
+    fontWeight: "900",
+    color: COLORS.text,
+    lineHeight: 18,
   },
 });
