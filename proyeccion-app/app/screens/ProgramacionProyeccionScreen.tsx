@@ -1511,61 +1511,31 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
       ? `Semana del ${savedWeekly.startDate}`
       : "Programación Semanal");
 
+  const hasHeaderContent = !!formattedWeekLabel || !useApiData || (useApiData && !!apiError);
+
   return (
     <View style={styles.container}>
       {/* Header Info */}
-      <View style={[styles.header, isMobile && { flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8 }]}>
-        <View style={[styles.headerInfo, isMobile && { alignItems: "center", marginBottom: formattedWeekLabel ? 8 : 0 }]}>
-          {formattedWeekLabel ? (
-            <Text style={styles.headerTitle}>{formattedWeekLabel}</Text>
-          ) : null}
-          {!useApiData && (
-            <Text style={[styles.headerSubtitle, isMobile && { textAlign: "center" }]}>
-              La programación se obtiene a partir del reporte cargado y guardado en la sección de Servicios &gt; Programación.
-            </Text>
-          )}
-          {useApiData && apiError && (
-            <View style={styles.apiErrorBanner}>
-              <MaterialCommunityIcons name="alert-circle-outline" size={14} color="#B45309" style={{ marginRight: 4 }} />
-              <Text style={styles.apiErrorText}>{apiError}</Text>
-            </View>
-          )}
-        </View>
-        <View style={[styles.headerButtonsRow, isMobile && { justifyContent: "center", alignSelf: "stretch" }]}>
-          <TouchableOpacity
-            onPress={() => setViewMode(prev => prev === "grid" ? "list" : "grid")}
-            style={[styles.toggleViewButton, { marginRight: 8 }]}
-            activeOpacity={0.8}
-          >
-            <MaterialCommunityIcons
-              name={viewMode === "grid" ? "view-list" : "view-grid"}
-              size={18}
-              color={COLORS.text}
-              style={{ marginRight: 6 }}
-            />
-            <Text style={styles.toggleViewButtonText}>
-              {viewMode === "grid" ? "Modo Lista" : "Modo Grilla"}
-            </Text>
-          </TouchableOpacity>
-
-          {useApiData && (
-            <TouchableOpacity
-              onPress={handleManualSync}
-              disabled={syncing}
-              style={styles.apiSyncButton}
-            >
-              {syncing ? (
-                <ActivityIndicator size="small" color="#FFFFFF" style={{ marginRight: 6 }} />
-              ) : (
-                <MaterialCommunityIcons name="cached" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
-              )}
-              <Text style={styles.apiSyncButtonText}>
-                {syncing ? "Sincronizando..." : "Sincronizar"}
+      {hasHeaderContent ? (
+        <View style={[styles.header, { justifyContent: "center", paddingVertical: 12 }]}>
+          <View style={[styles.headerInfo, { alignItems: "center", width: "100%" }]}>
+            {formattedWeekLabel ? (
+              <Text style={styles.headerTitle}>{formattedWeekLabel}</Text>
+            ) : null}
+            {!useApiData && (
+              <Text style={[styles.headerSubtitle, { textAlign: "center" }]}>
+                La programación se obtiene a partir del reporte cargado y guardado en la sección de Servicios &gt; Programación.
               </Text>
-            </TouchableOpacity>
-          )}
+            )}
+            {useApiData && apiError && (
+              <View style={styles.apiErrorBanner}>
+                <MaterialCommunityIcons name="alert-circle-outline" size={14} color="#B45309" style={{ marginRight: 4 }} />
+                <Text style={styles.apiErrorText}>{apiError}</Text>
+              </View>
+            )}
+          </View>
         </View>
-      </View>
+      ) : null}
 
       {/* Week Selector Bar (if in API mode) */}
       {useApiData && availableWeeks.length > 1 && (() => {
@@ -1701,11 +1671,15 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
           )}
 
           {/* Days Tabs Selection (Index 0 or 1 depending on stats visibility) */}
-          <View style={styles.tabBarContainer}>
+          <View style={[
+            styles.tabBarContainer,
+            !isMobile && { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingRight: 16 }
+          ]}>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.tabBar}
+              style={!isMobile ? { flex: 1 } : undefined}
             >
               {DAYS_OF_WEEK.map((day) => {
                 const isActive = selectedDay === day.key;
@@ -1722,6 +1696,53 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                 );
               })}
             </ScrollView>
+
+            <View style={[
+              styles.headerButtonsRow,
+              { paddingVertical: 6 },
+              isMobile && {
+                flexDirection: "row",
+                justifyContent: "center",
+                alignSelf: "stretch",
+                borderTopWidth: 1,
+                borderTopColor: COLORS.border,
+                paddingVertical: 10,
+                backgroundColor: COLORS.card,
+              }
+            ]}>
+              <TouchableOpacity
+                onPress={() => setViewMode(prev => prev === "grid" ? "list" : "grid")}
+                style={styles.toggleViewButton}
+                activeOpacity={0.8}
+              >
+                <MaterialCommunityIcons
+                  name={viewMode === "grid" ? "view-list" : "view-grid"}
+                  size={18}
+                  color={COLORS.text}
+                  style={{ marginRight: 6 }}
+                />
+                <Text style={styles.toggleViewButtonText}>
+                  {viewMode === "grid" ? "Modo Lista" : "Modo Grilla"}
+                </Text>
+              </TouchableOpacity>
+
+              {useApiData && (
+                <TouchableOpacity
+                  onPress={handleManualSync}
+                  disabled={syncing}
+                  style={[styles.apiSyncButton, { marginLeft: 8 }]}
+                >
+                  {syncing ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" style={{ marginRight: 6 }} />
+                  ) : (
+                    <MaterialCommunityIcons name="cached" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
+                  )}
+                  <Text style={styles.apiSyncButtonText}>
+                    {syncing ? "Sincronizando..." : "Sincronizar"}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
 
           {rooms.length === 0 ? (
@@ -2334,8 +2355,8 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   tabButton: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
     borderRadius: THEME.radius.full,
     backgroundColor: Platform.OS === "web" ? "var(--bg, #F1F5F9)" : "#F1F5F9",
     borderWidth: 1,
@@ -2344,9 +2365,14 @@ const styles = StyleSheet.create({
   tabButtonActive: {
     backgroundColor: COLORS.primary,
     borderColor: COLORS.primary,
+    ...Platform.select({
+      web: {
+        boxShadow: "0 2px 8px rgba(137, 4, 4, 0.25)",
+      },
+    }),
   },
   tabButtonText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "bold",
     color: COLORS.text,
   },
@@ -2389,6 +2415,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.card,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
+    borderRightWidth: 1,
+    borderRightColor: COLORS.border,
     ...Platform.select({
       web: {
         position: "sticky" as any,
@@ -2439,7 +2467,9 @@ const styles = StyleSheet.create({
     height: HEADER_HEIGHT,
     justifyContent: "center",
     alignItems: "flex-start",
-    paddingLeft: THEME.spacing.xs,
+    paddingLeft: 6,
+    borderLeftWidth: 1,
+    borderLeftColor: COLORS.border,
   },
   hourHeaderText: {
     fontSize: 10.5,
