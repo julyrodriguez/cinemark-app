@@ -1689,6 +1689,26 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
               <Text style={styles.statsMiniCardValue}>{stats.bestRoomSales} tickets</Text>
             </View>
           ) : null}
+
+          {/* Card 5: Lentes 3D Semanales */}
+          <View style={[styles.statsMiniCard, isMobile && { width: "100%", minWidth: "100%" }]}>
+            <View style={styles.statsMiniCardHeader}>
+              <MaterialCommunityIcons name="sunglasses" size={16} color="#8B5CF6" />
+              <Text style={styles.statsMiniCardLabel}>Lentes 3D Semanales</Text>
+            </View>
+            <Text style={styles.statsMiniCardTitle} numberOfLines={1}>{stats.weekly3DSold}</Text>
+            <Text style={styles.statsMiniCardValue}>Total en la semana</Text>
+          </View>
+
+          {/* Card 6: Lentes 3D del Día */}
+          <View style={[styles.statsMiniCard, isMobile && { width: "100%", minWidth: "100%" }]}>
+            <View style={styles.statsMiniCardHeader}>
+              <MaterialCommunityIcons name="sunglasses" size={16} color="#EC4899" />
+              <Text style={styles.statsMiniCardLabel}>Lentes 3D del Día</Text>
+            </View>
+            <Text style={styles.statsMiniCardTitle} numberOfLines={1}>{stats.daily3DSold}</Text>
+            <Text style={styles.statsMiniCardValue}>{selectedDay.charAt(0).toUpperCase() + selectedDay.slice(1)} (Hoy)</Text>
+          </View>
         </View>
 
         {/* Function Más Llena Highlight */}
