@@ -79,6 +79,8 @@ export default function MapaBannersScreen() {
   ]);
   const [selectedFloorId, setSelectedFloorId] = useState<string>("floor-pb");
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
+  const [multiSelectMode, setMultiSelectMode] = useState(false);
+  const [selectedElementIds, setSelectedElementIds] = useState<string[]>([]);
 
   // Dragging states
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
@@ -138,6 +140,7 @@ export default function MapaBannersScreen() {
             const exists = data.floors.some((f) => f.id === selectedFloorId);
             if (!exists) {
               setSelectedFloorId(data.floors[0].id);
+              setSelectedElementIds([]);
             }
           }
         }
@@ -262,6 +265,7 @@ export default function MapaBannersScreen() {
     const updated = [...floors, newFloor];
     setFloors(updated);
     setSelectedFloorId(id);
+    setSelectedElementIds([]);
     handleSaveChanges(updated);
   };
 
@@ -269,6 +273,72 @@ export default function MapaBannersScreen() {
     const updated = floors.map((f) => (f.id === id ? { ...f, width, height } : f));
     setFloors(updated);
     handleSaveChanges(updated);
+  };
+
+  const handleSelectElement = (id: string) => {
+    if (multiSelectMode) {
+      setSelectedElementIds((prev) => {
+        if (prev.includes(id)) {
+          const updated = prev.filter((item) => item !== id);
+          setSelectedElementId(updated.length > 0 ? updated[updated.length - 1] : null);
+          return updated;
+        } else {
+          const updated = [...prev, id];
+          setSelectedElementId(id);
+          return updated;
+        }
+      });
+    } else {
+      setSelectedElementId(id);
+      setSelectedElementIds([id]);
+    }
+  };
+
+  const handleAlignSelected = (axis: "x" | "y") => {
+    if (selectedElementIds.length <= 1 || !activeFloor) return;
+    const firstId = selectedElementIds[0];
+    const firstEl = activeFloor.elements.find((el) => el.id === firstId);
+    if (!firstEl) return;
+
+    const alignVal = firstEl[axis];
+
+    const updatedFloors = floors.map((f) => {
+      if (f.id === selectedFloorId) {
+        return {
+          ...f,
+          elements: f.elements.map((el) => {
+            if (selectedElementIds.includes(el.id) && !el.locked) {
+              return { ...el, [axis]: alignVal };
+            }
+            return el;
+          }),
+        };
+      }
+      return f;
+    });
+    setFloors(updatedFloors);
+    handleSaveChanges(updatedFloors);
+  };
+
+  const handleSetCommonPosition = (axis: "x" | "y", value: number) => {
+    if (selectedElementIds.length === 0 || !activeFloor) return;
+
+    const updatedFloors = floors.map((f) => {
+      if (f.id === selectedFloorId) {
+        return {
+          ...f,
+          elements: f.elements.map((el) => {
+            if (selectedElementIds.includes(el.id) && !el.locked) {
+              return { ...el, [axis]: value };
+            }
+            return el;
+          }),
+        };
+      }
+      return f;
+    });
+    setFloors(updatedFloors);
+    handleSaveChanges(updatedFloors);
   };
 
   const handleLockAllElements = (lock: boolean) => {
@@ -451,6 +521,7 @@ export default function MapaBannersScreen() {
       setFloors(updated);
       setSelectedFloorId(updated[0].id);
       setSelectedElementId(null);
+      setSelectedElementIds([]);
       handleSaveChanges(updated);
     };
 
@@ -1173,6 +1244,27 @@ export default function MapaBannersScreen() {
             </View>
 
             <Pressable
+              style={[s.snapToggleBtn, multiSelectMode && s.snapToggleBtnActive]}
+              onPress={() => {
+                setMultiSelectMode(!multiSelectMode);
+                if (multiSelectMode) {
+                  setSelectedElementIds([]);
+                } else if (selectedElementId) {
+                  setSelectedElementIds([selectedElementId]);
+                }
+              }}
+            >
+              <MaterialCommunityIcons
+                name={multiSelectMode ? "checkbox-multiple-marked" : "checkbox-multiple-blank-outline"}
+                size={14}
+                color={multiSelectMode ? "#fff" : COLORS.muted}
+              />
+              <Text style={[s.snapToggleText, multiSelectMode && { color: "#fff" }]}>
+                Multiselección
+              </Text>
+            </Pressable>
+
+            <Pressable
               style={[s.snapToggleBtn, snapToGrid && s.snapToggleBtnActive]}
               onPress={() => setSnapToGrid(!snapToGrid)}
             >
@@ -1270,7 +1362,9 @@ export default function MapaBannersScreen() {
             {/* Elements markers */}
             {activeFloor?.elements.map((el, index) => {
               const meta = ELEMENT_TYPE_META[el.type] || ELEMENT_TYPE_META.otro;
-              const isSelected = el.id === selectedElementId;
+              const isSelected = multiSelectMode
+                ? selectedElementIds.includes(el.id)
+                : el.id === selectedElementId;
               const hasPoster = !!el.posterUrl;
               const showZocalo = ["banner", "poster", "standee", "proximamente"].includes(el.type);
 
@@ -1289,10 +1383,10 @@ export default function MapaBannersScreen() {
                     },
                     hasPoster && s.elementMarkerWithPoster,
                   ]}
-                  onPress={() => setSelectedElementId(el.id)}
+                  onPress={() => handleSelectElement(el.id)}
                   onPressIn={() => {
-                    setSelectedElementId(el.id);
-                    if (!el.locked) {
+                    handleSelectElement(el.id);
+                    if (!el.locked && !multiSelectMode) {
                       setActiveDragId(el.id);
                       activeDragIdRef.current = el.id;
                       const startEl = activeFloor?.elements.find(item => item.id === el.id);
@@ -1341,7 +1435,114 @@ export default function MapaBannersScreen() {
           borderTopWidth: 1,
         }
       ]}>
-        {selectedElement ? (
+        {multiSelectMode && selectedElementIds.length > 1 ? (
+          <ScrollView contentContainerStyle={s.sidebarContent}>
+            <View style={s.sidebarHeader}>
+              <Text style={s.sidebarTitle}>Selección Múltiple</Text>
+              <Text style={{ fontSize: 12, fontWeight: "bold", color: COLORS.primary }}>
+                {selectedElementIds.length} elementos
+              </Text>
+            </View>
+
+            <View style={s.field}>
+              <Text style={s.fieldLabel}>Elementos Seleccionados</Text>
+              <View style={{ gap: 4, backgroundColor: COLORS.bg, padding: 8, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border }}>
+                {selectedElementIds.map((id) => {
+                  const el = activeFloor?.elements.find((item) => item.id === id);
+                  return (
+                    <Text key={id} style={{ fontSize: 12, color: COLORS.text, fontWeight: "600" }}>
+                      • {el?.name || "Elemento"} {el?.movieName ? `(${el.movieName})` : ""}
+                    </Text>
+                  );
+                })}
+              </View>
+            </View>
+
+            <View style={s.divider} />
+
+            <View style={s.field}>
+              <Text style={s.sidebarSectionTitle}>Alineación Rápida</Text>
+              <Text style={{ fontSize: 11, color: COLORS.muted, fontStyle: "italic", marginBottom: 6 }}>
+                Alinea todos los elementos seleccionados al eje del primer elemento seleccionado:
+              </Text>
+              
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                <Pressable
+                  style={[s.iconBtn, { flex: 1, backgroundColor: COLORS.primary }]}
+                  onPress={() => handleAlignSelected("x")}
+                >
+                  <MaterialCommunityIcons name="align-horizontal-center" size={16} color="#fff" />
+                  <Text style={s.btnText}>Alinear en X</Text>
+                </Pressable>
+
+                <Pressable
+                  style={[s.iconBtn, { flex: 1, backgroundColor: COLORS.primary }]}
+                  onPress={() => handleAlignSelected("y")}
+                >
+                  <MaterialCommunityIcons name="align-vertical-center" size={16} color="#fff" />
+                  <Text style={s.btnText}>Alinear en Y</Text>
+                </Pressable>
+              </View>
+            </View>
+
+            <View style={s.divider} />
+
+            <View style={s.field}>
+              <Text style={s.sidebarSectionTitle}>Establecer Posición Común</Text>
+              
+              <View style={s.sizeControlRow}>
+                <View style={s.sizeControlField}>
+                  <Text style={s.fieldLabel}>Posición X Común (%)</Text>
+                  <View style={s.stepperRow}>
+                    <TextInput
+                      style={s.stepperInput}
+                      keyboardType="numeric"
+                      placeholder="Ej: 50"
+                      onChangeText={(val) => {
+                        const parsed = parseFloat(val);
+                        if (!isNaN(parsed)) {
+                          handleSetCommonPosition("x", Math.max(0, Math.min(100, parsed)));
+                        }
+                      }}
+                    />
+                    <Text style={s.percentSymbol}>%</Text>
+                  </View>
+                </View>
+
+                <View style={s.sizeControlField}>
+                  <Text style={s.fieldLabel}>Posición Y Común (%)</Text>
+                  <View style={s.stepperRow}>
+                    <TextInput
+                      style={s.stepperInput}
+                      keyboardType="numeric"
+                      placeholder="Ej: 50"
+                      onChangeText={(val) => {
+                        const parsed = parseFloat(val);
+                        if (!isNaN(parsed)) {
+                          handleSetCommonPosition("y", Math.max(0, Math.min(100, parsed)));
+                        }
+                      }}
+                    />
+                    <Text style={s.percentSymbol}>%</Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+
+            <View style={s.divider} />
+
+            <Pressable
+              style={[s.iconBtn, { backgroundColor: "#64748b" }]}
+              onPress={() => {
+                setSelectedElementIds([]);
+                setSelectedElementId(null);
+              }}
+            >
+              <MaterialCommunityIcons name="checkbox-multiple-blank-outline" size={16} color="#fff" />
+              <Text style={s.btnText}>Deseleccionar Todo</Text>
+            </Pressable>
+          </ScrollView>
+        ) : selectedElement ? (
           <ScrollView contentContainerStyle={s.sidebarContent}>
             <View style={s.sidebarHeader}>
               <Text style={s.sidebarTitle}>Editar Elemento</Text>
@@ -1823,7 +2024,7 @@ export default function MapaBannersScreen() {
                       placeholder="Nombre del Piso"
                     />
                   ) : (
-                    <Pressable onPress={() => { setSelectedFloorId(floor.id); setSelectedElementId(null); }}>
+                    <Pressable onPress={() => { setSelectedFloorId(floor.id); setSelectedElementId(null); setSelectedElementIds([]); }}>
                       <Text style={[s.floorTabText, s.floorTabInactiveText]}>{floor.name}</Text>
                     </Pressable>
                   )}
