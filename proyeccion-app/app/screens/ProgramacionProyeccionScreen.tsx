@@ -1989,7 +1989,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
           ) : viewMode === "list" ? (
             renderListView()
           ) : (
-            <>
+            <View style={{ position: "relative", zIndex: 1 }}>
               {/* Grid Header Row (Index 1) */}
           <View style={[
             styles.mainLayoutRow,
@@ -2279,7 +2279,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
               </View>
             </ScrollView>
           </View>
-        </>
+        </View>
       )}
       {useApiData && stats && renderStatsPanel()}
     </ScrollView>
