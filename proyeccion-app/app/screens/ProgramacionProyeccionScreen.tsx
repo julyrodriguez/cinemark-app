@@ -1903,7 +1903,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
       {/* Main Grid View */}
       <View style={styles.gridContainer}>
-        <ScrollView ref={verticalScrollRef} style={styles.verticalScrollView} bounces={false} stickyHeaderIndices={[1]}>
+        <ScrollView ref={verticalScrollRef} style={styles.verticalScrollView} bounces={false}>
 
           {/* Days Tabs Selection (Index 0 or 1 depending on stats visibility) */}
           <View style={[
