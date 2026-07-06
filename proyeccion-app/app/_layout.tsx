@@ -22,13 +22,16 @@ export default function Layout() {
         document.head.appendChild(link);
       }
 
-      // Registrar Service Worker
+      // Remover Service Worker y limpiar caché antiguo
       if ("serviceWorker" in navigator) {
-        window.addEventListener("load", () => {
-          navigator.serviceWorker.register("/sw.js")
-            .then((reg) => console.log("Service Worker registrado con éxito:", reg.scope))
-            .catch((err) => console.error("Error al registrar Service Worker:", err));
-        });
+        navigator.serviceWorker.getRegistrations()
+          .then((registrations) => {
+            for (const registration of registrations) {
+              registration.unregister();
+              console.log("Service Worker desregistrado con éxito.");
+            }
+          })
+          .catch((err) => console.error("Error al remover Service Worker:", err));
       }
 
       // Inyectar estilo global para ocultar barras de scroll
