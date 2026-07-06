@@ -617,14 +617,14 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
     return () => { isMounted = false; };
   }, [useApiData, cineId, selectedWeekStart]);
 
-  // Generate weeks list dynamically (current + 5 future weeks for pre-sales)
+  // Generate weeks list dynamically (4 past weeks + current + 5 future weeks for pre-sales)
   const availableWeeks = useMemo(() => {
     const list: string[] = [];
     const currentThur = getMovieWeekStartForNow();
     const [y, m, d] = currentThur.split('-').map(Number);
     const thurDate = new Date(Date.UTC(y, m - 1, d));
 
-    for (let i = 0; i < 6; i++) {
+    for (let i = -4; i < 6; i++) {
       const nextThur = new Date(thurDate.getTime() + i * 7 * 24 * 60 * 60 * 1000);
       const yyyy = nextThur.getUTCFullYear();
       const mm = String(nextThur.getUTCMonth() + 1).padStart(2, '0');
@@ -1756,7 +1756,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
         </View>
 
         {/* Charts Container */}
-        <View style={[styles.chartsGrid, isMobile && { flexDirection: "column" }]}>
+        <View style={[styles.chartsGrid, windowWidth < 990 && { flexDirection: "column" }]}>
           {/* Chart 1: Ranking Peliculas */}
           <View style={[styles.chartContainer, { flex: 1 }]}>
             <Text style={styles.chartTitle}>Top 5 Películas de la Semana (Tickets)</Text>
@@ -1781,7 +1781,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
           </View>
 
           {/* Chart 2: Ventas por Dia */}
-          <View style={[styles.chartContainer, { flex: 1, marginLeft: isMobile ? 0 : 16, marginTop: isMobile ? 16 : 0 }]}>
+          <View style={[styles.chartContainer, { flex: 1, marginLeft: windowWidth < 990 ? 0 : 16, marginTop: windowWidth < 990 ? 16 : 0 }]}>
             <Text style={styles.chartTitle}>Ventas por Día de la Semana (Tickets)</Text>
             <View style={styles.chartBody}>
               {DAYS_OF_WEEK.map((day) => {
@@ -1874,6 +1874,8 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
           label += " (Actual)";
         } else if (selectedWeekStart > currentWeek) {
           label += " (Preventa)";
+        } else if (selectedWeekStart < currentWeek) {
+          label += " (Pasada)";
         }
         
         return (
@@ -3318,6 +3320,8 @@ const styles = StyleSheet.create({
   chartRowInfo: {
     flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "center",
+    width: "100%",
     marginBottom: 4,
   },
   chartRowName: {
