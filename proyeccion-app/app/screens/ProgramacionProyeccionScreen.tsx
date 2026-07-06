@@ -1758,7 +1758,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
         {/* Charts Container */}
         <View style={[styles.chartsGrid, windowWidth < 990 && { flexDirection: "column" }]}>
           {/* Chart 1: Ranking Peliculas */}
-          <View style={[styles.chartContainer, { flex: windowWidth < 990 ? 0 : 1 }, windowWidth < 990 && { width: "100%" }]}>
+          <View style={[styles.chartContainer, { flex: windowWidth < 990 ? undefined : 1 }, windowWidth < 990 && { width: "100%" }]}>
             <Text style={styles.chartTitle}>Top 5 Películas de la Semana (Tickets)</Text>
             <View style={styles.chartBody}>
               {sortedMovies.map(([movie, sales], index) => {
@@ -1781,7 +1781,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
           </View>
 
           {/* Chart 2: Ventas por Dia */}
-          <View style={[styles.chartContainer, { flex: windowWidth < 990 ? 0 : 1, marginLeft: windowWidth < 990 ? 0 : 16, marginTop: windowWidth < 990 ? 16 : 0 }, windowWidth < 990 && { width: "100%" }]}>
+          <View style={[styles.chartContainer, { flex: windowWidth < 990 ? undefined : 1, marginLeft: windowWidth < 990 ? 0 : 16, marginTop: windowWidth < 990 ? 16 : 0 }, windowWidth < 990 && { width: "100%" }]}>
             <Text style={styles.chartTitle}>Ventas por Día de la Semana (Tickets)</Text>
             <View style={styles.chartBody}>
               {DAYS_OF_WEEK.map((day) => {
