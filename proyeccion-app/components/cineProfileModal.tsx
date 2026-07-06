@@ -14,6 +14,8 @@ import { getCineConfig, saveCineConfig } from "@/lib/cineConfig";
 import { changeCinemaPassword, updateProyeccionPin } from "@/lib/ipAccess";
 import { COLORS, THEME } from "@/lib/theme";
 import { useAppLayout } from "@/lib/useAppLayout";
+import { db, CINES_COLLECTION } from "@/lib/firebaseConfig";
+import { doc, getDoc } from "firebase/firestore";
 
 type Props = {
   visible: boolean;
@@ -55,6 +57,10 @@ export default function CineProfileModal({
   const [proyeccionPinOkMsg, setProyeccionPinOkMsg] = useState<string | null>(null);
   const [updatingProyeccionPin, setUpdatingProyeccionPin] = useState(false);
 
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshStatus, setRefreshStatus] = useState<string | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -66,6 +72,8 @@ export default function CineProfileModal({
       setConfigOkMsg(null);
       setPasswordError(null);
       setPasswordOkMsg(null);
+      setRefreshStatus(null);
+      setRefreshError(null);
       setPin("");
       setNewPassword("");
       setRepeatPassword("");
@@ -236,6 +244,49 @@ export default function CineProfileModal({
     }
   };
 
+  const handleRefreshSession = async () => {
+    setRefreshing(true);
+    setRefreshStatus(null);
+    setRefreshError(null);
+
+    let backendUrl = "https://apivacas.jariel.com.ar";
+    try {
+      const globalConfigSnap = await getDoc(doc(db, CINES_COLLECTION, "global", "info", "config"));
+      if (globalConfigSnap.exists() && globalConfigSnap.data()?.dataProcessorUrl) {
+        backendUrl = globalConfigSnap.data()?.dataProcessorUrl;
+      } else {
+        const cineConfigSnap = await getDoc(doc(db, CINES_COLLECTION, cineId, "info", "config"));
+        if (cineConfigSnap.exists() && cineConfigSnap.data()?.dataProcessorUrl) {
+          backendUrl = cineConfigSnap.data()?.dataProcessorUrl;
+        }
+      }
+    } catch (err) {
+      console.error("Error al buscar backend URL en Firestore:", err);
+    }
+
+    try {
+      const res = await fetch(`${backendUrl}/api/cinemark/session/refresh`, {
+        method: "POST",
+      });
+
+      if (res.ok) {
+        const resJson = await res.json() as any;
+        if (resJson?.success) {
+          setRefreshStatus("¡Sesión de Cinemark renovada con éxito!");
+        } else {
+          setRefreshError(`Error: ${resJson?.error || "Desconocido"}`);
+        }
+      } else {
+        setRefreshError(`Error del servidor: ${res.status}`);
+      }
+    } catch (err: any) {
+      console.error("Error renovando sesión:", err);
+      setRefreshError(`Error: No se pudo conectar con el servidor.`);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   return (
     <Modal
       visible={visible}
@@ -315,6 +366,23 @@ export default function CineProfileModal({
                   {savingConfig ? "Guardando..." : "Guardar configuración"}
                 </Text>
               </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  s.btn,
+                  { backgroundColor: COLORS.border || "#333", marginTop: 12 },
+                  s.btnMobile
+                ]}
+                onPress={handleRefreshSession}
+                disabled={refreshing}
+              >
+                <Text style={[s.btnPrimaryText, { color: COLORS.text }]}>
+                  {refreshing ? "Renovando sesión..." : "Renovar sesión"}
+                </Text>
+              </TouchableOpacity>
+
+              {refreshError ? <Text style={s.errorText}>{refreshError}</Text> : null}
+              {refreshStatus ? <Text style={s.okText}>{refreshStatus}</Text> : null}
 
               <View style={s.divider} />
 

@@ -13,6 +13,35 @@ admin.initializeApp();
 
 const db = admin.firestore();
 
+const DEFAULT_FALLBACK_SESSION_ID = "63f3a214-1dab-4366-9c33-3faa337c9efb";
+const DATA_PROCESSOR_URL = process.env.DATA_PROCESSOR_URL || "https://apivacas.jariel.com.ar";
+
+async function fetchMemberSessionId(): Promise<string> {
+  let backendUrl = DATA_PROCESSOR_URL;
+  try {
+    const configSnap = await db.collection("cines").doc("global").collection("info").doc("config").get();
+    if (configSnap.exists && configSnap.data()?.dataProcessorUrl) {
+      backendUrl = configSnap.data()?.dataProcessorUrl;
+    }
+  } catch (err: any) {
+    // ignorar error de lectura si no está creado o configurado aún
+  }
+
+  try {
+    const res = await fetch(`${backendUrl}/api/cinemark/session`);
+    if (res.ok) {
+      const data = await res.json() as any;
+      if (data?.success && data?.memberSessionId) {
+        return data.memberSessionId;
+      }
+    }
+    console.warn(`[Cinemark] Backend retorno estado no exitoso: ${res.status}. Usando fallback.`);
+  } catch (err: any) {
+    console.error("[Cinemark] Error al conectar con data-processor para obtener session ID:", err.message);
+  }
+  return DEFAULT_FALLBACK_SESSION_ID;
+}
+
 const APP_AUTH_DOMAIN = "equipo.local";
 
 const ADMIN_EMAILS: string[] = (process.env.ADMIN_EMAILS || "admin@ejemplo.com,cinemarkproyecto@equipo.local")
@@ -1583,6 +1612,22 @@ function buildTicketList(isWednesday: boolean) {
   ];
 }
 
+function getCinemaMetadata(theaterId: string | number) {
+  const idStr = String(theaterId);
+  if (idStr === "2016") {
+    return {
+      cinemaAddress: "Av. Francisco de la Cruz 4602, CABA",
+      cinemaCity: "CABA",
+      cinemaName: "Parque Brown"
+    };
+  }
+  return {
+    cinemaAddress: "Aguero 665, Abasto Shopping",
+    cinemaCity: "CABA",
+    cinemaName: "Abasto"
+  };
+}
+
 // Helper to fetch occupied seats list for a session
 async function getOccupiedSeats(
   theaterId: string,
@@ -1591,11 +1636,12 @@ async function getOccupiedSeats(
   sessionDateTime?: string
 ): Promise<string[] | null> {
   const urlOrder = "https://bff.cinemark.com.ar/api/order-tickets";
+  const memberSessionId = await fetchMemberSessionId();
   const headers = {
     "accept": "application/json",
     "content-type": "application/json",
     "country": "AR",
-    "member-session-id": "63f3a214-1dab-4366-9c33-3faa337c9efb",
+    "member-session-id": memberSessionId,
     "origin": "https://www.cinemark.com.ar",
     "referer": "https://www.cinemark.com.ar/",
     "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -1604,14 +1650,16 @@ async function getOccupiedSeats(
   const isWednesday = isWednesdaySession(sessionDateTime);
   const ticketList = buildTicketList(isWednesday);
 
+  const cinemaMeta = getCinemaMetadata(theaterId);
+
   const payload = {
     "cinemaId": Number(theaterId),
     "feature": 0,
     "isMobile": false,
     "movie": {
-      "cinemaAddress": "Aguero 665, Abasto Shopping",
-      "cinemaCity": "CABA",
-      "cinemaName": "Abasto",
+      "cinemaAddress": cinemaMeta.cinemaAddress,
+      "cinemaCity": cinemaMeta.cinemaCity,
+      "cinemaName": cinemaMeta.cinemaName,
       "corporateFilmId": String(corporateId),
       "rating": "R-13",
       "ratingDescription": "Apto para todo Público"
@@ -1837,6 +1885,9 @@ export const cronUpdateShowtimes = onSchedule({ schedule: "every 20 minutes", ti
     if (!theaterId && cineId.toLowerCase() === "abasto") {
       theaterId = "103";
     }
+    if (!theaterId && cineId.toLowerCase() === "parquebrown") {
+      theaterId = "2016";
+    }
     
     if (!theaterId) {
       console.log(`Skipping cine ${cineId} (no theaterId configured)`);
@@ -1863,6 +1914,9 @@ export const forceSyncShowtimes = onCall({ cors: true, timeoutSeconds: 300 }, as
   if (!theaterId && targetCineId.toLowerCase() === "abasto") {
     theaterId = "103";
   }
+  if (!theaterId && targetCineId.toLowerCase() === "parquebrown") {
+    theaterId = "2016";
+  }
   if (!theaterId) {
     throw new HttpsError("not-found", `No theaterId found for cine ${targetCineId}`);
   }
@@ -1883,11 +1937,12 @@ export const getCinemarkSeatMap = onCall({ cors: true }, async (request) => {
   }
 
   const urlOrder = "https://bff.cinemark.com.ar/api/order-tickets";
+  const memberSessionId = await fetchMemberSessionId();
   const headers = {
     "accept": "application/json",
     "content-type": "application/json",
     "country": "AR",
-    "member-session-id": "63f3a214-1dab-4366-9c33-3faa337c9efb",
+    "member-session-id": memberSessionId,
     "origin": "https://www.cinemark.com.ar",
     "referer": "https://www.cinemark.com.ar/",
     "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -1896,14 +1951,16 @@ export const getCinemarkSeatMap = onCall({ cors: true }, async (request) => {
   const isWednesday = isWednesdaySession(sessionDateTime);
   const ticketList = buildTicketList(isWednesday);
 
+  const cinemaMeta = getCinemaMetadata(cinemaId);
+
   const payload = {
     "cinemaId": cinemaId,
     "feature": 0,
     "isMobile": false,
     "movie": {
-      "cinemaAddress": "Aguero 665, Abasto Shopping",
-      "cinemaCity": "CABA",
-      "cinemaName": "Abasto",
+      "cinemaAddress": cinemaMeta.cinemaAddress,
+      "cinemaCity": cinemaMeta.cinemaCity,
+      "cinemaName": cinemaMeta.cinemaName,
       "corporateFilmId": corporateFilmId,
       "rating": "R-13",
       "ratingDescription": "Apto para todo Público"
