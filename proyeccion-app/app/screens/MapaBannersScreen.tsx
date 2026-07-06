@@ -10,6 +10,7 @@ import {
   Text,
   TextInput,
   View,
+  useWindowDimensions,
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Print from "expo-print";
@@ -64,6 +65,10 @@ interface TmdbResult {
 }
 
 export default function MapaBannersScreen() {
+  const { width: windowWidth } = useWindowDimensions();
+  const isMobile = windowWidth < 800;
+  const WorkspaceContainer = isMobile ? ScrollView : View;
+
   const { cineId, user } = useAuthUser();
   const userEmail = user?.email || "";
 
@@ -562,9 +567,7 @@ export default function MapaBannersScreen() {
             .print-canvas {
               width: 100%;
               aspect-ratio: 16/9;
-              background-color: #f8fafc;
-              background-image: radial-gradient(#cbd5e1 1.2px, #f8fafc 1.2px);
-              background-size: 20px 20px;
+              background-color: #ffffff;
               border: 2px solid #94a3b8;
               border-radius: 8px;
               position: relative;
@@ -692,7 +695,7 @@ export default function MapaBannersScreen() {
   return (
     <View style={s.container}>
       {/* HEADER CONTROLS */}
-      <View style={s.topBar}>
+      <View style={[s.topBar, isMobile && { flexDirection: "column", alignItems: "stretch", gap: 10 }]}>
         <View style={s.floorsTabsScroll}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.floorsTabs}>
             {floors.map((floor) => {
@@ -751,13 +754,30 @@ export default function MapaBannersScreen() {
         </View>
       </View>
 
+      {isMobile && (
+        <View style={s.mobileWarningBanner}>
+          <MaterialCommunityIcons name="monitor-screenshot" size={16} color="#856404" />
+          <Text style={s.mobileWarningText}>
+            Se recomienda diseñar el mapa desde una computadora para mayor comodidad.
+          </Text>
+        </View>
+      )}
+
       {/* CANVAS + EDITOR SIDEBAR */}
-      <View style={s.mainWorkspace}>
+      <WorkspaceContainer style={[s.mainWorkspace, isMobile && { flexDirection: "column" }]} contentContainerStyle={isMobile ? { paddingBottom: 40 } : undefined}>
         
         {/* ELEMENT GENERATOR PALETTE */}
-        <View style={s.paletteCard}>
+        <View style={[
+          s.paletteCard,
+          isMobile && {
+            width: "100%",
+            borderRightWidth: 0,
+            borderBottomWidth: 1,
+            padding: 12,
+          }
+        ]}>
           <Text style={s.paletteTitle}>Añadir Elemento</Text>
-          <View style={s.paletteButtons}>
+          <View style={[s.paletteButtons, isMobile && { flexDirection: "row" }]}>
             {Object.entries(ELEMENT_TYPE_META).map(([key, meta]) => (
               <Pressable
                 key={key}
@@ -851,7 +871,14 @@ export default function MapaBannersScreen() {
         </View>
 
         {/* SIDEBAR PROPERTIES EDITOR */}
-        <View style={s.sidebar}>
+        <View style={[
+          s.sidebar,
+          isMobile && {
+            width: "100%",
+            borderLeftWidth: 0,
+            borderTopWidth: 1,
+          }
+        ]}>
           {selectedElement ? (
             <ScrollView contentContainerStyle={s.sidebarContent}>
               <View style={s.sidebarHeader}>
@@ -1186,7 +1213,7 @@ export default function MapaBannersScreen() {
           )}
         </View>
 
-      </View>
+      </WorkspaceContainer>
     </View>
   );
 }
@@ -1763,5 +1790,21 @@ const s = StyleSheet.create({
     borderColor: "#fff",
     zIndex: 5,
     ...THEME.shadow.soft,
+  },
+  mobileWarningBanner: {
+    backgroundColor: "#fff3cd",
+    borderColor: "#ffeeba",
+    borderWidth: 1,
+    padding: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  mobileWarningText: {
+    color: "#856404",
+    fontSize: 12,
+    fontWeight: "bold",
+    textAlign: "center",
   },
 });
