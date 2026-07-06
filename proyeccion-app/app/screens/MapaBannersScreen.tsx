@@ -39,6 +39,8 @@ interface FloorPlan {
   id: string;
   name: string;
   elements: BannerElement[];
+  width?: number;
+  height?: number;
 }
 
 interface MarketingMapsConfig {
@@ -122,6 +124,8 @@ export default function MapaBannersScreen() {
             if (data.floors && data.floors.length > 0) {
               const sanitizedFloors = data.floors.map(floor => ({
                 ...floor,
+                width: floor.width || 1000,
+                height: floor.height || 562,
                 elements: (floor.elements || []).map(el => {
                   let type: any = el.type;
                   if (type === "marquesina") type = "poster";
@@ -252,11 +256,163 @@ export default function MapaBannersScreen() {
       id,
       name: `Nuevo Piso (${floors.length + 1})`,
       elements: [],
+      width: 1000,
+      height: 562,
     };
     const updated = [...floors, newFloor];
     setFloors(updated);
     setSelectedFloorId(id);
     handleSaveChanges(updated);
+  };
+
+  const handleUpdateFloorDimensions = (id: string, width: number, height: number) => {
+    const updated = floors.map((f) => (f.id === id ? { ...f, width, height } : f));
+    setFloors(updated);
+    handleSaveChanges(updated);
+  };
+
+  const handleExportPNG = () => {
+    if (!activeFloor) return;
+
+    const floorWidth = activeFloor.width || 1000;
+    const floorHeight = activeFloor.height || 562;
+
+    const esc = (val: string) =>
+      String(val ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
+
+    // Construct SVG representation
+    let svgElements = "";
+
+    // Center guides
+    svgElements += `
+      <line x1="0" y1="${floorHeight / 2}" x2="${floorWidth}" y2="${floorHeight / 2}" stroke="#cbd5e1" stroke-dasharray="5,5" stroke-width="1.5" opacity="0.6" />
+      <line x1="${floorWidth / 2}" y1="0" x2="${floorWidth / 2}" y2="${floorHeight}" stroke="#cbd5e1" stroke-dasharray="5,5" stroke-width="1.5" opacity="0.6" />
+    `;
+
+    // Markers
+    activeFloor.elements.forEach((el, index) => {
+      const meta = ELEMENT_TYPE_META[el.type] || ELEMENT_TYPE_META.otro;
+      const width = ((el.width || 8) / 100) * floorWidth;
+      const height = ((el.height || 12) / 100) * floorHeight;
+      const x = (el.x / 100) * floorWidth - width / 2;
+      const y = (el.y / 100) * floorHeight - height / 2;
+
+      const color = meta.color || "#6b7280";
+      const showZocalo = ["banner", "poster", "standee", "proximamente"].includes(el.type);
+
+      // Background rect
+      svgElements += `
+        <rect x="${x}" y="${y}" width="${width}" height="${height}" rx="8" ry="8" fill="#ffffff" stroke="${color}" stroke-width="2.5" />
+      `;
+
+      if (el.posterUrl) {
+        svgElements += `
+          <image href="${esc(el.posterUrl)}" x="${x + 2}" y="${y + 2}" width="${width - 4}" height="${height - (showZocalo ? 18 : 4)}" preserveAspectRatio="xMidYMid meet" crossorigin="anonymous" />
+        `;
+      } else {
+        const nameText = el.movieName || el.name || "";
+        svgElements += `
+          <rect x="${x + 3}" y="${y + 3}" width="${width - 6}" height="${height - (showZocalo ? 17 : 6)}" rx="5" ry="5" fill="${color}" opacity="0.15" />
+          <text x="${x + width / 2}" y="${y + height / 2 - (showZocalo ? 4 : 0)}" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" fill="#1e293b" text-anchor="middle" dominant-baseline="middle">${esc(nameText)}</text>
+        `;
+      }
+
+      if (showZocalo) {
+        svgElements += `
+          <path d="M ${x + 1.25} ${y + height - 16} L ${x + width - 1.25} ${y + height - 16} L ${x + width - 1.25} ${y + height - 6} A 6 6 0 0 1 ${x + width - 7.25} ${y + height - 1.25} L ${x + 7.25} ${y + height - 1.25} A 6 6 0 0 1 ${x + 1.25} ${y + height - 7.25} Z" fill="${color}" />
+          <text x="${x + width / 2}" y="${y + height - 8}" font-family="Helvetica, Arial, sans-serif" font-size="8" font-weight="bold" fill="#ffffff" text-anchor="middle" dominant-baseline="middle">${esc(meta.label.toUpperCase())}</text>
+        `;
+      }
+
+      svgElements += `
+        <circle cx="${x}" cy="${y}" r="10" fill="${color}" stroke="#ffffff" stroke-width="1.5" />
+        <text x="${x}" y="${y}" font-family="Helvetica, Arial, sans-serif" font-size="9" font-weight="bold" fill="#ffffff" text-anchor="middle" dominant-baseline="central">${index + 1}</text>
+      `;
+
+      if (el.locked) {
+        svgElements += `
+          <circle cx="${x + width}" cy="${y}" r="10" fill="#ef4444" stroke="#ffffff" stroke-width="1.5" />
+          <text x="${x + width}" y="${y}" font-family="Helvetica, Arial, sans-serif" font-size="8" font-weight="bold" fill="#ffffff" text-anchor="middle" dominant-baseline="central">L</text>
+        `;
+      }
+    });
+
+    const svgXml = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="${floorWidth}" height="${floorHeight}" viewBox="0 0 ${floorWidth} ${floorHeight}">
+        <style>
+          text { user-select: none; }
+        </style>
+        <rect width="${floorWidth}" height="${floorHeight}" fill="#f8fafc" />
+        <defs>
+          <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+            <circle cx="2" cy="2" r="1.2" fill="#cbd5e1" />
+          </pattern>
+        </defs>
+        <rect width="${floorWidth}" height="${floorHeight}" fill="url(#grid)" />
+        ${svgElements}
+      </svg>
+    `;
+
+    const svgBlob = new Blob([svgXml], { type: "image/svg+xml;charset=utf-8" });
+    const URL = window.URL || window.webkitURL || window;
+    const blobUrl = URL.createObjectURL(svgBlob);
+
+    if (Platform.OS !== "web" || typeof window === "undefined") {
+      const downloadLink = document.createElement("a");
+      downloadLink.download = `${activeFloor.name}.svg`;
+      downloadLink.href = blobUrl;
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+      return;
+    }
+
+    const image = new window.Image();
+    image.crossOrigin = "anonymous";
+    image.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = floorWidth;
+      canvas.height = floorHeight;
+      const context = canvas.getContext("2d");
+      if (context) {
+        context.fillStyle = "#ffffff";
+        context.fillRect(0, 0, floorWidth, floorHeight);
+        context.drawImage(image, 0, 0);
+
+        try {
+          const pngUrl = canvas.toDataURL("image/png");
+          const downloadLink = document.createElement("a");
+          downloadLink.download = `${activeFloor.name}.png`;
+          downloadLink.href = pngUrl;
+          document.body.appendChild(downloadLink);
+          downloadLink.click();
+          document.body.removeChild(downloadLink);
+        } catch (err) {
+          console.error("Canvas export failed, falling back to SVG download:", err);
+          const downloadLink = document.createElement("a");
+          downloadLink.download = `${activeFloor.name}.svg`;
+          downloadLink.href = blobUrl;
+          document.body.appendChild(downloadLink);
+          downloadLink.click();
+          document.body.removeChild(downloadLink);
+        }
+      }
+      URL.revokeObjectURL(blobUrl);
+    };
+    image.onerror = () => {
+      console.error("Image loading failed");
+      const downloadLink = document.createElement("a");
+      downloadLink.download = `${activeFloor.name}.svg`;
+      downloadLink.href = blobUrl;
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+    };
+    image.src = blobUrl;
   };
 
   // Delete Floor
@@ -367,22 +523,7 @@ export default function MapaBannersScreen() {
   const handleCanvasMouseDown = (e: any) => {
     if (Platform.OS !== "web") return;
 
-    // Check if clicked element or any parent is a marker
-    let isMarker = false;
-    let target = e.target;
-    while (target && target !== e.currentTarget) {
-      if (
-        target.getAttribute?.("data-focusable") === "true" ||
-        target.style?.cursor === "pointer" ||
-        target.tagName === "BUTTON"
-      ) {
-        isMarker = true;
-        break;
-      }
-      target = target.parentNode;
-    }
-
-    if (!isMarker) {
+    if (!activeDragIdRef.current) {
       setIsPanning(true);
       panStartRef.current = { x: e.clientX, y: e.clientY };
       panOffsetRef.current = { ...panOffset };
@@ -679,10 +820,14 @@ export default function MapaBannersScreen() {
             })
             .join("");
 
+          const fWidth = floor.width || 1000;
+          const fHeight = floor.height || 562;
+          const fAspectRatio = fWidth / fHeight;
+
           return `
             <div class="floor-section">
               <h2>${esc(floor.name)}</h2>
-              <div class="print-canvas">
+              <div class="print-canvas" style="aspect-ratio: ${fAspectRatio};">
                 <div class="canvas-grid-line h"></div>
                 <div class="canvas-grid-line v"></div>
                 ${canvasRepresentation}
@@ -691,6 +836,51 @@ export default function MapaBannersScreen() {
           `;
         })
         .join("");
+
+      // Group elements for the summary page requested by Catriel
+      const summaryHtml = `
+        <div class="summary-page" style="page-break-before: always; width: 100%; max-width: 1000px; padding: 20px; box-sizing: border-box; display: flex; flex-direction: column;">
+          <h1 style="font-size: 24px; color: #0f172a; border-bottom: 2px solid #cbd5e1; padding-bottom: 8px; margin-bottom: 20px; font-weight: bold; text-align: left;">Resumen General de Banners y Marquesinas</h1>
+          ${floors.map(floor => {
+            // Group elements by type
+            const grouped: Record<string, typeof floor.elements> = {};
+            floor.elements.forEach(el => {
+              const label = ELEMENT_TYPE_META[el.type]?.label || "Otro";
+              if (!grouped[label]) grouped[label] = [];
+              grouped[label].push(el);
+            });
+
+            const hasElements = floor.elements.length > 0;
+            if (!hasElements) {
+              return `
+                <div style="margin-bottom: 25px; text-align: left;">
+                  <h2 style="font-size: 18px; color: #334155; margin-bottom: 8px; font-weight: bold;">${esc(floor.name)}</h2>
+                  <p style="font-size: 12px; color: #64748b; font-style: italic;">Sin elementos registrados en este piso.</p>
+                </div>
+              `;
+            }
+
+            const groupsHtml = Object.entries(grouped).map(([typeLabel, items]) => {
+              const itemsList = items.map((item) => {
+                const name = item.movieName || item.name || "Sin nombre";
+                return `<strong>${esc(name)}</strong>`;
+              }).join(", ");
+              return `
+                <p style="font-size: 13px; margin: 6px 0; color: #1e293b; text-align: left;">
+                  <span style="font-weight: bold; color: #475569;">${esc(typeLabel)}s:</span> ${itemsList}
+                </p>
+              `;
+            }).join("");
+
+            return `
+              <div style="margin-bottom: 25px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 15px; text-align: left;">
+                <h2 style="font-size: 18px; color: #0f172a; margin-bottom: 10px; font-weight: bold;">${esc(floor.name)}</h2>
+                ${groupsHtml}
+              </div>
+            `;
+          }).join("")}
+        </div>
+      `;
 
       const html = `
         <!doctype html>
@@ -736,7 +926,6 @@ export default function MapaBannersScreen() {
             }
             .print-canvas {
               width: 100%;
-              aspect-ratio: 16/9;
               background-color: #ffffff;
               border: 2px solid #94a3b8;
               border-radius: 8px;
@@ -817,6 +1006,7 @@ export default function MapaBannersScreen() {
         </head>
         <body>
           ${floorsHtml}
+          ${summaryHtml}
         </body>
         </html>
       `;
@@ -954,6 +1144,35 @@ export default function MapaBannersScreen() {
                 Cuadrícula
               </Text>
             </Pressable>
+
+            {/* Custom Floor Dimensions inputs */}
+            <View style={s.dimensionsContainer}>
+              <MaterialCommunityIcons name="resize" size={14} color={COLORS.muted} />
+              <Text style={s.dimLabel}>Ancho:</Text>
+              <TextInput
+                style={s.dimInput}
+                keyboardType="numeric"
+                value={String(activeFloor?.width || 1000)}
+                onChangeText={(val) => {
+                  const parsed = parseInt(val, 10);
+                  if (!isNaN(parsed)) {
+                    handleUpdateFloorDimensions(activeFloor.id, parsed, activeFloor?.height || 562);
+                  }
+                }}
+              />
+              <Text style={s.dimLabel}>Alto:</Text>
+              <TextInput
+                style={s.dimInput}
+                keyboardType="numeric"
+                value={String(activeFloor?.height || 562)}
+                onChangeText={(val) => {
+                  const parsed = parseInt(val, 10);
+                  if (!isNaN(parsed)) {
+                    handleUpdateFloorDimensions(activeFloor.id, activeFloor?.width || 1000, parsed);
+                  }
+                }}
+              />
+            </View>
           </View>
         </View>
 
@@ -962,9 +1181,11 @@ export default function MapaBannersScreen() {
             style={[
               s.canvas,
               {
-                width: `${canvasWidthScale}%`,
+                width: (activeFloor?.width || 1000) * (canvasWidthScale / 100),
+                height: (activeFloor?.height || 562) * (canvasWidthScale / 100),
                 left: panOffset.x,
                 top: panOffset.y,
+                position: "absolute",
                 ...(Platform.OS === "web" && {
                   cursor: isPanning ? "grabbing" : (activeDragId ? "move" : "grab"),
                 }),
@@ -1564,6 +1785,11 @@ export default function MapaBannersScreen() {
         </View>
 
         <View style={s.actionsRow}>
+          <Pressable style={[s.iconBtn, { backgroundColor: "#0284c7" }]} onPress={handleExportPNG}>
+            <MaterialCommunityIcons name="image-outline" size={18} color="#fff" />
+            <Text style={s.btnText}>Exportar PNG</Text>
+          </Pressable>
+
           <Pressable style={[s.iconBtn, printing && s.btnDisabled]} onPress={handlePrint} disabled={printing}>
             {printing ? (
               <ActivityIndicator size="small" color="#fff" />
@@ -2270,5 +2496,34 @@ const s = StyleSheet.create({
     fontWeight: "900",
     color: COLORS.text,
     lineHeight: 18,
+  },
+  dimensionsContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    height: 28,
+    gap: 6,
+  },
+  dimLabel: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: COLORS.muted,
+  },
+  dimInput: {
+    width: 42,
+    height: 20,
+    fontSize: 11,
+    fontWeight: "800",
+    color: COLORS.text,
+    textAlign: "center",
+    backgroundColor: COLORS.bg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 4,
+    padding: 0,
   },
 });
