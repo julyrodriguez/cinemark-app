@@ -271,7 +271,7 @@ export default function MapaBannersScreen() {
     handleSaveChanges(updated);
   };
 
-  const handleExportPNG = () => {
+  const handleExportPNG = async () => {
     if (!activeFloor) return;
 
     const floorWidth = activeFloor.width || 1000;
@@ -283,6 +283,35 @@ export default function MapaBannersScreen() {
         .replaceAll("<", "&lt;")
         .replaceAll(">", "&gt;")
         .replaceAll('"', "&quot;");
+
+    const getBase64FromUrl = async (url: string): Promise<string> => {
+      try {
+        const response = await fetch(url);
+        const blob = await response.blob();
+        return new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.onerror = () => resolve("");
+          reader.readAsDataURL(blob);
+        });
+      } catch (err) {
+        console.error("Error converting image to Base64:", err);
+        return "";
+      }
+    };
+
+    // Pre-fetch all images concurrently and convert to Base64 to bypass browser security sandbox inside SVGs
+    const base64Posters: Record<string, string> = {};
+    await Promise.all(
+      activeFloor.elements.map(async (el) => {
+        if (el.posterUrl) {
+          const b64 = await getBase64FromUrl(el.posterUrl);
+          if (b64) {
+            base64Posters[el.id] = b64;
+          }
+        }
+      })
+    );
 
     // Construct SVG representation
     let svgElements = "";
@@ -309,9 +338,10 @@ export default function MapaBannersScreen() {
         <rect x="${x}" y="${y}" width="${width}" height="${height}" rx="8" ry="8" fill="#ffffff" stroke="${color}" stroke-width="2.5" />
       `;
 
-      if (el.posterUrl) {
+      const posterUrl = base64Posters[el.id] || el.posterUrl;
+      if (posterUrl) {
         svgElements += `
-          <image href="${esc(el.posterUrl)}" x="${x + 2}" y="${y + 2}" width="${width - 4}" height="${height - (showZocalo ? 18 : 4)}" preserveAspectRatio="xMidYMid meet" crossorigin="anonymous" />
+          <image href="${esc(posterUrl)}" x="${x + 2}" y="${y + 2}" width="${width - 4}" height="${height - (showZocalo ? 18 : 4)}" preserveAspectRatio="xMidYMid meet" crossorigin="anonymous" />
         `;
       } else {
         const nameText = el.movieName || el.name || "";
@@ -381,7 +411,7 @@ export default function MapaBannersScreen() {
       if (context) {
         context.fillStyle = "#ffffff";
         context.fillRect(0, 0, floorWidth, floorHeight);
-        context.drawImage(image, 0, 0);
+        context.drawImage(image, 0, 0, floorWidth, floorHeight);
 
         try {
           const pngUrl = canvas.toDataURL("image/png");
@@ -523,7 +553,24 @@ export default function MapaBannersScreen() {
   const handleCanvasMouseDown = (e: any) => {
     if (Platform.OS !== "web") return;
 
-    if (!activeDragIdRef.current) {
+    // Travese DOM to see if clicked target is a marker element to avoid starting panning before React Native responder triggers onPressIn
+    let isMarker = false;
+    let target = e.target;
+    while (target && target !== e.currentTarget) {
+      if (
+        target.getAttribute?.("data-marker") === "true" ||
+        target.getAttribute?.("data-focusable") === "true" ||
+        target.style?.cursor === "pointer" ||
+        target.style?.cursor === "move" ||
+        target.tagName === "BUTTON"
+      ) {
+        isMarker = true;
+        break;
+      }
+      target = target.parentNode;
+    }
+
+    if (!isMarker) {
       setIsPanning(true);
       panStartRef.current = { x: e.clientX, y: e.clientY };
       panOffsetRef.current = { ...panOffset };
@@ -1244,6 +1291,7 @@ export default function MapaBannersScreen() {
                       }
                     }
                   }}
+                  {...({ "data-marker": "true" } as any)}
                 >
                   {hasPoster ? (
                     <Image source={{ uri: el.posterUrl }} style={s.elementPosterBg as any} resizeMode="contain" />
