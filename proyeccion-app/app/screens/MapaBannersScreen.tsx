@@ -1245,6 +1245,12 @@ export default function MapaBannersScreen() {
             .floor-section:last-child {
               margin-bottom: 0;
             }
+            .multi-map .floor-section {
+              max-width: 12.5cm;
+            }
+            .multi-map .split-floor-wrapper .floor-section {
+              max-width: 48%;
+            }
             .floor-section h2 {
               font-size: 20px;
               margin-top: 10px;
@@ -1254,19 +1260,13 @@ export default function MapaBannersScreen() {
               font-weight: 700;
             }
             .print-canvas {
-              width: auto;
-              max-width: 100%;
-              max-height: 14cm;
-              margin: 0 auto;
+              width: 100%;
               background-color: #ffffff;
               border: 2px solid #94a3b8;
               border-radius: 8px;
               position: relative;
               overflow: hidden;
               box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
-            }
-            .multi-map .print-canvas {
-              max-height: 6.8cm;
             }
             .canvas-inner {
               position: absolute;
