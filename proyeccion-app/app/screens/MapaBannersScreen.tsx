@@ -81,6 +81,7 @@ export default function MapaBannersScreen() {
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
   const [multiSelectMode, setMultiSelectMode] = useState(false);
   const [selectedElementIds, setSelectedElementIds] = useState<string[]>([]);
+  const [distributeGap, setDistributeGap] = useState<number>(1);
 
   // Dragging states
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
@@ -184,9 +185,9 @@ export default function MapaBannersScreen() {
     }
   };
 
-  // Listen to arrow keys to move selected element on Web
+  // Listen to arrow keys to move selected elements on Web
   useEffect(() => {
-    if (Platform.OS !== "web" || !selectedElementId || !activeFloor) return;
+    if (Platform.OS !== "web" || !activeFloor || (!selectedElementId && selectedElementIds.length === 0)) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
       // Avoid moving if typing inside input fields
@@ -214,20 +215,23 @@ export default function MapaBannersScreen() {
       }
 
       if (dx !== 0 || dy !== 0) {
-        const el = activeFloor.elements.find(item => item.id === selectedElementId);
-        if (el && !el.locked) {
+        const targets = multiSelectMode ? selectedElementIds : [selectedElementId].filter(Boolean) as string[];
+        if (targets.length > 0) {
           isMovingWithKeysRef.current = true;
-          const newX = Math.max(0, Math.min(100, el.x + dx));
-          const newY = Math.max(0, Math.min(100, el.y + dy));
 
           setFloors((prevFloors) =>
             prevFloors.map((f) => {
               if (f.id === selectedFloorId) {
                 return {
                   ...f,
-                  elements: f.elements.map((item) =>
-                    item.id === selectedElementId ? { ...item, x: newX, y: newY } : item
-                  ),
+                  elements: f.elements.map((item) => {
+                    if (targets.includes(item.id) && !item.locked) {
+                      const newX = Math.max(0, Math.min(100, item.x + dx));
+                      const newY = Math.max(0, Math.min(100, item.y + dy));
+                      return { ...item, x: newX, y: newY };
+                    }
+                    return item;
+                  }),
                 };
               }
               return f;
@@ -250,7 +254,7 @@ export default function MapaBannersScreen() {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, [selectedElementId, activeFloor, selectedFloorId, floors, handleSaveChanges]);
+  }, [selectedElementId, activeFloor, selectedFloorId, floors, handleSaveChanges, multiSelectMode, selectedElementIds]);
 
   // Add Floor
   const handleAddFloor = () => {
@@ -377,6 +381,39 @@ export default function MapaBannersScreen() {
 
     setFloors(updatedFloors);
     handleSaveChanges(updatedFloors);
+  };
+
+  const commonWidth = useMemo(() => {
+    if (selectedElementIds.length === 0 || !activeFloor) return 8;
+    const firstEl = activeFloor.elements.find((el) => el.id === selectedElementIds[0]);
+    return firstEl?.width ?? 8;
+  }, [activeFloor, selectedElementIds]);
+
+  const commonHeight = useMemo(() => {
+    if (selectedElementIds.length === 0 || !activeFloor) return 12;
+    const firstEl = activeFloor.elements.find((el) => el.id === selectedElementIds[0]);
+    return firstEl?.height ?? 12;
+  }, [activeFloor, selectedElementIds]);
+
+  const handleUpdateSelectedSize = (width: number, height: number) => {
+    if (selectedElementIds.length === 0 || !activeFloor) return;
+
+    const updated = floors.map((f) => {
+      if (f.id === selectedFloorId) {
+        return {
+          ...f,
+          elements: f.elements.map((el) => {
+            if (selectedElementIds.includes(el.id) && !el.locked) {
+              return { ...el, width, height };
+            }
+            return el;
+          }),
+        };
+      }
+      return f;
+    });
+    setFloors(updated);
+    handleSaveChanges(updated);
   };
 
   const handleSetCommonPosition = (axis: "x" | "y", value: number) => {
@@ -1623,42 +1660,188 @@ export default function MapaBannersScreen() {
               </Text>
               
               <View style={{ gap: 8 }}>
-                <Text style={s.fieldLabel}>Eje Horizontal (X)</Text>
-                <View style={{ flexDirection: "row", gap: 8 }}>
-                  <Pressable
-                    style={[s.iconBtn, { flex: 1, backgroundColor: COLORS.primary }]}
-                    onPress={() => handleDistributeSelected("x", 1)}
-                  >
-                    <MaterialCommunityIcons name="arrow-split-horizontal" size={16} color="#fff" />
-                    <Text style={s.btnText}>Separar 1%</Text>
-                  </Pressable>
+                <View style={s.sizeControlField}>
+                  <Text style={s.fieldLabel}>Distancia / Gap (%)</Text>
+                  <View style={s.stepperRow}>
+                    <Pressable
+                      style={s.stepperSmallBtn}
+                      onPress={() => setDistributeGap(prev => Math.max(0.1, parseFloat((prev - 0.5).toFixed(1))))}
+                    >
+                      <Text style={s.stepperSmallBtnText}>-0.5</Text>
+                    </Pressable>
+                    <Pressable
+                      style={s.stepperSmallBtn}
+                      onPress={() => setDistributeGap(prev => Math.max(0.1, parseFloat((prev - 0.1).toFixed(1))))}
+                    >
+                      <Text style={s.stepperSmallBtnText}>-0.1</Text>
+                    </Pressable>
+                    
+                    <TextInput
+                      style={s.stepperInput}
+                      keyboardType="numeric"
+                      value={String(distributeGap)}
+                      onChangeText={(val) => {
+                        const parsed = parseFloat(val);
+                        if (!isNaN(parsed)) {
+                          setDistributeGap(Math.max(0, parsed));
+                        }
+                      }}
+                    />
+                    <Text style={s.percentSymbol}>%</Text>
 
-                  <Pressable
-                    style={[s.iconBtn, { flex: 1, backgroundColor: COLORS.primary }]}
-                    onPress={() => handleDistributeSelected("x", 2)}
-                  >
-                    <MaterialCommunityIcons name="arrow-split-horizontal" size={16} color="#fff" />
-                    <Text style={s.btnText}>Separar 2%</Text>
-                  </Pressable>
+                    <Pressable
+                      style={s.stepperSmallBtn}
+                      onPress={() => setDistributeGap(prev => parseFloat((prev + 0.1).toFixed(1)))}
+                    >
+                      <Text style={s.stepperSmallBtnText}>+0.1</Text>
+                    </Pressable>
+                    <Pressable
+                      style={s.stepperSmallBtn}
+                      onPress={() => setDistributeGap(prev => parseFloat((prev + 0.5).toFixed(1)))}
+                    >
+                      <Text style={s.stepperSmallBtnText}>+0.5</Text>
+                    </Pressable>
+                  </View>
                 </View>
 
-                <Text style={[s.fieldLabel, { marginTop: 4 }]}>Eje Vertical (Y)</Text>
-                <View style={{ flexDirection: "row", gap: 8 }}>
+                <View style={{ flexDirection: "row", gap: 8, marginTop: 4 }}>
                   <Pressable
                     style={[s.iconBtn, { flex: 1, backgroundColor: COLORS.primary }]}
-                    onPress={() => handleDistributeSelected("y", 1)}
+                    onPress={() => handleDistributeSelected("x", distributeGap)}
                   >
-                    <MaterialCommunityIcons name="arrow-split-vertical" size={16} color="#fff" />
-                    <Text style={s.btnText}>Separar 1%</Text>
+                    <MaterialCommunityIcons name="arrow-split-horizontal" size={16} color="#fff" />
+                    <Text style={s.btnText}>Separar en X</Text>
                   </Pressable>
 
                   <Pressable
                     style={[s.iconBtn, { flex: 1, backgroundColor: COLORS.primary }]}
-                    onPress={() => handleDistributeSelected("y", 2)}
+                    onPress={() => handleDistributeSelected("y", distributeGap)}
                   >
                     <MaterialCommunityIcons name="arrow-split-vertical" size={16} color="#fff" />
-                    <Text style={s.btnText}>Separar 2%</Text>
+                    <Text style={s.btnText}>Separar en Y</Text>
                   </Pressable>
+                </View>
+              </View>
+            </View>
+
+            <View style={s.divider} />
+
+            <View style={s.field}>
+              <Text style={s.sidebarSectionTitle}>Dimensiones de la Selección</Text>
+              
+              <View style={s.sizeControlRow}>
+                <View style={s.sizeControlField}>
+                  <Text style={s.fieldLabel}>Ancho Común (%)</Text>
+                  <View style={s.stepperRow}>
+                    <Pressable
+                      style={s.stepperSmallBtn}
+                      onPress={() => {
+                        const newWidth = Math.max(3, commonWidth - 5);
+                        handleUpdateSelectedSize(newWidth, commonHeight);
+                      }}
+                    >
+                      <Text style={s.stepperSmallBtnText}>-5</Text>
+                    </Pressable>
+                    <Pressable
+                      style={s.stepperSmallBtn}
+                      onPress={() => {
+                        const newWidth = Math.max(3, commonWidth - 1);
+                        handleUpdateSelectedSize(newWidth, commonHeight);
+                      }}
+                    >
+                      <Text style={s.stepperSmallBtnText}>-1</Text>
+                    </Pressable>
+                    
+                    <TextInput
+                      style={s.stepperInput}
+                      keyboardType="numeric"
+                      value={String(commonWidth)}
+                      onChangeText={(val) => {
+                        const parsed = parseInt(val, 10);
+                        if (!isNaN(parsed)) {
+                          const constrained = Math.max(1, Math.min(100, parsed));
+                          handleUpdateSelectedSize(constrained, commonHeight);
+                        }
+                      }}
+                    />
+                    <Text style={s.percentSymbol}>%</Text>
+
+                    <Pressable
+                      style={s.stepperSmallBtn}
+                      onPress={() => {
+                        const newWidth = Math.min(100, commonWidth + 1);
+                        handleUpdateSelectedSize(newWidth, commonHeight);
+                      }}
+                    >
+                      <Text style={s.stepperSmallBtnText}>+1</Text>
+                    </Pressable>
+                    <Pressable
+                      style={s.stepperSmallBtn}
+                      onPress={() => {
+                        const newWidth = Math.min(100, commonWidth + 5);
+                        handleUpdateSelectedSize(newWidth, commonHeight);
+                      }}
+                    >
+                      <Text style={s.stepperSmallBtnText}>+5</Text>
+                    </Pressable>
+                  </View>
+                </View>
+
+                <View style={s.sizeControlField}>
+                  <Text style={s.fieldLabel}>Alto Común (%)</Text>
+                  <View style={s.stepperRow}>
+                    <Pressable
+                      style={s.stepperSmallBtn}
+                      onPress={() => {
+                        const newHeight = Math.max(3, commonHeight - 5);
+                        handleUpdateSelectedSize(commonWidth, newHeight);
+                      }}
+                    >
+                      <Text style={s.stepperSmallBtnText}>-5</Text>
+                    </Pressable>
+                    <Pressable
+                      style={s.stepperSmallBtn}
+                      onPress={() => {
+                        const newHeight = Math.max(3, commonHeight - 1);
+                        handleUpdateSelectedSize(commonWidth, newHeight);
+                      }}
+                    >
+                      <Text style={s.stepperSmallBtnText}>-1</Text>
+                    </Pressable>
+                    
+                    <TextInput
+                      style={s.stepperInput}
+                      keyboardType="numeric"
+                      value={String(commonHeight)}
+                      onChangeText={(val) => {
+                        const parsed = parseInt(val, 10);
+                        if (!isNaN(parsed)) {
+                          const constrained = Math.max(1, Math.min(100, parsed));
+                          handleUpdateSelectedSize(commonWidth, constrained);
+                        }
+                      }}
+                    />
+                    <Text style={s.percentSymbol}>%</Text>
+
+                    <Pressable
+                      style={s.stepperSmallBtn}
+                      onPress={() => {
+                        const newHeight = Math.min(100, commonHeight + 1);
+                        handleUpdateSelectedSize(commonWidth, newHeight);
+                      }}
+                    >
+                      <Text style={s.stepperSmallBtnText}>+1</Text>
+                    </Pressable>
+                    <Pressable
+                      style={s.stepperSmallBtn}
+                      onPress={() => {
+                        const newHeight = Math.min(100, commonHeight + 5);
+                        handleUpdateSelectedSize(commonWidth, newHeight);
+                      }}
+                    >
+                      <Text style={s.stepperSmallBtnText}>+5</Text>
+                    </Pressable>
+                  </View>
                 </View>
               </View>
             </View>
