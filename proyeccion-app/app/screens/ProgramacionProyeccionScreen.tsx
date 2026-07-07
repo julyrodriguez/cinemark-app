@@ -1647,6 +1647,14 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
           <Text style={styles.statsPanelTitle}>Análisis y Estadísticas Semanales</Text>
         </View>
 
+        {/* Warning Banner */}
+        <View style={styles.statsWarningCard}>
+          <MaterialCommunityIcons name="alert-circle" size={16} color="#EAB308" style={{ marginRight: 8 }} />
+          <Text style={styles.statsWarningText}>
+            La información presentada en esta sección es estimada y puede contener un margen de error.
+          </Text>
+        </View>
+
         {/* Highlights Row */}
         <View style={[styles.statsCardsRow, isMobile && { flexDirection: "column" }]}>
           {/* Card 1: Más Vista */}
@@ -1951,12 +1959,20 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
           {/* Days Tabs Selection (Index 0 or 1 depending on stats visibility) */}
           <View style={[
             styles.tabBarContainer,
-            !isMobile && { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingRight: 16 }
+            !isMobile && {
+              position: "relative",
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+            }
           ]}>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.tabBar}
+              contentContainerStyle={[
+                styles.tabBar,
+                !isMobile && { paddingHorizontal: 260 }
+              ]}
               style={!isMobile ? { flex: 1 } : undefined}
             >
               {DAYS_OF_WEEK.map((day) => {
@@ -1978,6 +1994,10 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
             <View style={[
               styles.headerButtonsRow,
               { paddingVertical: 6 },
+              !isMobile && {
+                position: "absolute",
+                right: 16,
+              },
               isMobile && {
                 flexDirection: "row",
                 justifyContent: "center",
@@ -3194,6 +3214,26 @@ const styles = StyleSheet.create({
     fontSize: 8,
     color: "#FFFFFF",
     fontWeight: "bold",
+  },
+  statsWarningCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.card,
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 0,
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderLeftWidth: 4,
+    borderLeftColor: "#EAB308",
+  },
+  statsWarningText: {
+    fontSize: 12,
+    color: COLORS.textSoft,
+    fontWeight: "500",
+    flex: 1,
   },
   statsPanelContainer: {
     backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F1F5F9)" : "#F1F5F9",
