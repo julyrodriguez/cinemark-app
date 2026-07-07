@@ -320,6 +320,65 @@ export default function MapaBannersScreen() {
     handleSaveChanges(updatedFloors);
   };
 
+  const handleDistributeSelected = (axis: "x" | "y", gap: number) => {
+    if (selectedElementIds.length <= 1 || !activeFloor) return;
+
+    // Get the selected elements
+    const selectedElements = activeFloor.elements.filter((el) =>
+      selectedElementIds.includes(el.id)
+    );
+
+    // Sort by coordinate value along the axis
+    const sorted = [...selectedElements].sort((a, b) => a[axis] - b[axis]);
+
+    // Keep track of the new positions
+    const newPositions: Record<string, number> = {};
+    
+    // First element in sorted array stays in its place
+    let prevEl = sorted[0];
+    newPositions[prevEl.id] = prevEl[axis];
+
+    for (let i = 1; i < sorted.length; i++) {
+      const currEl = sorted[i];
+      
+      if (axis === "x") {
+        const prevWidth = prevEl.width ?? 8;
+        const currWidth = currEl.width ?? 8;
+        const prevVal = newPositions[prevEl.id];
+        let newX = prevVal + (prevWidth / 2) + (currWidth / 2) + gap;
+        newX = Math.max(1, Math.min(99, newX));
+        newPositions[currEl.id] = newX;
+      } else {
+        const prevHeight = prevEl.height ?? 12;
+        const currHeight = currEl.height ?? 12;
+        const prevVal = newPositions[prevEl.id];
+        let newY = prevVal + (prevHeight / 2) + (currHeight / 2) + gap;
+        newY = Math.max(1, Math.min(99, newY));
+        newPositions[currEl.id] = newY;
+      }
+      
+      prevEl = currEl;
+    }
+
+    const updatedFloors = floors.map((f) => {
+      if (f.id === selectedFloorId) {
+        return {
+          ...f,
+          elements: f.elements.map((el) => {
+            if (selectedElementIds.includes(el.id) && !el.locked && el.id in newPositions) {
+              return { ...el, [axis]: newPositions[el.id] };
+            }
+            return el;
+          }),
+        };
+      }
+      return f;
+    });
+
+    setFloors(updatedFloors);
+    handleSaveChanges(updatedFloors);
+  };
+
   const handleSetCommonPosition = (axis: "x" | "y", value: number) => {
     if (selectedElementIds.length === 0 || !activeFloor) return;
 
@@ -631,6 +690,34 @@ export default function MapaBannersScreen() {
 
     setFloors(updatedFloors);
     setSelectedElementId(null);
+    handleSaveChanges(updatedFloors);
+  };
+
+  // Duplicate Element
+  const handleDuplicateElement = (element: BannerElement) => {
+    if (!activeFloor) return;
+
+    const newElement: BannerElement = {
+      ...element,
+      id: `el-${Date.now()}`,
+      name: `${element.name} (Copia)`,
+      x: Math.max(1, Math.min(99, element.x + 2)),
+      locked: false,
+    };
+
+    const updatedFloors = floors.map((f) => {
+      if (f.id === selectedFloorId) {
+        return {
+          ...f,
+          elements: [...f.elements, newElement],
+        };
+      }
+      return f;
+    });
+
+    setFloors(updatedFloors);
+    setSelectedElementId(newElement.id);
+    setSelectedElementIds([newElement.id]);
     handleSaveChanges(updatedFloors);
   };
 
@@ -1530,6 +1617,55 @@ export default function MapaBannersScreen() {
             <View style={s.divider} />
 
             <View style={s.field}>
+              <Text style={s.sidebarSectionTitle}>Separar Elementos</Text>
+              <Text style={{ fontSize: 11, color: COLORS.muted, fontStyle: "italic", marginBottom: 6 }}>
+                Separa los elementos seleccionados de forma simétrica a lo largo del eje seleccionado (ordenados de menor a mayor posición):
+              </Text>
+              
+              <View style={{ gap: 8 }}>
+                <Text style={s.fieldLabel}>Eje Horizontal (X)</Text>
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  <Pressable
+                    style={[s.iconBtn, { flex: 1, backgroundColor: COLORS.primary }]}
+                    onPress={() => handleDistributeSelected("x", 1)}
+                  >
+                    <MaterialCommunityIcons name="arrow-split-horizontal" size={16} color="#fff" />
+                    <Text style={s.btnText}>Separar 1%</Text>
+                  </Pressable>
+
+                  <Pressable
+                    style={[s.iconBtn, { flex: 1, backgroundColor: COLORS.primary }]}
+                    onPress={() => handleDistributeSelected("x", 2)}
+                  >
+                    <MaterialCommunityIcons name="arrow-split-horizontal" size={16} color="#fff" />
+                    <Text style={s.btnText}>Separar 2%</Text>
+                  </Pressable>
+                </View>
+
+                <Text style={[s.fieldLabel, { marginTop: 4 }]}>Eje Vertical (Y)</Text>
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  <Pressable
+                    style={[s.iconBtn, { flex: 1, backgroundColor: COLORS.primary }]}
+                    onPress={() => handleDistributeSelected("y", 1)}
+                  >
+                    <MaterialCommunityIcons name="arrow-split-vertical" size={16} color="#fff" />
+                    <Text style={s.btnText}>Separar 1%</Text>
+                  </Pressable>
+
+                  <Pressable
+                    style={[s.iconBtn, { flex: 1, backgroundColor: COLORS.primary }]}
+                    onPress={() => handleDistributeSelected("y", 2)}
+                  >
+                    <MaterialCommunityIcons name="arrow-split-vertical" size={16} color="#fff" />
+                    <Text style={s.btnText}>Separar 2%</Text>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+
+            <View style={s.divider} />
+
+            <View style={s.field}>
               <Text style={s.sidebarSectionTitle}>Establecer Posición Común</Text>
               
               <View style={s.sizeControlRow}>
@@ -1615,6 +1751,14 @@ export default function MapaBannersScreen() {
                   <Text style={[s.lockToggleBtnText, selectedElement.locked && { color: "#fff" }]}>
                     {selectedElement.locked ? "Bloqueado" : "Bloquear"}
                   </Text>
+                </Pressable>
+
+                <Pressable
+                  style={s.replicateBtn}
+                  onPress={() => handleDuplicateElement(selectedElement)}
+                >
+                  <MaterialCommunityIcons name="content-copy" size={14} color={COLORS.primary} />
+                  <Text style={s.replicateBtnText}>Replicar</Text>
                 </Pressable>
 
                 <Pressable style={s.deleteBtn} onPress={() => handleDeleteElement(selectedElement.id)}>
@@ -2693,6 +2837,22 @@ const s = StyleSheet.create({
     fontSize: 11,
     fontWeight: "800",
     color: COLORS.muted,
+  },
+  replicateBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    height: 32,
+    backgroundColor: COLORS.primarySoft,
+  },
+  replicateBtnText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: COLORS.primary,
   },
   lockBadge: {
     position: "absolute",
