@@ -1064,6 +1064,20 @@ export default function MapaBannersScreen() {
           .replaceAll("<", "&lt;")
           .replaceAll(">", "&gt;");
 
+      let totalSections = 0;
+      floors.forEach((floor) => {
+        const fWidth = floor.width || 1000;
+        const fHeight = floor.height || 562;
+        const fAspectRatio = fWidth / fHeight;
+        const needsSplit = fAspectRatio > 2.2;
+        if (needsSplit) {
+          totalSections += 2;
+        } else {
+          totalSections += 1;
+        }
+      });
+      const bodyClass = totalSections > 1 ? "multi-map" : "single-map";
+
       const floorsHtml = floors
         .map((floor) => {
           // Generate marker badges on canvas representation
@@ -1099,23 +1113,25 @@ export default function MapaBannersScreen() {
 
           if (needsSplit) {
             return `
-              <div class="floor-section">
-                <h2>${esc(floor.name)} - Parte Izquierda</h2>
-                <div class="print-canvas" style="aspect-ratio: ${fAspectRatio / 2};">
-                  <div class="canvas-inner" style="width: 200%; left: 0;">
-                    <div class="canvas-grid-line h"></div>
-                    <div class="canvas-grid-line v"></div>
-                    ${canvasRepresentation}
+              <div class="split-floor-wrapper">
+                <div class="floor-section">
+                  <h2>${esc(floor.name)} - Parte Izquierda</h2>
+                  <div class="print-canvas" style="aspect-ratio: ${fAspectRatio / 2};">
+                    <div class="canvas-inner" style="width: 200%; left: 0;">
+                      <div class="canvas-grid-line h"></div>
+                      <div class="canvas-grid-line v"></div>
+                      ${canvasRepresentation}
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div class="floor-section">
-                <h2>${esc(floor.name)} - Parte Derecha</h2>
-                <div class="print-canvas" style="aspect-ratio: ${fAspectRatio / 2};">
-                  <div class="canvas-inner" style="width: 200%; left: -100%;">
-                    <div class="canvas-grid-line h"></div>
-                    <div class="canvas-grid-line v"></div>
-                    ${canvasRepresentation}
+                <div class="floor-section">
+                  <h2>${esc(floor.name)} - Parte Derecha</h2>
+                  <div class="print-canvas" style="aspect-ratio: ${fAspectRatio / 2};">
+                    <div class="canvas-inner" style="width: 200%; left: -100%;">
+                      <div class="canvas-grid-line h"></div>
+                      <div class="canvas-grid-line v"></div>
+                      ${canvasRepresentation}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1173,7 +1189,7 @@ export default function MapaBannersScreen() {
             }).join("");
 
             return `
-              <div style="margin-bottom: 25px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 15px; text-align: left;">
+              <div style="margin-bottom: 25px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 15px; text-align: left; break-inside: avoid; page-break-inside: avoid;">
                 <h2 style="font-size: 18px; color: #0f172a; margin-bottom: 10px; font-weight: bold;">${esc(floor.name)}</h2>
                 ${groupsHtml}
               </div>
@@ -1191,20 +1207,34 @@ export default function MapaBannersScreen() {
           <style>
             @page {
               size: A4 landscape;
-              margin: 10mm;
+              margin: 0;
             }
             body {
               font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
               color: #1e293b;
-              margin: 0;
-              padding: 0;
+              margin: 15mm 20mm;
               background: #fff;
               display: flex;
               flex-direction: column;
               align-items: center;
             }
+            .split-floor-wrapper {
+              display: flex;
+              flex-direction: row;
+              justify-content: space-between;
+              width: 100%;
+              max-width: 1000px;
+              margin-bottom: 40px;
+              break-inside: avoid;
+              page-break-inside: avoid;
+            }
+            .split-floor-wrapper .floor-section {
+              width: 48%;
+              margin-bottom: 0;
+            }
             .floor-section {
-              page-break-after: always;
+              break-inside: avoid;
+              page-break-inside: avoid;
               width: 100%;
               max-width: 1000px;
               margin-bottom: 40px;
@@ -1213,7 +1243,6 @@ export default function MapaBannersScreen() {
               align-items: center;
             }
             .floor-section:last-child {
-              page-break-after: avoid;
               margin-bottom: 0;
             }
             .floor-section h2 {
@@ -1225,13 +1254,19 @@ export default function MapaBannersScreen() {
               font-weight: 700;
             }
             .print-canvas {
-              width: 100%;
+              width: auto;
+              max-width: 100%;
+              max-height: 14cm;
+              margin: 0 auto;
               background-color: #ffffff;
               border: 2px solid #94a3b8;
               border-radius: 8px;
               position: relative;
               overflow: hidden;
               box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+            }
+            .multi-map .print-canvas {
+              max-height: 6.8cm;
             }
             .canvas-inner {
               position: absolute;
@@ -1309,7 +1344,7 @@ export default function MapaBannersScreen() {
             }
           </style>
         </head>
-        <body>
+        <body class="${bodyClass}">
           ${floorsHtml}
           ${summaryHtml}
         </body>
