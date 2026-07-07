@@ -1113,25 +1113,23 @@ export default function MapaBannersScreen() {
 
           if (needsSplit) {
             return `
-              <div class="split-floor-wrapper">
-                <div class="floor-section">
-                  <h2>${esc(floor.name)} - Parte Izquierda</h2>
-                  <div class="print-canvas" style="aspect-ratio: ${fAspectRatio / 2};">
-                    <div class="canvas-inner" style="width: 200%; left: 0;">
-                      <div class="canvas-grid-line h"></div>
-                      <div class="canvas-grid-line v"></div>
-                      ${canvasRepresentation}
-                    </div>
+              <div class="floor-section split-part">
+                <h2>${esc(floor.name)} - Parte Izquierda</h2>
+                <div class="print-canvas" style="aspect-ratio: ${fAspectRatio / 2};">
+                  <div class="canvas-inner" style="width: 200%; left: 0;">
+                    <div class="canvas-grid-line h"></div>
+                    <div class="canvas-grid-line v"></div>
+                    ${canvasRepresentation}
                   </div>
                 </div>
-                <div class="floor-section">
-                  <h2>${esc(floor.name)} - Parte Derecha</h2>
-                  <div class="print-canvas" style="aspect-ratio: ${fAspectRatio / 2};">
-                    <div class="canvas-inner" style="width: 200%; left: -100%;">
-                      <div class="canvas-grid-line h"></div>
-                      <div class="canvas-grid-line v"></div>
-                      ${canvasRepresentation}
-                    </div>
+              </div>
+              <div class="floor-section split-part">
+                <h2>${esc(floor.name)} - Parte Derecha</h2>
+                <div class="print-canvas" style="aspect-ratio: ${fAspectRatio / 2};">
+                  <div class="canvas-inner" style="width: 200%; left: -100%;">
+                    <div class="canvas-grid-line h"></div>
+                    <div class="canvas-grid-line v"></div>
+                    ${canvasRepresentation}
                   </div>
                 </div>
               </div>
@@ -1218,20 +1216,6 @@ export default function MapaBannersScreen() {
               flex-direction: column;
               align-items: center;
             }
-            .split-floor-wrapper {
-              display: flex;
-              flex-direction: row;
-              justify-content: space-between;
-              width: 100%;
-              max-width: 1000px;
-              margin-bottom: 40px;
-              break-inside: avoid;
-              page-break-inside: avoid;
-            }
-            .split-floor-wrapper .floor-section {
-              width: 48%;
-              margin-bottom: 0;
-            }
             .floor-section {
               break-inside: avoid;
               page-break-inside: avoid;
@@ -1248,8 +1232,8 @@ export default function MapaBannersScreen() {
             .multi-map .floor-section {
               max-width: 12.5cm;
             }
-            .multi-map .split-floor-wrapper .floor-section {
-              max-width: 48%;
+            .multi-map .floor-section.split-part {
+              max-width: 1000px;
             }
             .floor-section h2 {
               font-size: 20px;
