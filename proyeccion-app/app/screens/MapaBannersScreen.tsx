@@ -455,6 +455,7 @@ export default function MapaBannersScreen() {
   const handleExportPNG = async () => {
     if (!activeFloor) return;
 
+    const exportScale = 3.0; // 3x upscale for high-resolution crisp image export
     const floorWidth = activeFloor.width || 1000;
     const floorHeight = activeFloor.height || 562;
 
@@ -573,7 +574,7 @@ export default function MapaBannersScreen() {
     });
 
     const svgXml = `
-      <svg xmlns="http://www.w3.org/2000/svg" width="${floorWidth}" height="${floorHeight}" viewBox="0 0 ${floorWidth} ${floorHeight}">
+      <svg xmlns="http://www.w3.org/2000/svg" width="${floorWidth * exportScale}" height="${floorHeight * exportScale}" viewBox="0 0 ${floorWidth} ${floorHeight}">
         <style>
           text { user-select: none; }
         </style>
@@ -600,13 +601,13 @@ export default function MapaBannersScreen() {
     image.crossOrigin = "anonymous";
     image.onload = () => {
       const canvas = document.createElement("canvas");
-      canvas.width = floorWidth;
-      canvas.height = floorHeight;
+      canvas.width = floorWidth * exportScale;
+      canvas.height = floorHeight * exportScale;
       const context = canvas.getContext("2d");
       if (context) {
         context.fillStyle = "#ffffff";
-        context.fillRect(0, 0, floorWidth, floorHeight);
-        context.drawImage(image, 0, 0, floorWidth, floorHeight);
+        context.fillRect(0, 0, floorWidth * exportScale, floorHeight * exportScale);
+        context.drawImage(image, 0, 0, floorWidth * exportScale, floorHeight * exportScale);
 
         try {
           const pngUrl = canvas.toDataURL("image/png");
