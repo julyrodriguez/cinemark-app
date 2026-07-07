@@ -1237,12 +1237,6 @@ export default function MapaBannersScreen() {
             .floor-section:last-child {
               margin-bottom: 0;
             }
-            .multi-map .floor-section {
-              max-width: 12.5cm;
-            }
-            .multi-map .floor-section.split-part {
-              max-width: 100%;
-            }
             .floor-section h2 {
               font-size: 20px;
               margin-top: 10px;
