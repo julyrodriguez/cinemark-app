@@ -1153,7 +1153,7 @@ export default function MapaBannersScreen() {
 
       // Group elements for the summary page requested by Catriel
       const summaryHtml = `
-        <div class="summary-page" style="page-break-before: always; width: 100%; max-width: 1000px; padding: 20px; box-sizing: border-box; display: flex; flex-direction: column;">
+        <div class="summary-page" style="page-break-before: always; width: 100%; max-width: 100%; box-sizing: border-box; display: flex; flex-direction: column;">
           <h1 style="font-size: 24px; color: #0f172a; border-bottom: 2px solid #cbd5e1; padding-bottom: 8px; margin-bottom: 20px; font-weight: bold; text-align: left;">Resumen General de Banners y Marquesinas</h1>
           ${floors.map(floor => {
             // Group elements by type
@@ -1207,10 +1207,18 @@ export default function MapaBannersScreen() {
               size: A4 landscape;
               margin: 0;
             }
+            html {
+              width: 100%;
+              margin: 0;
+              padding: 0;
+            }
             body {
               font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
               color: #1e293b;
-              margin: 15mm 20mm;
+              width: 100%;
+              margin: 0;
+              padding: 15mm 20mm;
+              box-sizing: border-box;
               background: #fff;
               display: flex;
               flex-direction: column;
@@ -1220,7 +1228,7 @@ export default function MapaBannersScreen() {
               break-inside: avoid;
               page-break-inside: avoid;
               width: 100%;
-              max-width: 1000px;
+              max-width: 100%;
               margin-bottom: 40px;
               display: flex;
               flex-direction: column;
@@ -1233,7 +1241,7 @@ export default function MapaBannersScreen() {
               max-width: 12.5cm;
             }
             .multi-map .floor-section.split-part {
-              max-width: 1000px;
+              max-width: 100%;
             }
             .floor-section h2 {
               font-size: 20px;
