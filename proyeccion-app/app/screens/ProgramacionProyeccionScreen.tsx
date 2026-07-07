@@ -1651,7 +1651,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
         <View style={styles.statsWarningCard}>
           <MaterialCommunityIcons name="alert-circle" size={16} color="#EAB308" style={{ marginRight: 8 }} />
           <Text style={styles.statsWarningText}>
-            La información presentada en esta sección es estimada y puede contener un margen de error.
+            La información presentada en esta sección puede contener un margen de error.
           </Text>
         </View>
 
