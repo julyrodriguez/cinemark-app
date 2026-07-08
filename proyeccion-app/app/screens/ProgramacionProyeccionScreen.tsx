@@ -788,8 +788,8 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
       const currentWeek = getMovieWeekStartForNow();
       const isCurrentWeek = selectedWeekStart === currentWeek;
 
-      // Case A: Future pre-sale weeks. There is no static PDF, so we build master layout directly from API.
-      if (!isCurrentWeek) {
+      // Case A: Future pre-sale weeks OR current week when there's no saved weekly programming layout.
+      if (!isCurrentWeek || !savedWeekly?.weeklyRows || savedWeekly.weeklyRows.length === 0) {
         if (!apiData || !selectedWeekStart) return [];
 
         // Group API sessions by sessionId (to merge DBOX and normal)
