@@ -10,7 +10,7 @@ import {
   query,
   orderBy,
   limit,
-} from "firebase/firestore";
+} from "@/lib/dbService";
 import React, { useEffect, useState, useMemo } from "react";
 import {
   ActivityIndicator,

@@ -9,7 +9,7 @@ import {
   query,
   Timestamp,
   updateDoc,
-} from "firebase/firestore";
+} from "@/lib/dbService";
 import { CINES_COLLECTION, db } from "./firebaseConfig";
 import { Evento } from "./types";
 import { sanitizeCineId } from "@/shared/utils";

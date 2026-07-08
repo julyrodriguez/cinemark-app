@@ -7,7 +7,7 @@ import {
   orderBy,
   query,
   updateDoc,
-} from "firebase/firestore";
+} from "@/lib/dbService";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -25,7 +25,7 @@ import {
 import { CINES_COLLECTION, db, functions } from "../../lib/firebaseConfig";
 import { COLORS, THEME } from "../../lib/theme";
 import { useAuthUser } from "../../lib/useAuthUser";
-import { httpsCallable } from "firebase/functions";
+import { httpsCallable } from "@/lib/dbService";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

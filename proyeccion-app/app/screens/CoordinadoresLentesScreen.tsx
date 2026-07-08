@@ -11,7 +11,7 @@ import {
   runTransaction,
   where,
   startAfter
-} from "firebase/firestore";
+} from "@/lib/dbService";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,

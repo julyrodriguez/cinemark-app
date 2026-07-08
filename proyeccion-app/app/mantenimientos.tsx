@@ -11,7 +11,7 @@ import {
   serverTimestamp,
   setDoc,
   where,
-} from "firebase/firestore";
+} from "@/lib/dbService";
 import React, { useEffect, useState, useMemo } from "react";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import {

@@ -14,9 +14,9 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { doc, onSnapshot, getDoc } from "firebase/firestore";
+import { doc, onSnapshot, getDoc } from "@/lib/dbService";
 import { db, CINES_COLLECTION, functions } from "../../lib/firebaseConfig";
-import { httpsCallable } from "firebase/functions";
+import { httpsCallable } from "@/lib/dbService";
 import { useAuthUser } from "../../lib/useAuthUser";
 import { COLORS, THEME } from "../../lib/theme";
 import { WeekdayKey } from "../../lib/programacion/types";

@@ -14,8 +14,8 @@ import {
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Print from "expo-print";
-import { doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
-import { httpsCallable } from "firebase/functions";
+import { doc, getDoc, setDoc, onSnapshot } from "@/lib/dbService";
+import { httpsCallable } from "@/lib/dbService";
 
 import { db, functions, CINES_COLLECTION } from "../../lib/firebaseConfig";
 import { COLORS, THEME } from "../../lib/theme";

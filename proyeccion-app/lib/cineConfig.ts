@@ -3,7 +3,7 @@ import {
     getDoc,
     serverTimestamp,
     setDoc,
-  } from "firebase/firestore";
+  } from "@/lib/dbService";
   
   import { CINES_COLLECTION, db } from "./firebaseConfig";
   

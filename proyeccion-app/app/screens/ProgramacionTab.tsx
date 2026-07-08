@@ -24,7 +24,7 @@ import {
   orderBy,
   query,
   setDoc,
-} from "firebase/firestore";
+} from "@/lib/dbService";
 import dayjs from "dayjs";
 
 import { db, CINES_COLLECTION } from "../../lib/firebaseConfig";

@@ -4,8 +4,8 @@ import {
   getDocs,
   orderBy,
   query,
-} from "firebase/firestore";
-import { httpsCallable } from "firebase/functions";
+} from "@/lib/dbService";
+import { httpsCallable } from "@/lib/dbService";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,

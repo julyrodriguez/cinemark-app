@@ -15,7 +15,7 @@ import {
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
-import { doc, getDoc, onSnapshot, setDoc } from "firebase/firestore";
+import { doc, getDoc, onSnapshot, setDoc } from "@/lib/dbService";
 
 import { db, CINES_COLLECTION } from "../../lib/firebaseConfig";
 import { COLORS, THEME } from "../../lib/theme";

@@ -20,7 +20,7 @@ import NavHeader from "@/components/NavHeader";
 import CineProfileModal from "@/components/cineProfileModal";
 import { IpAccessGate } from "@/components/IpAccessGate";
 import { auth, db, CINES_COLLECTION } from "../lib/firebaseConfig";
-import { doc, onSnapshot } from "firebase/firestore";
+import { doc, onSnapshot } from "@/lib/dbService";
 import { authorizeCurrentIp, checkIpAccess } from "../lib/ipAccess";
 import { COLORS, THEME } from "../lib/theme";
 import { useAppLayout } from "../lib/useAppLayout";

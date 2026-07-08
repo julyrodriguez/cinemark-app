@@ -18,7 +18,7 @@ import {
   setDoc,
   updateDoc,
   where,
-} from "firebase/firestore";
+} from "@/lib/dbService";
 import React, { useEffect, useState } from "react";
 import {
   ScrollView,

@@ -8,7 +8,7 @@ import {
   setDoc,
   getDoc,
   serverTimestamp,
-} from "firebase/firestore";
+} from "@/lib/dbService";
 import React, { useEffect, useState, useCallback } from "react";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import {

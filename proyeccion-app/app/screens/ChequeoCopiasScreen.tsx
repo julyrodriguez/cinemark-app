@@ -23,7 +23,7 @@ import {
   onSnapshot,
   addDoc,
   serverTimestamp
-} from "firebase/firestore";
+} from "@/lib/dbService";
 import { db, CINES_COLLECTION } from "../../lib/firebaseConfig";
 
 import { useAuthUser } from "../../lib/useAuthUser";

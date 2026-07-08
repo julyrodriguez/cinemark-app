@@ -13,7 +13,7 @@ import {
   Timestamp,
   updateDoc,
   where,
-} from "firebase/firestore";
+} from "@/lib/dbService";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,

@@ -23,7 +23,7 @@ import {
   query,
   setDoc,
   limit,
-} from "firebase/firestore";
+} from "@/lib/dbService";
 import * as Print from "expo-print";
 import dayjs from "dayjs";
 

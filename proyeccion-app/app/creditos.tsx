@@ -15,7 +15,7 @@ import {
   startAfter,
   startAt,
   updateDoc,
-} from "firebase/firestore";
+} from "@/lib/dbService";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,

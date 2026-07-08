@@ -9,7 +9,7 @@ import {
   query,
   serverTimestamp,
   setDoc,
-} from "firebase/firestore";
+} from "@/lib/dbService";
 import React, { useEffect, useState } from "react";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import {

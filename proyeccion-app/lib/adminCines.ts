@@ -1,4 +1,4 @@
-import { httpsCallable } from "firebase/functions";
+import { httpsCallable } from "@/lib/dbService";
 import { functions } from "./firebaseConfig";
 
 export type CineListItem = {
