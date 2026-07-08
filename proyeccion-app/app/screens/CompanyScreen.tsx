@@ -705,8 +705,12 @@ export default function CompanyScreen() {
       {trasnocheStats.hasTrasnocheData && (
         <View style={styles.trasnocheStatsContainer}>
           <View style={styles.trasnocheStatsHeader}>
-            <MaterialCommunityIcons name="weather-night" size={18} color="#F59E0B" />
-            <Text style={styles.trasnocheStatsTitle}>Especial Trasnoche 🌙 (23:30 hs a 06:00 AM)</Text>
+            <MaterialCommunityIcons name="weather-night" size={18} color={COLORS.warning} />
+            <Text style={styles.trasnocheStatsTitle}>
+              {statsMode === "daily"
+                ? `Especial Trasnoche 🌙 (Diario - ${DAYS_OF_WEEK.find(d => d.key === statsDay)?.label || ""})`
+                : "Especial Trasnoche 🌙 (Semanal)"}
+            </Text>
           </View>
           <View style={styles.trasnocheStatsBody}>
             <View style={styles.trasnocheStatCol}>
@@ -722,7 +726,7 @@ export default function CompanyScreen() {
               <Text style={styles.trasnocheStatLabel}>Ocupación Promedio</Text>
             </View>
             <View style={styles.trasnocheStatCol}>
-              <Text style={[styles.trasnocheStatValue, { color: "#F59E0B" }]}>
+              <Text style={styles.trasnocheStatValue}>
                 {trasnocheStats.bestTheaterName}
               </Text>
               <Text style={styles.trasnocheStatLabel}>
@@ -1421,10 +1425,10 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   trasnocheStatsContainer: {
-    backgroundColor: "#111827", // Fondo oscuro noche
+    backgroundColor: COLORS.warningBg,
     borderRadius: THEME.radius.md,
     borderWidth: 1,
-    borderColor: "#374151",
+    borderColor: COLORS.warningBorder,
     padding: THEME.spacing.md,
     marginBottom: THEME.spacing.xl,
     ...THEME.shadow.soft,
@@ -1435,13 +1439,13 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "#374151",
+    borderBottomColor: COLORS.warningBorder,
     paddingBottom: 8,
   },
   trasnocheStatsTitle: {
     fontSize: 13,
     fontWeight: "bold",
-    color: "#F3F4F6",
+    color: COLORS.warning,
   },
   trasnocheStatsBody: {
     flexDirection: "row",
@@ -1455,19 +1459,19 @@ const styles = StyleSheet.create({
   trasnocheStatValue: {
     fontSize: 16,
     fontWeight: "bold",
-    color: "#FFFFFF",
+    color: COLORS.warning,
   },
   trasnocheStatLabel: {
     fontSize: 10,
-    color: "#9CA3AF",
+    color: COLORS.textSoft,
     marginTop: 2,
     textAlign: "center",
   },
   trasnocheBadge: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FEF3C7",
-    borderColor: "#F59E0B",
+    backgroundColor: COLORS.warningBg,
+    borderColor: COLORS.warningBorder,
     borderWidth: 1,
     borderRadius: 4,
     paddingHorizontal: 4,
@@ -1477,7 +1481,7 @@ const styles = StyleSheet.create({
   trasnocheBadgeText: {
     fontSize: 9,
     fontWeight: "bold",
-    color: "#D97706",
+    color: COLORS.warning,
   },
   toggleViewButton: {
     flexDirection: "row",
