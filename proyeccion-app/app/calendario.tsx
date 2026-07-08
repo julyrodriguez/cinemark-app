@@ -20,8 +20,10 @@ import {
   TouchableOpacity,
   View,
   Platform,
+  useWindowDimensions,
 } from "react-native";
 import { Calendar, DateData, LocaleConfig } from "react-native-calendars";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 
 import SectionCard from "@/components/SectionCard";
 import {
@@ -101,6 +103,64 @@ export default function CalendarTab({ readOnly = false }: { readOnly?: boolean }
   const today = new Date();
   const [visibleYear, setVisibleYear] = useState(today.getFullYear());
   const [visibleMonth, setVisibleMonth] = useState(today.getMonth() + 1);
+
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 768;
+
+  const handlePrevMonth = () => {
+    if (visibleMonth === 1) {
+      setVisibleYear((y) => y - 1);
+      setVisibleMonth(12);
+    } else {
+      setVisibleMonth((m) => m - 1);
+    }
+  };
+
+  const handleNextMonth = () => {
+    if (visibleMonth === 12) {
+      setVisibleYear((y) => y + 1);
+      setVisibleMonth(1);
+    } else {
+      setVisibleMonth((m) => m + 1);
+    }
+  };
+
+  const monthDays = useMemo(() => {
+    const firstDayOfMonth = new Date(visibleYear, visibleMonth - 1, 1);
+    const lastDayOfMonth = new Date(visibleYear, visibleMonth, 0);
+    
+    const daysInMonth = lastDayOfMonth.getDate();
+    const startOfWeekOffset = firstDayOfMonth.getDay(); 
+    
+    const cells: Array<{ dateString: string; dayNum: number; isCurrentMonth: boolean }> = [];
+    
+    // Rellenar días del mes anterior
+    const prevMonthLastDay = new Date(visibleYear, visibleMonth - 1, 0).getDate();
+    for (let i = startOfWeekOffset - 1; i >= 0; i--) {
+      const d = prevMonthLastDay - i;
+      const prevMonth = visibleMonth === 1 ? 12 : visibleMonth - 1;
+      const prevYear = visibleMonth === 1 ? visibleYear - 1 : visibleYear;
+      const dateString = `${prevYear}-${pad2(prevMonth)}-${pad2(d)}`;
+      cells.push({ dateString, dayNum: d, isCurrentMonth: false });
+    }
+    
+    // Días del mes actual
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateString = `${visibleYear}-${pad2(visibleMonth)}-${pad2(d)}`;
+      cells.push({ dateString, dayNum: d, isCurrentMonth: true });
+    }
+    
+    // Rellenar días del mes siguiente para completar la última semana
+    const remaining = 42 - cells.length;
+    for (let d = 1; d <= remaining; d++) {
+      const nextMonth = visibleMonth === 12 ? 1 : visibleMonth + 1;
+      const nextYear = visibleMonth === 12 ? visibleYear + 1 : visibleYear;
+      const dateString = `${nextYear}-${pad2(nextMonth)}-${pad2(d)}`;
+      cells.push({ dateString, dayNum: d, isCurrentMonth: false });
+    }
+    
+    return cells;
+  }, [visibleYear, visibleMonth]);
 
   const [deleteVisible, setDeleteVisible] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<CalendarEvent | null>(null);
@@ -378,49 +438,169 @@ export default function CalendarTab({ readOnly = false }: { readOnly?: boolean }
     }
   };
 
+  const renderDesktopHeader = () => {
+    const monthName = LocaleConfig.locales["es"].monthNames[visibleMonth - 1];
+    return (
+      <View style={styles.desktopHeader}>
+        <Text style={styles.desktopHeaderTitle}>
+          {monthName} {visibleYear}
+        </Text>
+        <View style={styles.desktopHeaderActions}>
+          <TouchableOpacity onPress={handlePrevMonth} style={styles.arrowButton} activeOpacity={0.7}>
+            <MaterialCommunityIcons name="chevron-left" size={20} color={COLORS.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity 
+            onPress={() => {
+              const current = new Date();
+              setVisibleYear(current.getFullYear());
+              setVisibleMonth(current.getMonth() + 1);
+            }} 
+            style={styles.todayButton} 
+            activeOpacity={0.7}
+          >
+            <Text style={styles.todayButtonText}>Hoy</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleNextMonth} style={styles.arrowButton} activeOpacity={0.7}>
+            <MaterialCommunityIcons name="chevron-right" size={20} color={COLORS.primary} />
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
+
+  const renderDesktopCalendar = () => {
+    const daysOfWeek = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+    const current = new Date();
+    const todayStr = toLocalYmd(current);
+
+    return (
+      <View style={styles.desktopCalendarContainer}>
+        {renderDesktopHeader()}
+        
+        {/* Días de la semana encabezado */}
+        <View style={styles.desktopWeekHeader}>
+          {daysOfWeek.map((dayName) => (
+            <View key={dayName} style={styles.desktopWeekHeaderCell}>
+              <Text style={styles.desktopWeekHeaderCellText}>{dayName}</Text>
+            </View>
+          ))}
+        </View>
+
+        {/* Celdas de días */}
+        <View style={styles.desktopGrid}>
+          {monthDays.map((cell, idx) => {
+            const isToday = cell.dateString === todayStr;
+            const dayEvents = events.filter((e) => e.date === cell.dateString);
+            const shownEvents = dayEvents.slice(0, 3);
+            const extraCount = dayEvents.length - 3;
+            
+            const textStyle = [
+              styles.desktopDayNumber,
+              !cell.isCurrentMonth && styles.desktopDayNumberDisabled,
+              isToday && styles.desktopDayNumberToday,
+            ];
+
+            return (
+              <TouchableOpacity
+                key={`${cell.dateString}-${idx}`}
+                style={[
+                  styles.desktopDayCell,
+                  isToday && styles.desktopDayCellToday,
+                  !cell.isCurrentMonth && styles.desktopDayCellDisabled,
+                ]}
+                activeOpacity={0.8}
+                onPress={() => {
+                  setSelectedDay(cell.dateString);
+                  setShowModal(true);
+                }}
+              >
+                <View style={styles.desktopDayCellHeader}>
+                  <Text style={textStyle}>{cell.dayNum}</Text>
+                  {isToday && <Text style={styles.todayLabelDesktop}>HOY</Text>}
+                </View>
+
+                <View style={styles.desktopEventsWrapper}>
+                  {shownEvents.map((ev, i) => {
+                    const color = typeColor(ev.type);
+                    return (
+                      <View
+                        key={`${ev.id}-${i}`}
+                        style={[
+                          styles.desktopEventBadge,
+                          {
+                            backgroundColor: color + "12",
+                            borderLeftColor: color,
+                          },
+                        ]}
+                      >
+                        <Text style={[styles.desktopEventBadgeText, { color }]} numberOfLines={1}>
+                          <Text style={{ fontWeight: "800" }}>{ev.type}</Text>
+                          {ev.description ? `: ${ev.description}` : ""}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                  {extraCount > 0 && (
+                    <Text style={styles.desktopMoreCount}>+{extraCount} más</Text>
+                  )}
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
+    );
+  };
+
   return (
     <View style={{ flex: 1 }}>
-      <SectionCard>
-        <Calendar
-          hideExtraDays
-          dayComponent={({ date }: { date?: DateData }) =>
-            date ? renderDay(date) : null
-          }
-          onDayPress={(day: DateData) => {
-            setSelectedDay(day.dateString);
-            setShowModal(true);
-          }}
-          onMonthChange={(m) => {
-            setVisibleYear(m.year);
-            setVisibleMonth(m.month);
-          }}
-          theme={{
-            calendarBackground: COLORS.card,
-            textSectionTitleColor: COLORS.muted,
-            dayTextColor: COLORS.text,
-            monthTextColor: COLORS.text,
-            todayTextColor: COLORS.primary,
-            arrowColor: COLORS.primary,
-            textMonthFontWeight: "bold",
-            textMonthFontSize: THEME.fontSize.lg,
-            textDisabledColor: Platform.OS === "web" ? "rgba(255,255,255,0.15)" : "#ccc",
-          }}
-        />
-      </SectionCard>
+      {isDesktop ? (
+        renderDesktopCalendar()
+      ) : (
+        <>
+          <SectionCard>
+            <Calendar
+              hideExtraDays
+              dayComponent={({ date }: { date?: DateData }) =>
+                date ? renderDay(date) : null
+              }
+              onDayPress={(day: DateData) => {
+                setSelectedDay(day.dateString);
+                setShowModal(true);
+              }}
+              onMonthChange={(m) => {
+                setVisibleYear(m.year);
+                setVisibleMonth(m.month);
+              }}
+              theme={{
+                calendarBackground: COLORS.card,
+                textSectionTitleColor: COLORS.muted,
+                dayTextColor: COLORS.text,
+                monthTextColor: COLORS.text,
+                todayTextColor: COLORS.primary,
+                arrowColor: COLORS.primary,
+                textMonthFontWeight: "bold",
+                textMonthFontSize: THEME.fontSize.lg,
+                textDisabledColor: Platform.OS === "web" ? "rgba(255,255,255,0.15)" : "#ccc",
+              }}
+            />
+          </SectionCard>
 
-      <View style={styles.legend}>
-        {[
-          { c: CALENDAR_TYPE_COLORS.tta, label: "TTA" },
-          { c: CALENDAR_TYPE_COLORS.mtm, label: "MTM" },
-          { c: CALENDAR_TYPE_COLORS.evento, label: "EVENTO" },
-          { c: CALENDAR_TYPE_COLORS.especial, label: "Especial" },
-        ].map((x) => (
-          <View key={x.label} style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: x.c }]} />
-            <Text style={styles.legendText}>{x.label}</Text>
+          <View style={styles.legend}>
+            {[
+              { c: CALENDAR_TYPE_COLORS.tta, label: "TTA" },
+              { c: CALENDAR_TYPE_COLORS.mtm, label: "MTM" },
+              { c: CALENDAR_TYPE_COLORS.evento, label: "EVENTO" },
+              { c: CALENDAR_TYPE_COLORS.especial, label: "Especial" },
+            ].map((x) => (
+              <View key={x.label} style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: x.c }]} />
+                <Text style={styles.legendText}>{x.label}</Text>
+              </View>
+            ))}
           </View>
-        ))}
-      </View>
+        </>
+      )}
 
       <Modal
         visible={deleteVisible}
@@ -785,5 +965,144 @@ const styles = StyleSheet.create({
     color: COLORS.muted,
     textAlign: "center",
     marginVertical: THEME.spacing.md,
+  },
+
+  desktopCalendarContainer: {
+    backgroundColor: COLORS.card,
+    borderRadius: THEME.radius.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 16,
+    ...THEME.shadow.soft,
+    marginBottom: THEME.spacing.lg,
+  },
+  desktopHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 20,
+    paddingHorizontal: 8,
+  },
+  desktopHeaderTitle: {
+    fontSize: 22,
+    fontWeight: "bold",
+    color: COLORS.text,
+    textTransform: "capitalize",
+  },
+  desktopHeaderActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  arrowButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.bg,
+  },
+  todayButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: THEME.radius.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.bg,
+  },
+  todayButtonText: {
+    fontWeight: "600",
+    color: COLORS.text,
+    fontSize: 14,
+  },
+  desktopWeekHeader: {
+    flexDirection: "row",
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    paddingBottom: 8,
+    marginBottom: 4,
+  },
+  desktopWeekHeaderCell: {
+    flex: 1,
+    alignItems: "center",
+  },
+  desktopWeekHeaderCellText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: COLORS.muted,
+  },
+  desktopGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    width: "100%",
+  },
+  desktopDayCell: {
+    width: "14.285%",
+    height: 120,
+    borderWidth: 0.5,
+    borderColor: COLORS.border,
+    padding: 6,
+    backgroundColor: COLORS.card,
+    justifyContent: "flex-start",
+  },
+  desktopDayCellToday: {
+    backgroundColor: Platform.OS === "web" ? "var(--primary-soft, #fdf2f2)" : "#fdf2f2",
+    borderColor: COLORS.primary,
+    borderWidth: 1.5,
+  },
+  desktopDayCellDisabled: {
+    backgroundColor: Platform.OS === "web" ? "var(--bg, #F8FAFC)" : "#F8FAFC",
+  },
+  desktopDayCellHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+  desktopDayNumber: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: COLORS.text,
+  },
+  desktopDayNumberDisabled: {
+    color: COLORS.muted,
+    opacity: 0.5,
+  },
+  desktopDayNumberToday: {
+    color: COLORS.primary,
+    fontWeight: "800",
+  },
+  todayLabelDesktop: {
+    fontSize: 9,
+    fontWeight: "800",
+    color: "#fff",
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  desktopEventsWrapper: {
+    flex: 1,
+    gap: 4,
+  },
+  desktopEventBadge: {
+    borderLeftWidth: 3,
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    justifyContent: "center",
+  },
+  desktopEventBadgeText: {
+    fontSize: 11,
+    fontWeight: "500",
+  },
+  desktopMoreCount: {
+    fontSize: 10,
+    fontWeight: "600",
+    color: COLORS.muted,
+    textAlign: "right",
+    marginTop: 2,
   },
 });
