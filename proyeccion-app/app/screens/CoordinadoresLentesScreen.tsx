@@ -154,6 +154,13 @@ export default function CoordinadoresLentesScreen() {
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [filterCierres, setFilterCierres] = useState(true);
   const [filterAjustes, setFilterAjustes] = useState(true);
+  const [expandedCierreIds, setExpandedCierreIds] = useState<string[]>([]);
+
+  const toggleRowExpanded = (id: string) => {
+    setExpandedCierreIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
 
   // ── Modales ──
   const [showAjustar, setShowAjustar] = useState<"adultos" | "kids" | null>(null);
@@ -1323,118 +1330,145 @@ export default function CoordinadoresLentesScreen() {
                     const isEmbolsado = c.tipo === "embolsado";
                     const isAjuste = c.tipo === "ajuste";
 
+                    const isExpanded = expandedCierreIds.includes(c.id);
+                    const diffAd = c.complejo ? (((c.finalDelDia?.adultos?.embolsados || 0) + (c.finalDelDia?.adultos?.sucios || 0)) - (c.adultos.usados || 0)) : null;
+                    const diffKd = c.complejo ? (((c.finalDelDia?.kids?.embolsados || 0) + (c.finalDelDia?.kids?.sucios || 0)) - (c.kids.usados || 0)) : null;
+
                     return (
                       <View key={c.id} style={[s.historyRow, activeMenuId === c.id && { zIndex: 999, elevation: 5 }]}>
-                        <View style={s.historyHeader}>
-                          <View style={{ flex: 1 }}>
-                            <Text style={s.historyDate}>{formattedDate} - {formattedTime}</Text>
-                            <View style={[s.badge, isAjuste ? s.badgeAmber : isEmbolsado ? s.badgeBlue : s.badgeIndigo]}>
-                              <Text style={[s.badgeText, isAjuste ? s.badgeTextAmber : isEmbolsado ? s.badgeTextBlue : s.badgeTextIndigo]}>
-                                {isAjuste ? "⚙️ Ajuste" : isEmbolsado ? "🧺 Embolsado" : "📝 Cierre"}
-                              </Text>
-                            </View>
-                          </View>
-                          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                            <View style={{ alignItems: "flex-end" }}>
-                              <Text style={s.historyAuthor}>por: {c.creadoPorNombre}</Text>
+                        <TouchableOpacity
+                          style={s.historyRowHeaderButton}
+                          onPress={() => toggleRowExpanded(c.id)}
+                          activeOpacity={0.7}
+                        >
+                          <View style={s.historyHeader}>
+                            <View style={{ flex: 1 }}>
+                              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                                <Text style={s.historyDate}>{formattedDate} - {formattedTime}</Text>
+                                <View style={[s.badge, isAjuste ? s.badgeAmber : isEmbolsado ? s.badgeBlue : s.badgeIndigo]}>
+                                  <Text style={[s.badgeText, isAjuste ? s.badgeTextAmber : isEmbolsado ? s.badgeTextBlue : s.badgeTextIndigo]}>
+                                    {isAjuste ? "⚙️ Ajuste" : isEmbolsado ? "🧺 Embolsado" : "📝 Cierre"}
+                                  </Text>
+                                </View>
+                                <Text style={s.expandChevron}>{isExpanded ? "▲ Contraer" : "▼ Expandir"}</Text>
+                              </View>
+
                               {c.responsable && (
-                                <Text style={[s.historyAuthor, { fontWeight: "700", color: "#475569", marginTop: 2 }]}>
+                                <Text style={[s.historyAuthor, { fontWeight: "700", color: "#475569", marginTop: 4 }]}>
                                   Responsable: {c.responsable}
                                 </Text>
                               )}
+                              <Text style={[s.historyAuthor, { fontSize: 10, color: COLORS.muted }]}>por: {c.creadoPorNombre}</Text>
                             </View>
+
+                            {/* Diffs on the right (only for closures) */}
+                            {c.complejo && diffAd !== null && diffKd !== null && (
+                              <View style={s.headerDiffs}>
+                                <Text style={[s.headerDiffVal, { color: diffAd < 0 ? COLORS.danger : "#16A34A" }]}>
+                                  Ad: {diffAd > 0 ? `+${diffAd}` : diffAd}
+                                </Text>
+                                <Text style={[s.headerDiffVal, { color: diffKd < 0 ? COLORS.danger : "#16A34A" }]}>
+                                  Kd: {diffKd > 0 ? `+${diffKd}` : diffKd}
+                                </Text>
+                              </View>
+                            )}
 
                             {/* Tres puntitos menu */}
                             {!isAjuste && (
                               <View style={s.menuContainer}>
                                 <TouchableOpacity
                                   style={s.menuBtn}
-                                  onPress={() => setActiveMenuId(activeMenuId === c.id ? null : c.id)}
+                                  onPress={(e) => {
+                                    e.stopPropagation();
+                                    setActiveMenuId(activeMenuId === c.id ? null : c.id);
+                                  }}
                                 >
                                   <Text style={s.menuBtnText}>⋮</Text>
                                 </TouchableOpacity>
                               </View>
                             )}
                           </View>
-                        </View>
-                        <View style={s.historyDataBlock}>
-                          <View style={s.historyCol}>
-                            <Text style={s.historyColTitle}>🕶️ Adultos</Text>
-                            {isAjuste ? (
-                              <>
-                                <Text style={s.historyColText}>• Sucios: <Text style={{ fontWeight: "700", color: "#0369A1" }}>{c.adultos.sucios ?? 0}</Text></Text>
-                                <Text style={s.historyColText}>• Listos: <Text style={{ fontWeight: "700", color: "#C2410C" }}>{c.adultos.listos ?? 0}</Text></Text>
-                                <Text style={s.historyColText}>• Limpios: <Text style={{ fontWeight: "700", color: "#0D9488" }}>{c.adultos.limpios ?? 0}</Text></Text>
-                                <Text style={s.historyColText}>• Chequeados: <Text style={{ fontWeight: "700", color: "#047857" }}>{c.adultos.chequeados ?? 0}</Text></Text>
-                              </>
-                            ) : isEmbolsado ? (
-                              <Text style={s.historyColText}>• Embolsados: <Text style={{ fontWeight: "700", color: "#047857" }}>{c.adultos.embolsados || 0}</Text></Text>
-                            ) : c.complejo ? (
-                              <>
-                                <Text style={s.historyColText}>• Entregados: <Text style={{ fontWeight: "700" }}>{c.adultos.usados || 0}</Text></Text>
-                                <Text style={s.historyColText}>• Fin de Día: <Text style={{ fontWeight: "700" }}>{(c.finalDelDia?.adultos?.embolsados || 0) + (c.finalDelDia?.adultos?.sucios || 0)}</Text> (Embolsados: {c.finalDelDia?.adultos?.embolsados || 0}, Sucios: {c.finalDelDia?.adultos?.sucios || 0})</Text>
-                                {(() => {
-                                  const diff = ((c.finalDelDia?.adultos?.embolsados || 0) + (c.finalDelDia?.adultos?.sucios || 0)) - (c.adultos.usados || 0);
-                                  return (
-                                    <Text style={s.historyColText}>
-                                      • Diferencia: <Text style={{ fontWeight: "700", color: diff < 0 ? "#DC2626" : "#16A34A" }}>{diff > 0 ? `+${diff}` : diff}</Text>
-                                    </Text>
-                                  );
-                                })()}
-                                <Text style={s.historyColText}>• En Complejo: Sucios: {c.complejo?.adultos?.sucios || 0} | Limpios: {c.complejo?.adultos?.limpios || 0} | Embolsados: {c.complejo?.adultos?.embolsados || 0}</Text>
-                                <Text style={s.historyColText}>• Merma: <Text style={{ fontWeight: "700", color: "#DC2626" }}>{c.merma?.adultos || c.adultos.merma || 0}</Text></Text>
-                              </>
-                            ) : (
-                              <>
-                                <Text style={s.historyColText}>• Usados: <Text style={{ fontWeight: "700" }}>{c.adultos.usados || 0}</Text></Text>
-                                {c.adultos.perdidos !== undefined && (
-                                  <Text style={s.historyColText}>• Perdidos: <Text style={{ fontWeight: "700", color: "#DC2626" }}>{c.adultos.perdidos}</Text></Text>
-                                )}
-                                {c.adultos.embolsados !== undefined && c.adultos.embolsados > 0 && (
-                                  <Text style={s.historyColText}>• Embolsados (Ant.): <Text style={{ fontWeight: "700", color: "#0369A1" }}>{c.adultos.embolsados}</Text></Text>
-                                )}
-                              </>
-                            )}
+                        </TouchableOpacity>
+                        {isExpanded && (
+                          <View style={s.historyDataBlock}>
+                            <View style={s.historyCol}>
+                              <Text style={s.historyColTitle}>🕶️ Adultos</Text>
+                              {isAjuste ? (
+                                <>
+                                  <Text style={s.historyColText}>• Sucios: <Text style={{ fontWeight: "700", color: "#0369A1" }}>{c.adultos.sucios ?? 0}</Text></Text>
+                                  <Text style={s.historyColText}>• Listos: <Text style={{ fontWeight: "700", color: "#C2410C" }}>{c.adultos.listos ?? 0}</Text></Text>
+                                  <Text style={s.historyColText}>• Limpios: <Text style={{ fontWeight: "700", color: "#0D9488" }}>{c.adultos.limpios ?? 0}</Text></Text>
+                                  <Text style={s.historyColText}>• Chequeados: <Text style={{ fontWeight: "700", color: "#047857" }}>{c.adultos.chequeados ?? 0}</Text></Text>
+                                </>
+                              ) : isEmbolsado ? (
+                                <Text style={s.historyColText}>• Embolsados: <Text style={{ fontWeight: "700", color: "#047857" }}>{c.adultos.embolsados || 0}</Text></Text>
+                              ) : c.complejo ? (
+                                <>
+                                  <Text style={s.historyColText}>• Entregados: <Text style={{ fontWeight: "700" }}>{c.adultos.usados || 0}</Text></Text>
+                                  <Text style={s.historyColText}>• Fin de Día: <Text style={{ fontWeight: "700" }}>{(c.finalDelDia?.adultos?.embolsados || 0) + (c.finalDelDia?.adultos?.sucios || 0)}</Text> (Embolsados: {c.finalDelDia?.adultos?.embolsados || 0}, Sucios: {c.finalDelDia?.adultos?.sucios || 0})</Text>
+                                  {(() => {
+                                    const diff = ((c.finalDelDia?.adultos?.embolsados || 0) + (c.finalDelDia?.adultos?.sucios || 0)) - (c.adultos.usados || 0);
+                                    return (
+                                      <Text style={s.historyColText}>
+                                        • Diferencia: <Text style={{ fontWeight: "700", color: diff < 0 ? "#DC2626" : "#16A34A" }}>{diff > 0 ? `+${diff}` : diff}</Text>
+                                      </Text>
+                                    );
+                                  })()}
+                                  <Text style={s.historyColText}>• En Complejo: Sucios: {c.complejo?.adultos?.sucios || 0} | Limpios: {c.complejo?.adultos?.limpios || 0} | Embolsados: {c.complejo?.adultos?.embolsados || 0}</Text>
+                                  <Text style={s.historyColText}>• Merma: <Text style={{ fontWeight: "700", color: "#DC2626" }}>{c.merma?.adultos || c.adultos.merma || 0}</Text></Text>
+                                </>
+                              ) : (
+                                <>
+                                  <Text style={s.historyColText}>• Usados: <Text style={{ fontWeight: "700" }}>{c.adultos.usados || 0}</Text></Text>
+                                  {c.adultos.perdidos !== undefined && (
+                                    <Text style={s.historyColText}>• Perdidos: <Text style={{ fontWeight: "700", color: "#DC2626" }}>{c.adultos.perdidos}</Text></Text>
+                                  )}
+                                  {c.adultos.embolsados !== undefined && c.adultos.embolsados > 0 && (
+                                    <Text style={s.historyColText}>• Embolsados (Ant.): <Text style={{ fontWeight: "700", color: "#0369A1" }}>{c.adultos.embolsados}</Text></Text>
+                                  )}
+                                </>
+                              )}
+                            </View>
+                            <View style={s.historyCol}>
+                              <Text style={s.historyColTitle}>🕶️ Kids</Text>
+                              {isAjuste ? (
+                                <>
+                                  <Text style={s.historyColText}>• Sucios: <Text style={{ fontWeight: "700", color: "#0369A1" }}>{c.kids.sucios ?? 0}</Text></Text>
+                                  <Text style={s.historyColText}>• Listos: <Text style={{ fontWeight: "700", color: "#C2410C" }}>{c.kids.listos ?? 0}</Text></Text>
+                                  <Text style={s.historyColText}>• Limpios: <Text style={{ fontWeight: "700", color: "#0D9488" }}>{c.kids.limpios ?? 0}</Text></Text>
+                                  <Text style={s.historyColText}>• Chequeados: <Text style={{ fontWeight: "700", color: "#047857" }}>{c.kids.chequeados ?? 0}</Text></Text>
+                                </>
+                              ) : isEmbolsado ? (
+                                <Text style={s.historyColText}>• Embolsados: <Text style={{ fontWeight: "700", color: "#047857" }}>{c.kids.embolsados || 0}</Text></Text>
+                              ) : c.complejo ? (
+                                <>
+                                  <Text style={s.historyColText}>• Entregados: <Text style={{ fontWeight: "700" }}>{c.kids.usados || 0}</Text></Text>
+                                  <Text style={s.historyColText}>• Fin de Día: <Text style={{ fontWeight: "700" }}>{(c.finalDelDia?.kids?.embolsados || 0) + (c.finalDelDia?.kids?.sucios || 0)}</Text> (Embolsados: {c.finalDelDia?.kids?.embolsados || 0}, Sucios: {c.finalDelDia?.kids?.sucios || 0})</Text>
+                                  {(() => {
+                                    const diff = ((c.finalDelDia?.kids?.embolsados || 0) + (c.finalDelDia?.kids?.sucios || 0)) - (c.kids.usados || 0);
+                                    return (
+                                      <Text style={s.historyColText}>
+                                        • Diferencia: <Text style={{ fontWeight: "700", color: diff < 0 ? "#DC2626" : "#16A34A" }}>{diff > 0 ? `+${diff}` : diff}</Text>
+                                      </Text>
+                                    );
+                                  })()}
+                                  <Text style={s.historyColText}>• En Complejo: Sucios: {c.complejo?.kids?.sucios || 0} | Limpios: {c.complejo?.kids?.limpios || 0} | Embolsados: {c.complejo?.kids?.embolsados || 0}</Text>
+                                  <Text style={s.historyColText}>• Merma: <Text style={{ fontWeight: "700", color: "#DC2626" }}>{c.merma?.kids || c.kids.merma || 0}</Text></Text>
+                                </>
+                              ) : (
+                                <>
+                                  <Text style={s.historyColText}>• Usados: <Text style={{ fontWeight: "700" }}>{c.kids.usados || 0}</Text></Text>
+                                  {c.kids.perdidos !== undefined && (
+                                    <Text style={s.historyColText}>• Perdidos: <Text style={{ fontWeight: "700", color: "#DC2626" }}>{c.kids.perdidos}</Text></Text>
+                                  )}
+                                  {c.kids.embolsados !== undefined && c.kids.embolsados > 0 && (
+                                    <Text style={s.historyColText}>• Embolsados (Ant.): <Text style={{ fontWeight: "700", color: "#0369A1" }}>{c.kids.embolsados}</Text></Text>
+                                  )}
+                                </>
+                              )}
+                            </View>
                           </View>
-                          <View style={s.historyCol}>
-                            <Text style={s.historyColTitle}>🕶️ Kids</Text>
-                            {isAjuste ? (
-                              <>
-                                <Text style={s.historyColText}>• Sucios: <Text style={{ fontWeight: "700", color: "#0369A1" }}>{c.kids.sucios ?? 0}</Text></Text>
-                                <Text style={s.historyColText}>• Listos: <Text style={{ fontWeight: "700", color: "#C2410C" }}>{c.kids.listos ?? 0}</Text></Text>
-                                <Text style={s.historyColText}>• Limpios: <Text style={{ fontWeight: "700", color: "#0D9488" }}>{c.kids.limpios ?? 0}</Text></Text>
-                                <Text style={s.historyColText}>• Chequeados: <Text style={{ fontWeight: "700", color: "#047857" }}>{c.kids.chequeados ?? 0}</Text></Text>
-                              </>
-                            ) : isEmbolsado ? (
-                              <Text style={s.historyColText}>• Embolsados: <Text style={{ fontWeight: "700", color: "#047857" }}>{c.kids.embolsados || 0}</Text></Text>
-                            ) : c.complejo ? (
-                              <>
-                                <Text style={s.historyColText}>• Entregados: <Text style={{ fontWeight: "700" }}>{c.kids.usados || 0}</Text></Text>
-                                <Text style={s.historyColText}>• Fin de Día: <Text style={{ fontWeight: "700" }}>{(c.finalDelDia?.kids?.embolsados || 0) + (c.finalDelDia?.kids?.sucios || 0)}</Text> (Embolsados: {c.finalDelDia?.kids?.embolsados || 0}, Sucios: {c.finalDelDia?.kids?.sucios || 0})</Text>
-                                {(() => {
-                                  const diff = ((c.finalDelDia?.kids?.embolsados || 0) + (c.finalDelDia?.kids?.sucios || 0)) - (c.kids.usados || 0);
-                                  return (
-                                    <Text style={s.historyColText}>
-                                      • Diferencia: <Text style={{ fontWeight: "700", color: diff < 0 ? "#DC2626" : "#16A34A" }}>{diff > 0 ? `+${diff}` : diff}</Text>
-                                    </Text>
-                                  );
-                                })()}
-                                <Text style={s.historyColText}>• En Complejo: Sucios: {c.complejo?.kids?.sucios || 0} | Limpios: {c.complejo?.kids?.limpios || 0} | Embolsados: {c.complejo?.kids?.embolsados || 0}</Text>
-                                <Text style={s.historyColText}>• Merma: <Text style={{ fontWeight: "700", color: "#DC2626" }}>{c.merma?.kids || c.kids.merma || 0}</Text></Text>
-                              </>
-                            ) : (
-                              <>
-                                <Text style={s.historyColText}>• Usados: <Text style={{ fontWeight: "700" }}>{c.kids.usados || 0}</Text></Text>
-                                {c.kids.perdidos !== undefined && (
-                                  <Text style={s.historyColText}>• Perdidos: <Text style={{ fontWeight: "700", color: "#DC2626" }}>{c.kids.perdidos}</Text></Text>
-                                )}
-                                {c.kids.embolsados !== undefined && c.kids.embolsados > 0 && (
-                                  <Text style={s.historyColText}>• Embolsados (Ant.): <Text style={{ fontWeight: "700", color: "#0369A1" }}>{c.kids.embolsados}</Text></Text>
-                                )}
-                              </>
-                            )}
-                          </View>
-                        </View>
+                        )}
 
                         {/* Menu Popover absoluto al nivel de historyRow para evitar recortes de hit box */}
                         {activeMenuId === c.id && !isAjuste && (
@@ -2596,5 +2630,24 @@ const s = StyleSheet.create({
   },
   filterCheckboxTextActive: {
     color: "#FFFFFF",
+  },
+  historyRowHeaderButton: {
+    width: "100%",
+  },
+  expandChevron: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: COLORS.primary,
+    marginLeft: 6,
+  },
+  headerDiffs: {
+    flexDirection: "row",
+    gap: 12,
+    alignItems: "center",
+    marginRight: 6,
+  },
+  headerDiffVal: {
+    fontSize: 16,
+    fontWeight: "900",
   },
 });
