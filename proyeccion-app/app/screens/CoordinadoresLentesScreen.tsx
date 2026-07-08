@@ -165,7 +165,6 @@ export default function CoordinadoresLentesScreen() {
   // ── Modales ──
   const [showAjustar, setShowAjustar] = useState<"adultos" | "kids" | null>(null);
   const [showCierre, setShowCierre] = useState(false);
-  const [showEmbolsado, setShowEmbolsado] = useState(false);
 
   // ── Formulario de Ajuste Manual (PIN & Inputs) ──
   const [showAjustarPin, setShowAjustarPin] = useState<"adultos" | "kids" | null>(null);
@@ -813,86 +812,6 @@ export default function CoordinadoresLentesScreen() {
     }
   };
 
-  // ─── Guardar Nuevos Embolsados ──────────────────────────────────────────────
-
-  const guardarEmbolsados = async () => {
-    setEmbolsadoError("");
-    if (!cineId || !stockAdultos || !stockKids) return;
-
-    if (!embolsadoResponsable.trim()) {
-      setEmbolsadoError("Por favor ingresá el nombre del responsable.");
-      return;
-    }
-
-    const eAdultos = embolsadosAdultos.trim() !== "" ? parseInt(embolsadosAdultos.trim()) : 0;
-    const eKids = embolsadosKids.trim() !== "" ? parseInt(embolsadosKids.trim()) : 0;
-
-    if (isNaN(eAdultos) || eAdultos < 0 || isNaN(eKids) || eKids < 0) {
-      setEmbolsadoError("Las cantidades de nuevos embolsados deben ser enteros positivos.");
-      return;
-    }
-
-    if (eAdultos > stockAdultos.sucios) {
-      setEmbolsadoError(`Adultos: No podés embolsar ${eAdultos} ya que solo hay ${stockAdultos.sucios} sucios disponibles.`);
-      return;
-    }
-
-    if (eKids > stockKids.sucios) {
-      setEmbolsadoError(`Kids: No podés embolsar ${eKids} ya que solo hay ${stockKids.sucios} sucios disponibles.`);
-      return;
-    }
-
-    setSavingEmbolsado(true);
-    try {
-      await runTransaction(db, async (transaction) => {
-        const refA = doc(db, CINES_COLLECTION, cineId, "lentes3d", "adultos");
-        const refK = doc(db, CINES_COLLECTION, cineId, "lentes3d", "kids");
-
-        const snapA = await transaction.get(refA);
-        const snapK = await transaction.get(refK);
-
-        const currentA = snapA.data() as LentesStock;
-        const currentK = snapK.data() as LentesStock;
-
-        transaction.update(refA, {
-          sucios: currentA.sucios - eAdultos,
-          listos: currentA.listos + eAdultos,
-          ultimaActualizacion: new Date().toISOString()
-        });
-
-        transaction.update(refK, {
-          sucios: currentK.sucios - eKids,
-          listos: currentK.listos + eKids,
-          ultimaActualizacion: new Date().toISOString()
-        });
-
-        const todayStr = new Date().toISOString().split("T")[0];
-        const auditRef = doc(collection(db, CINES_COLLECTION, cineId, "lentes3d_cierres"));
-        transaction.set(auditRef, {
-          tipo: "embolsado",
-          fecha: todayStr,
-          creadoEn: new Date().toISOString(),
-          creadoPorEmail: user?.email ?? "coordinador@cinemark.com.ar",
-          creadoPorNombre: displayName || "Coordinador",
-          responsable: embolsadoResponsable.trim(),
-          adultos: { embolsados: eAdultos },
-          kids: { embolsados: eKids }
-        });
-      });
-
-      setShowEmbolsado(false);
-      await fetchStock();
-      await fetchMonthlyStats(selectedMonth);
-      if (expandHistorico) {
-        setLastDoc(null);
-        fetchCierres(selectedMonth, false);
-      }
-      showAlert("Embolsado Completado", "El stock de lentes 3D se ha actualizado de forma exitosa.");
-    } finally {
-      setSavingEmbolsado(false);
-    }
-  };
-
   // ─── Reversión y Eliminación de Reportes ─────────────────────────────────────
 
   const confirmRevertirReporte = (cierre: LentesCierre) => {
@@ -1102,28 +1021,15 @@ export default function CoordinadoresLentesScreen() {
             <TouchableOpacity style={s.cierreBtn} onPress={handleOpenCierre}>
               <Text style={s.cierreBtnText}>📝 Cierre del día</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={[s.cierreBtn, { backgroundColor: "#0284C7", marginLeft: 6 }]}
-              onPress={() => {
-                setEmbolsadoResponsable(displayName || "");
-                setEmbolsadosAdultos("");
-                setEmbolsadosKids("");
-                setEmbolsadoError("");
-                setShowEmbolsado(true);
-              }}
-            >
-              <Text style={s.cierreBtnText}>🧺 Embolsar</Text>
-            </TouchableOpacity>
           </View>
         </View>
 
         {/* Aviso */}
         <View style={s.noticeCard}>
-          <Text style={s.noticeTitle}>💡 Estados y Dinámica de Procesamiento</Text>
+          <Text style={s.noticeTitle}>💡 Cierre del Día y Dinámica de Proceso</Text>
           <Text style={s.noticeText}>
-            • <Text style={{ fontWeight: "700" }}>Sucios (Azul):</Text> Inventario de lentes por limpiar. Cuando se embolsan nuevos, se descuentan de aquí.{"\n"}
-            • <Text style={{ fontWeight: "700" }}>Listos para chequear (Naranja):</Text> Lentes disponibles para usar. En el cierre pasan a ser usados (se ensucian) o perdidos (salen del inventario).{"\n"}
-            • <Text style={{ fontWeight: "700" }}>Chequeados para usar (Verde):</Text> Lentes controlados bajo rigurosos controles (No se descuentan de ninguna forma).
+            Para realizar el cierre del día de los lentes 3D, hacé click en <Text style={{ fontWeight: "700" }}>"📝 Cierre del día"</Text>. Deberás indicar los lentes entregados a portería, los recolectados al final del día, la merma diaria, y los lentes totales en el complejo (Sucios, Limpios y Embolsados).{"\n"}
+            <Text style={{ fontWeight: "700" }}>⚠️ IMPORTANTE:</Text> En el conteo de <Text style={{ fontWeight: "700" }}>"Embolsados"</Text> en el complejo <Text style={{ fontWeight: "700" }}>NO</Text> se deben incluir los lentes <Text style={{ fontWeight: "700" }}>"Chequeados para usar"</Text> (Verde), ya que estos últimos solo pueden ser modificados de forma manual mediante el botón de <Text style={{ fontWeight: "700" }}>"Ajustar Stock"</Text> con PIN de seguridad.
           </Text>
         </View>
 
@@ -1851,81 +1757,7 @@ export default function CoordinadoresLentesScreen() {
         </View>
       </Modal>
 
-      {/* ── Modal Nuevos Embolsados ── */}
-      <Modal
-        visible={showEmbolsado}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowEmbolsado(false)}
-      >
-        <View style={[s.backdrop, isMobile && { padding: 12 }]}>
-          <ScrollView style={s.modalScroll} contentContainerStyle={s.modalScrollCenter} keyboardShouldPersistTaps="handled">
-            <View style={[s.modalCardLg, isMobile && { padding: 16 }]}>
-              <Text style={s.modalTitle}>🧺 Nuevos Embolsados - Lentes 3D</Text>
-              <Text style={s.modalSubtitleLg}>Registrá los lentes higienizados y embolsados (se descuentan de sucios y pasan a listos para chequear)</Text>
 
-              {/* Responsable Input */}
-              <View style={s.responsableContainer}>
-                <Text style={s.label}>Responsable del Proceso</Text>
-                <TextInput
-
-                  onChangeText={setEmbolsadoResponsable}
-                  placeholder="Nombre de quien realizó el reporte de embolsados"
-                  style={s.input}
-                />
-              </View>
-
-              {/* Seccion Adultos */}
-              <View style={s.cierreSection}>
-                <Text style={s.cierreSectionTitle}>🕶️ Adultos</Text>
-                <View style={s.cierreInputsRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.label}>Cantidad Embolsados</Text>
-                    <TextInput
-                      value={embolsadosAdultos}
-                      onChangeText={setEmbolsadosAdultos}
-                      placeholder="Ej: 30"
-                      keyboardType="number-pad"
-                      style={s.input}
-                    />
-                  </View>
-                </View>
-                {renderEmbolsadoPreview(stockAdultos, embolsadosAdultos)}
-              </View>
-
-              {/* Seccion Kids */}
-              <View style={s.cierreSection}>
-                <Text style={s.cierreSectionTitle}>🕶️ Kids</Text>
-                <View style={s.cierreInputsRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.label}>Cantidad Embolsados</Text>
-                    <TextInput
-                      value={embolsadosKids}
-                      onChangeText={setEmbolsadosKids}
-                      placeholder="Ej: 20"
-                      keyboardType="number-pad"
-                      style={s.input}
-                    />
-                  </View>
-                </View>
-                {renderEmbolsadoPreview(stockKids, embolsadosKids)}
-              </View>
-
-              {/* Error */}
-              {!!embolsadoError && <Text style={s.errorText}>{embolsadoError}</Text>}
-
-              <View style={s.modalActions}>
-                <TouchableOpacity style={s.btnGhost} onPress={() => setShowEmbolsado(false)}>
-                  <Text style={s.btnGhostText}>Cancelar</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[s.btnPrimary, { backgroundColor: "#0284C7" }]} onPress={guardarEmbolsados} disabled={savingEmbolsado}>
-                  {savingEmbolsado ? <ActivityIndicator color="#fff" size="small" /> : <Text style={s.btnPrimaryText}>Registrar Embolsados</Text>}
-                </TouchableOpacity>
-              </View>
-            </View>
-          </ScrollView>
-        </View>
-      </Modal>
 
     </View>
   );
