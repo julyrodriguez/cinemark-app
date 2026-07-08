@@ -24,6 +24,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from "react-native";
 
 import { CINES_COLLECTION, db } from "../../lib/firebaseConfig";
@@ -96,6 +97,8 @@ const getFirstDayOfMonth = (year: number, month: number) => new Date(year, month
 
 export default function CoordinadoresLentesScreen() {
   const { cineId, user, displayName } = useAuthUser();
+  const { width } = useWindowDimensions();
+  const isMobile = width < 600;
 
   // Helper for cross-platform alerts (Web compatibility)
   const showAlert = (
@@ -569,6 +572,62 @@ export default function CoordinadoresLentesScreen() {
       const val = parseInt(row[field]) || 0;
       return sum + val;
     }, 0);
+  };
+
+  const renderCierreInputRow = (label: string, valueAd: string, onChangeAd: (v: string) => void, valueKd: string, onChangeKd: (v: string) => void) => {
+    if (isMobile) {
+      return (
+        <View style={s.cierreInputsColMobile}>
+          <Text style={s.rowLabel}>{label}</Text>
+          <View style={s.cierreInputsRow}>
+            <View style={{ flex: 1 }}>
+              <TextInput
+                value={valueAd}
+                onChangeText={onChangeAd}
+                placeholder="Adultos"
+                keyboardType="number-pad"
+                style={s.input}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <TextInput
+                value={valueKd}
+                onChangeText={onChangeKd}
+                placeholder="Kids"
+                keyboardType="number-pad"
+                style={s.input}
+              />
+            </View>
+          </View>
+        </View>
+      );
+    }
+
+    return (
+      <View style={s.cierreInputsRow}>
+        <View style={{ flex: 1.2, justifyContent: 'center' }}>
+          <Text style={s.rowLabel}>{label}</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <TextInput
+            value={valueAd}
+            onChangeText={onChangeAd}
+            placeholder="Adultos"
+            keyboardType="number-pad"
+            style={s.input}
+          />
+        </View>
+        <View style={{ flex: 1 }}>
+          <TextInput
+            value={valueKd}
+            onChangeText={onChangeKd}
+            placeholder="Kids"
+            keyboardType="number-pad"
+            style={s.input}
+          />
+        </View>
+      </View>
+    );
   };
 
   const guardarCierre = async () => {
@@ -1427,9 +1486,9 @@ export default function CoordinadoresLentesScreen() {
         animationType="fade"
         onRequestClose={() => setShowCierre(false)}
       >
-        <View style={s.backdrop}>
+        <View style={[s.backdrop, isMobile && { padding: 12 }]}>
           <ScrollView contentContainerStyle={s.modalScrollCenter} keyboardShouldPersistTaps="handled">
-            <View style={s.modalCardLg}>
+            <View style={[s.modalCardLg, isMobile && { padding: 16 }]}>
               <Text style={s.modalTitle}>Cierre de Día - Lentes 3D</Text>
               <Text style={s.modalSubtitleLg}>Modifica los stocks en base a la función y pérdidas del día</Text>
 
@@ -1540,31 +1599,15 @@ export default function CoordinadoresLentesScreen() {
               <View style={s.cierreSection}>
                 <Text style={s.cierreSectionTitle}>1. Lentes entregados a portería</Text>
                 
-                {entregadosRows.map((row, idx) => (
-                  <View key={row.id || idx} style={s.cierreInputsRow}>
-                    <View style={{ flex: 1.2, justifyContent: 'center' }}>
-                      <Text style={s.rowLabel}>{idx === 0 ? "Apertura" : `Entrega #${idx + 1}`}</Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <TextInput
-                        value={row.adultos}
-                        onChangeText={(val) => handleRowValueChange(idx, "adultos", val)}
-                        placeholder="Adultos"
-                        keyboardType="number-pad"
-                        style={s.input}
-                      />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <TextInput
-                        value={row.kids}
-                        onChangeText={(val) => handleRowValueChange(idx, "kids", val)}
-                        placeholder="Kids"
-                        keyboardType="number-pad"
-                        style={s.input}
-                      />
-                    </View>
-                  </View>
-                ))}
+                {entregadosRows.map((row, idx) => 
+                  renderCierreInputRow(
+                    idx === 0 ? "Apertura" : `Entrega #${idx + 1}`,
+                    row.adultos,
+                    (val) => handleRowValueChange(idx, "adultos", val),
+                    row.kids,
+                    (val) => handleRowValueChange(idx, "kids", val)
+                  )
+                )}
 
                 <View style={s.sectionTotalRow}>
                   <Text style={s.sectionTotalLabel}>Total entregados:</Text>
@@ -1578,53 +1621,8 @@ export default function CoordinadoresLentesScreen() {
               <View style={s.cierreSection}>
                 <Text style={s.cierreSectionTitle}>2. Lentes al final del día</Text>
 
-                <View style={s.cierreInputsRow}>
-                  <View style={{ flex: 1.2, justifyContent: 'center' }}>
-                    <Text style={s.rowLabel}>Embolsados</Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <TextInput
-                      value={cierreEmbolsadosAdultos}
-                      onChangeText={setCierreEmbolsadosAdultos}
-                      placeholder="Adultos"
-                      keyboardType="number-pad"
-                      style={s.input}
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <TextInput
-                      value={cierreEmbolsadosKids}
-                      onChangeText={setCierreEmbolsadosKids}
-                      placeholder="Kids"
-                      keyboardType="number-pad"
-                      style={s.input}
-                    />
-                  </View>
-                </View>
-
-                <View style={s.cierreInputsRow}>
-                  <View style={{ flex: 1.2, justifyContent: 'center' }}>
-                    <Text style={s.rowLabel}>Sucios</Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <TextInput
-                      value={cierreSuciosAdultos}
-                      onChangeText={setCierreSuciosAdultos}
-                      placeholder="Adultos"
-                      keyboardType="number-pad"
-                      style={s.input}
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <TextInput
-                      value={cierreSuciosKids}
-                      onChangeText={setCierreSuciosKids}
-                      placeholder="Kids"
-                      keyboardType="number-pad"
-                      style={s.input}
-                    />
-                  </View>
-                </View>
+                {renderCierreInputRow("Embolsados", cierreEmbolsadosAdultos, setCierreEmbolsadosAdultos, cierreEmbolsadosKids, setCierreEmbolsadosKids)}
+                {renderCierreInputRow("Sucios", cierreSuciosAdultos, setCierreSuciosAdultos, cierreSuciosKids, setCierreSuciosKids)}
 
                 <View style={s.sectionTotalRow}>
                   <Text style={s.sectionTotalLabel}>Total final del día:</Text>
@@ -1669,106 +1667,16 @@ export default function CoordinadoresLentesScreen() {
               <View style={s.cierreSection}>
                 <Text style={s.cierreSectionTitle}>4. Lentes totales en el complejo</Text>
 
-                <View style={s.cierreInputsRow}>
-                  <View style={{ flex: 1.2, justifyContent: 'center' }}>
-                    <Text style={s.rowLabel}>Sucios</Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <TextInput
-                      value={complejoSuciosAdultos}
-                      onChangeText={setComplejoSuciosAdultos}
-                      placeholder="Adultos"
-                      keyboardType="number-pad"
-                      style={s.input}
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <TextInput
-                      value={complejoSuciosKids}
-                      onChangeText={setComplejoSuciosKids}
-                      placeholder="Kids"
-                      keyboardType="number-pad"
-                      style={s.input}
-                    />
-                  </View>
-                </View>
-
-                <View style={s.cierreInputsRow}>
-                  <View style={{ flex: 1.2, justifyContent: 'center' }}>
-                    <Text style={s.rowLabel}>Limpios</Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <TextInput
-                      value={complejoLimpiosAdultos}
-                      onChangeText={setComplejoLimpiosAdultos}
-                      placeholder="Adultos"
-                      keyboardType="number-pad"
-                      style={s.input}
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <TextInput
-                      value={complejoLimpiosKids}
-                      onChangeText={setComplejoLimpiosKids}
-                      placeholder="Kids"
-                      keyboardType="number-pad"
-                      style={s.input}
-                    />
-                  </View>
-                </View>
-
-                <View style={s.cierreInputsRow}>
-                  <View style={{ flex: 1.2, justifyContent: 'center' }}>
-                    <Text style={s.rowLabel}>Embolsados</Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <TextInput
-                      value={complejoEmbolsadosAdultos}
-                      onChangeText={setComplejoEmbolsadosAdultos}
-                      placeholder="Adultos"
-                      keyboardType="number-pad"
-                      style={s.input}
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <TextInput
-                      value={complejoEmbolsadosKids}
-                      onChangeText={setComplejoEmbolsadosKids}
-                      placeholder="Kids"
-                      keyboardType="number-pad"
-                      style={s.input}
-                    />
-                  </View>
-                </View>
+                {renderCierreInputRow("Sucios", complejoSuciosAdultos, setComplejoSuciosAdultos, complejoSuciosKids, setComplejoSuciosKids)}
+                {renderCierreInputRow("Limpios", complejoLimpiosAdultos, setComplejoLimpiosAdultos, complejoLimpiosKids, setComplejoLimpiosKids)}
+                {renderCierreInputRow("Embolsados", complejoEmbolsadosAdultos, setComplejoEmbolsadosAdultos, complejoEmbolsadosKids, setComplejoEmbolsadosKids)}
               </View>
 
               {/* Merma diaria */}
               <View style={s.cierreSection}>
                 <Text style={s.cierreSectionTitle}>Merma diaria</Text>
 
-                <View style={s.cierreInputsRow}>
-                  <View style={{ flex: 1.2, justifyContent: 'center' }}>
-                    <Text style={s.rowLabel}>Merma</Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <TextInput
-                      value={mermaAdultos}
-                      onChangeText={setMermaAdultos}
-                      placeholder="Adultos"
-                      keyboardType="number-pad"
-                      style={s.input}
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <TextInput
-                      value={mermaKids}
-                      onChangeText={setMermaKids}
-                      placeholder="Kids"
-                      keyboardType="number-pad"
-                      style={s.input}
-                    />
-                  </View>
-                </View>
+                {renderCierreInputRow("Merma", mermaAdultos, setMermaAdultos, mermaKids, setMermaKids)}
               </View>
 
               {/* Error */}
@@ -2509,5 +2417,10 @@ const s = StyleSheet.create({
   diffValue: {
     fontSize: 14,
     fontWeight: "900",
+  },
+  cierreInputsColMobile: {
+    flexDirection: "column",
+    gap: 6,
+    width: "100%",
   },
 });
