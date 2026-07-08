@@ -1249,8 +1249,8 @@ export default function CoordinadoresLentesScreen() {
                         >
                           <View style={s.historyHeader}>
                             <View style={{ flex: 1 }}>
-                              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                                <Text style={s.historyDate}>{formattedDate} - {formattedTime}</Text>
+                              {/* Tipo y Chevron */}
+                              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 4 }}>
                                 <View style={[s.badge, isAjuste ? s.badgeAmber : isEmbolsado ? s.badgeBlue : s.badgeIndigo]}>
                                   <Text style={[s.badgeText, isAjuste ? s.badgeTextAmber : isEmbolsado ? s.badgeTextBlue : s.badgeTextIndigo]}>
                                     {isAjuste ? "⚙️ Ajuste" : isEmbolsado ? "🧺 Embolsado" : "📝 Cierre"}
@@ -1259,25 +1259,34 @@ export default function CoordinadoresLentesScreen() {
                                 <Text style={s.expandChevron}>{isExpanded ? "▲ Contraer" : "▼ Expandir"}</Text>
                               </View>
 
-                              {c.responsable && (
-                                <Text style={[s.historyAuthor, { fontWeight: "700", color: "#475569", marginTop: 4 }]}>
-                                  Responsable: {c.responsable}
-                                </Text>
-                              )}
-                              <Text style={[s.historyAuthor, { fontSize: 10, color: COLORS.muted }]}>por: {c.creadoPorNombre}</Text>
-                            </View>
+                              {/* Título: Cierre del DD/MM/YYYY */}
+                              <Text style={s.historyRowTitleText}>
+                                {isAjuste ? "Ajuste" : isEmbolsado ? "Embolsado" : "Cierre"} del <Text style={{ fontWeight: "700" }}>{formattedDate}</Text>
+                              </Text>
 
-                            {/* Diffs on the right (only for closures) */}
-                            {c.complejo && diffAd !== null && diffKd !== null && (
-                              <View style={s.headerDiffs}>
-                                <Text style={[s.headerDiffVal, { color: diffAd < 0 ? COLORS.danger : "#16A34A" }]}>
-                                  Ad: {diffAd > 0 ? `+${diffAd}` : diffAd}
-                                </Text>
-                                <Text style={[s.headerDiffVal, { color: diffKd < 0 ? COLORS.danger : "#16A34A" }]}>
-                                  Kd: {diffKd > 0 ? `+${diffKd}` : diffKd}
-                                </Text>
-                              </View>
-                            )}
+                              {/* Hecho por */}
+                              <Text style={s.historyRowAuthorText}>
+                                hecho por <Text style={{ fontWeight: "700", color: "#475569" }}>{c.responsable || c.creadoPorNombre}</Text>
+                              </Text>
+
+                              {/* Cuadrados de Diferencia (solo para cierres) */}
+                              {c.complejo && diffAd !== null && diffKd !== null && (
+                                <View style={s.headerDiffsContainer}>
+                                  <View style={[s.headerDiffBox, diffAd < 0 ? s.headerDiffBoxNeg : s.headerDiffBoxPos]}>
+                                    <Text style={s.headerDiffLabel}>Adultos</Text>
+                                    <Text style={[s.headerDiffVal, { color: diffAd < 0 ? "#DC2626" : "#16A34A" }]}>
+                                      {diffAd > 0 ? `+${diffAd}` : diffAd}
+                                    </Text>
+                                  </View>
+                                  <View style={[s.headerDiffBox, diffKd < 0 ? s.headerDiffBoxNeg : s.headerDiffBoxPos]}>
+                                    <Text style={s.headerDiffLabel}>Kids</Text>
+                                    <Text style={[s.headerDiffVal, { color: diffKd < 0 ? "#DC2626" : "#16A34A" }]}>
+                                      {diffKd > 0 ? `+${diffKd}` : diffKd}
+                                    </Text>
+                                  </View>
+                                </View>
+                              )}
+                            </View>
 
                             {/* Tres puntitos menu */}
                             {!isAjuste && (
@@ -2472,14 +2481,49 @@ const s = StyleSheet.create({
     color: COLORS.primary,
     marginLeft: 6,
   },
-  headerDiffs: {
+  headerDiffsContainer: {
     flexDirection: "row",
-    gap: 12,
+    gap: 8,
+    marginTop: 4,
+  },
+  headerDiffBox: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
     alignItems: "center",
-    marginRight: 6,
+    justifyContent: "center",
+    minWidth: 80,
+  },
+  headerDiffBoxPos: {
+    backgroundColor: "#F0FDF4",
+    borderColor: "#DCFCE7",
+  },
+  headerDiffBoxNeg: {
+    backgroundColor: "#FEF2F2",
+    borderColor: "#FEE2E2",
+  },
+  headerDiffLabel: {
+    fontSize: 9,
+    fontWeight: "700",
+    color: COLORS.muted,
+    textTransform: "uppercase",
+    marginBottom: 2,
   },
   headerDiffVal: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "900",
+  },
+  historyRowTitleText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.text,
+    marginTop: 2,
+  },
+  historyRowAuthorText: {
+    fontSize: 12,
+    color: COLORS.muted,
+    marginTop: 2,
+    marginBottom: 8,
   },
 });
