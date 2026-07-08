@@ -1020,7 +1020,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
               const diff = Math.abs(sTimeMins - showInicioMins);
               const finalDiff = Math.min(diff, 1440 - diff); // Manejar cambio de medianoche
               
-              if (finalDiff <= 60) {
+              if (finalDiff <= 90) {
                 if (!sessionsBySessionId[s.sessionId]) {
                   sessionsBySessionId[s.sessionId] = [];
                 }
@@ -1105,6 +1105,13 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
               show.dboxCapacity = dboxCapacity;
               show.dboxAvailable = dboxAvailable;
               show.dboxSold = dboxSold;
+            } else {
+              console.warn(`[Matching B] No match for Sala ${room} - Show: ${show.pelicula} (${show.inicio}). Available DB sessions in this room:`, 
+                sessionsInRoom.map(s => {
+                  const sDate = new Date(s.sessionDateTime);
+                  return `${String(sDate.getUTCHours()).padStart(2, "0")}:${String(sDate.getUTCMinutes()).padStart(2, "0")}`;
+                })
+              );
             }
           }
 
