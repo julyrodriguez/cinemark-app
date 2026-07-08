@@ -39,6 +39,7 @@ type LentesStock = {
   sucios: number;
   chequeados: number; // Chequeados para usar
   listos: number;     // Listos para chequear
+  limpios: number;    // Limpios
   ultimaActualizacion?: string;
 };
 
@@ -57,6 +58,7 @@ type LentesCierre = {
     sucios?: number;
     chequeados?: number;
     listos?: number;
+    limpios?: number;
   };
   kids: {
     usados?: number;
@@ -65,6 +67,7 @@ type LentesCierre = {
     sucios?: number;
     chequeados?: number;
     listos?: number;
+    limpios?: number;
   };
   entregados?: { label: string; adultos: number; kids: number }[];
   finalDelDia?: {
@@ -80,8 +83,8 @@ type LentesCierre = {
     kids: number;
   };
   prevStock?: {
-    adultos: { sucios: number; listos: number; chequeados: number };
-    kids: { sucios: number; listos: number; chequeados: number };
+    adultos: { sucios: number; listos: number; chequeados: number; limpios?: number };
+    kids: { sucios: number; listos: number; chequeados: number; limpios?: number };
   };
 };
 
@@ -159,6 +162,7 @@ export default function CoordinadoresLentesScreen() {
   const [editSucios, setEditSucios] = useState("");
   const [editChequeados, setEditChequeados] = useState("");
   const [editListos, setEditListos] = useState("");
+  const [editLimpios, setEditLimpios] = useState("");
   const [ajustarError, setAjustarError] = useState("");
   const [savingAjustar, setSavingAjustar] = useState(false);
 
@@ -213,12 +217,16 @@ export default function CoordinadoresLentesScreen() {
         sucios: 0,
         chequeados: 0,
         listos: 0,
+        limpios: 0,
         ultimaActualizacion: new Date().toISOString()
       };
       await setDoc(ref, defaultVal);
       return defaultVal;
     }
-    return snap.data() as LentesStock;
+    return {
+      limpios: 0,
+      ...snap.data()
+    } as LentesStock;
   };
 
   const fetchStock = useCallback(async () => {
@@ -432,10 +440,12 @@ export default function CoordinadoresLentesScreen() {
     const suciosNum = parseInt(editSucios.trim());
     const chequeadosNum = parseInt(editChequeados.trim());
     const listosNum = parseInt(editListos.trim());
+    const limpiosNum = parseInt(editLimpios.trim());
 
     if (isNaN(suciosNum) || suciosNum < 0 ||
       isNaN(chequeadosNum) || chequeadosNum < 0 ||
-      isNaN(listosNum) || listosNum < 0) {
+      isNaN(listosNum) || listosNum < 0 ||
+      isNaN(limpiosNum) || limpiosNum < 0) {
       setAjustarError("Todos los campos deben ser números enteros mayores o iguales a 0.");
       return;
     }
@@ -460,12 +470,14 @@ export default function CoordinadoresLentesScreen() {
           sucios: currentA.sucios,
           chequeados: currentA.chequeados,
           listos: currentA.listos,
+          limpios: currentA.limpios ?? 0,
         };
 
         let finalKids = {
           sucios: currentK.sucios,
           chequeados: currentK.chequeados,
           listos: currentK.listos,
+          limpios: currentK.limpios ?? 0,
         };
 
         if (showAjustar === "adultos") {
@@ -473,6 +485,7 @@ export default function CoordinadoresLentesScreen() {
             sucios: suciosNum,
             chequeados: chequeadosNum,
             listos: listosNum,
+            limpios: limpiosNum,
           };
           transaction.update(refA, {
             ...finalAdultos,
@@ -483,6 +496,7 @@ export default function CoordinadoresLentesScreen() {
             sucios: suciosNum,
             chequeados: chequeadosNum,
             listos: listosNum,
+            limpios: limpiosNum,
           };
           transaction.update(refK, {
             ...finalKids,
@@ -691,17 +705,18 @@ export default function CoordinadoresLentesScreen() {
         const currentK = snapK.data() as LentesStock;
 
         // Actualizar stocks en base a la Seccion 4 (totales del complejo)
+        // Chequeados para usar no se toca en la operacion de cierre diario, solo sucios, limpios y listos.
         transaction.update(refA, {
           sucios: compSucAd,
           listos: compEmbAd,
-          chequeados: compLimAd,
+          limpios: compLimAd,
           ultimaActualizacion: new Date().toISOString()
         });
 
         transaction.update(refK, {
           sucios: compSucKd,
           listos: compEmbKd,
-          chequeados: compLimKd,
+          limpios: compLimKd,
           ultimaActualizacion: new Date().toISOString()
         });
 
@@ -736,12 +751,14 @@ export default function CoordinadoresLentesScreen() {
             adultos: {
               sucios: currentA.sucios,
               listos: currentA.listos,
-              chequeados: currentA.chequeados
+              chequeados: currentA.chequeados,
+              limpios: currentA.limpios ?? 0
             },
             kids: {
               sucios: currentK.sucios,
               listos: currentK.listos,
-              chequeados: currentK.chequeados
+              chequeados: currentK.chequeados,
+              limpios: currentK.limpios ?? 0
             }
           },
 
@@ -904,10 +921,12 @@ export default function CoordinadoresLentesScreen() {
         let suciosFinalA = currentA.sucios;
         let listosFinalA = currentA.listos;
         let chequeadosFinalA = currentA.chequeados;
+        let limpiosFinalA = currentA.limpios ?? 0;
 
         let suciosFinalK = currentK.sucios;
         let listosFinalK = currentK.listos;
         let chequeadosFinalK = currentK.chequeados;
+        let limpiosFinalK = currentK.limpios ?? 0;
 
         if (isEmbolsado) {
           const eA = cierre.adultos?.embolsados || 0;
@@ -929,10 +948,12 @@ export default function CoordinadoresLentesScreen() {
           suciosFinalA = cierre.prevStock.adultos.sucios;
           listosFinalA = cierre.prevStock.adultos.listos;
           chequeadosFinalA = cierre.prevStock.adultos.chequeados;
+          limpiosFinalA = cierre.prevStock.adultos.limpios ?? 0;
 
           suciosFinalK = cierre.prevStock.kids.sucios;
           listosFinalK = cierre.prevStock.kids.listos;
           chequeadosFinalK = cierre.prevStock.kids.chequeados;
+          limpiosFinalK = cierre.prevStock.kids.limpios ?? 0;
         } else {
           const uA = cierre.adultos?.usados || 0;
           const pA = cierre.adultos?.perdidos || 0;
@@ -958,6 +979,7 @@ export default function CoordinadoresLentesScreen() {
           sucios: suciosFinalA,
           listos: listosFinalA,
           chequeados: chequeadosFinalA,
+          limpios: limpiosFinalA,
           ultimaActualizacion: new Date().toISOString(),
         });
 
@@ -965,6 +987,7 @@ export default function CoordinadoresLentesScreen() {
           sucios: suciosFinalK,
           listos: listosFinalK,
           chequeados: chequeadosFinalK,
+          limpios: limpiosFinalK,
           ultimaActualizacion: new Date().toISOString(),
         });
 
@@ -1117,6 +1140,15 @@ export default function CoordinadoresLentesScreen() {
                     <Text style={s.stateValueOrange}>{item.listos.toLocaleString("es-AR")}</Text>
                   </View>
 
+                  {/* Limpios */}
+                  <View style={[s.stateItem, s.stateTeal]}>
+                    <View style={s.stateLabelRow}>
+                      <Text style={s.stateLabel}>Limpios</Text>
+                      <Text style={s.stateSubLabel}>Listos para chequear/embolsar</Text>
+                    </View>
+                    <Text style={s.stateValueTeal}>{(item.limpios ?? 0).toLocaleString("es-AR")}</Text>
+                  </View>
+
                   {/* Chequeados para usar */}
                   <View style={[s.stateItem, s.stateGreen]}>
                     <View style={s.stateLabelRow}>
@@ -1130,7 +1162,7 @@ export default function CoordinadoresLentesScreen() {
                 {/* Total */}
                 <View style={s.cardTotalRow}>
                   <Text style={s.totalText}>TOTAL ACUMULADO</Text>
-                  <Text style={s.totalValue}>{(item.sucios + item.chequeados + item.listos).toLocaleString("es-AR")} U</Text>
+                  <Text style={s.totalValue}>{(item.sucios + item.chequeados + item.listos + (item.limpios ?? 0)).toLocaleString("es-AR")} U</Text>
                 </View>
               </View>
             );
@@ -1274,6 +1306,7 @@ export default function CoordinadoresLentesScreen() {
                               <>
                                 <Text style={s.historyColText}>• Sucios: <Text style={{ fontWeight: "700", color: "#0369A1" }}>{c.adultos.sucios ?? 0}</Text></Text>
                                 <Text style={s.historyColText}>• Listos: <Text style={{ fontWeight: "700", color: "#C2410C" }}>{c.adultos.listos ?? 0}</Text></Text>
+                                <Text style={s.historyColText}>• Limpios: <Text style={{ fontWeight: "700", color: "#0D9488" }}>{c.adultos.limpios ?? 0}</Text></Text>
                                 <Text style={s.historyColText}>• Chequeados: <Text style={{ fontWeight: "700", color: "#047857" }}>{c.adultos.chequeados ?? 0}</Text></Text>
                               </>
                             ) : isEmbolsado ? (
@@ -1311,6 +1344,7 @@ export default function CoordinadoresLentesScreen() {
                               <>
                                 <Text style={s.historyColText}>• Sucios: <Text style={{ fontWeight: "700", color: "#0369A1" }}>{c.kids.sucios ?? 0}</Text></Text>
                                 <Text style={s.historyColText}>• Listos: <Text style={{ fontWeight: "700", color: "#C2410C" }}>{c.kids.listos ?? 0}</Text></Text>
+                                <Text style={s.historyColText}>• Limpios: <Text style={{ fontWeight: "700", color: "#0D9488" }}>{c.kids.limpios ?? 0}</Text></Text>
                                 <Text style={s.historyColText}>• Chequeados: <Text style={{ fontWeight: "700", color: "#047857" }}>{c.kids.chequeados ?? 0}</Text></Text>
                               </>
                             ) : isEmbolsado ? (
@@ -1392,8 +1426,8 @@ export default function CoordinadoresLentesScreen() {
         animationType="fade"
         onRequestClose={() => setShowAjustarPin(null)}
       >
-        <View style={s.backdrop}>
-          <View style={s.modalCard}>
+        <View style={[s.backdrop, isMobile && { padding: 12 }]}>
+          <View style={[s.modalCard, isMobile && { padding: 16 }]}>
             <Text style={s.modalTitle}>PIN de Seguridad</Text>
             <Text style={s.modalSubtitle}>Se requiere el PIN de Proyección para ajustar el stock.</Text>
 
@@ -1428,6 +1462,7 @@ export default function CoordinadoresLentesScreen() {
                         setEditSucios(String(current.sucios));
                         setEditChequeados(String(current.chequeados));
                         setEditListos(String(current.listos));
+                        setEditLimpios(String(current.limpios ?? 0));
                         setAjustarError("");
                         setShowAjustar(target);
                       }
@@ -1451,8 +1486,8 @@ export default function CoordinadoresLentesScreen() {
         animationType="fade"
         onRequestClose={() => setShowAjustar(null)}
       >
-        <View style={s.backdrop}>
-          <View style={s.modalCard}>
+        <View style={[s.backdrop, isMobile && { padding: 12 }]}>
+          <View style={[s.modalCard, isMobile && { padding: 16 }]}>
             <Text style={s.modalTitle}>Ajustar Stock de Lentes</Text>
             <Text style={s.modalSubtitle}>{showAjustar === "adultos" ? "Categoría Adultos" : "Categoría Kids"}</Text>
 
@@ -1468,6 +1503,14 @@ export default function CoordinadoresLentesScreen() {
             <TextInput
               value={editListos}
               onChangeText={setEditListos}
+              keyboardType="number-pad"
+              style={s.input}
+            />
+
+            <Text style={s.label}>Limpios (Teal)</Text>
+            <TextInput
+              value={editLimpios}
+              onChangeText={setEditLimpios}
               keyboardType="number-pad"
               style={s.input}
             />
@@ -1506,7 +1549,7 @@ export default function CoordinadoresLentesScreen() {
         onRequestClose={() => setShowCierre(false)}
       >
         <View style={[s.backdrop, isMobile && { padding: 12 }]}>
-          <ScrollView contentContainerStyle={s.modalScrollCenter} keyboardShouldPersistTaps="handled">
+          <ScrollView style={s.modalScroll} contentContainerStyle={s.modalScrollCenter} keyboardShouldPersistTaps="handled">
             <View style={[s.modalCardLg, isMobile && { padding: 16 }]}>
               <Text style={s.modalTitle}>Cierre de Día - Lentes 3D</Text>
               <Text style={s.modalSubtitleLg}>Modifica los stocks en base a la función y pérdidas del día</Text>
@@ -1722,9 +1765,9 @@ export default function CoordinadoresLentesScreen() {
         animationType="fade"
         onRequestClose={() => setShowEmbolsado(false)}
       >
-        <View style={s.backdrop}>
-          <ScrollView contentContainerStyle={s.modalScrollCenter} keyboardShouldPersistTaps="handled">
-            <View style={s.modalCardLg}>
+        <View style={[s.backdrop, isMobile && { padding: 12 }]}>
+          <ScrollView style={s.modalScroll} contentContainerStyle={s.modalScrollCenter} keyboardShouldPersistTaps="handled">
+            <View style={[s.modalCardLg, isMobile && { padding: 16 }]}>
               <Text style={s.modalTitle}>🧺 Nuevos Embolsados - Lentes 3D</Text>
               <Text style={s.modalSubtitleLg}>Registrá los lentes higienizados y embolsados (se descuentan de sucios y pasan a listos para chequear)</Text>
 
@@ -2024,6 +2067,9 @@ const s = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     paddingVertical: 40,
+    width: "100%",
+  },
+  modalScroll: {
     width: "100%",
   },
   modalCard: {
@@ -2444,5 +2490,14 @@ const s = StyleSheet.create({
     flexDirection: "column",
     gap: 6,
     width: "100%",
+  },
+  stateTeal: {
+    backgroundColor: Platform.OS === "web" ? "var(--teal-bg, #F0FDFA)" : "#F0FDFA",
+    borderColor: Platform.OS === "web" ? "var(--teal-border, #CCFBF1)" : "#CCFBF1",
+  },
+  stateValueTeal: {
+    fontSize: 16,
+    fontWeight: "900",
+    color: Platform.OS === "web" ? "var(--teal, #0D9488)" : "#0D9488",
   },
 });
