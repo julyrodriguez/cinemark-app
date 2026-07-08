@@ -59,6 +59,7 @@ type LentesCierre = {
     chequeados?: number;
     listos?: number;
     limpios?: number;
+    merma?: number;
   };
   kids: {
     usados?: number;
@@ -68,6 +69,7 @@ type LentesCierre = {
     chequeados?: number;
     listos?: number;
     limpios?: number;
+    merma?: number;
   };
   entregados?: { label: string; adultos: number; kids: number }[];
   finalDelDia?: {
@@ -89,9 +91,12 @@ type LentesCierre = {
 };
 
 type MonthlyStats = {
-  usados: number;
-  perdidos: number;
-  merma: number;
+  usadosAdultos: number;
+  usadosKids: number;
+  perdidosAdultos: number;
+  perdidosKids: number;
+  mermaAdultos: number;
+  mermaKids: number;
 };
 
 const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
@@ -147,6 +152,8 @@ export default function CoordinadoresLentesScreen() {
   const [loadingCierres, setLoadingCierres] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  const [filterCierres, setFilterCierres] = useState(true);
+  const [filterAjustes, setFilterAjustes] = useState(true);
 
   // ── Modales ──
   const [showAjustar, setShowAjustar] = useState<"adultos" | "kids" | null>(null);
@@ -353,23 +360,32 @@ export default function CoordinadoresLentesScreen() {
       );
       const snap = await getDocs(q);
 
-      let totalUsados = 0;
-      let totalPerdidos = 0;
-      let totalMerma = 0;
+      let totalUsadosAd = 0;
+      let totalUsadosKd = 0;
+      let totalPerdidosAd = 0;
+      let totalPerdidosKd = 0;
+      let totalMermaAd = 0;
+      let totalMermaKd = 0;
 
       snap.docs.forEach((d) => {
         const data = d.data();
         if (data.tipo === "cierre" || !data.tipo) {
-          totalUsados += (data.adultos?.usados || 0) + (data.kids?.usados || 0);
-          totalPerdidos += (data.adultos?.perdidos || 0) + (data.kids?.perdidos || 0);
-          totalMerma += (data.adultos?.merma || 0) + (data.kids?.merma || 0);
+          totalUsadosAd += data.adultos?.usados || 0;
+          totalUsadosKd += data.kids?.usados || 0;
+          totalPerdidosAd += data.adultos?.perdidos || 0;
+          totalPerdidosKd += data.kids?.perdidos || 0;
+          totalMermaAd += data.adultos?.merma || data.merma?.adultos || 0;
+          totalMermaKd += data.kids?.merma || data.merma?.kids || 0;
         }
       });
 
       setMonthlyStats({
-        usados: totalUsados,
-        perdidos: totalPerdidos,
-        merma: totalMerma,
+        usadosAdultos: totalUsadosAd,
+        usadosKids: totalUsadosKd,
+        perdidosAdultos: totalPerdidosAd,
+        perdidosKids: totalPerdidosKd,
+        mermaAdultos: totalMermaAd,
+        mermaKids: totalMermaKd,
       });
     } catch (e) {
       console.error("fetchMonthlyStats error:", e);
@@ -1185,34 +1201,47 @@ export default function CoordinadoresLentesScreen() {
             <View style={s.statsGrid}>
               <View style={s.statBox}>
                 <Text style={s.statIcon}>🕶️</Text>
-                <View>
+                <View style={{ flex: 1 }}>
                   <Text style={s.statLabel}>Usados</Text>
-                  <Text style={s.statValue}>{monthlyStats.usados.toLocaleString("es-AR")}</Text>
+                  <Text style={s.statValue}>{(monthlyStats.usadosAdultos + monthlyStats.usadosKids).toLocaleString("es-AR")}</Text>
+                  <Text style={s.statSubText}>Ad: {monthlyStats.usadosAdultos} | Kd: {monthlyStats.usadosKids}</Text>
                 </View>
               </View>
               <View style={s.statBox}>
                 <Text style={s.statIcon}>⚠️</Text>
-                <View>
+                <View style={{ flex: 1 }}>
                   <Text style={s.statLabel}>Perdidos</Text>
-                  <Text style={s.statValue}>{monthlyStats.perdidos.toLocaleString("es-AR")}</Text>
+                  <Text style={s.statValue}>{(monthlyStats.perdidosAdultos + monthlyStats.perdidosKids).toLocaleString("es-AR")}</Text>
+                  <Text style={s.statSubText}>Ad: {monthlyStats.perdidosAdultos} | Kd: {monthlyStats.perdidosKids}</Text>
                 </View>
               </View>
               <View style={s.statBox}>
                 <Text style={s.statIcon}>🧺</Text>
-                <View>
+                <View style={{ flex: 1 }}>
                   <Text style={s.statLabel}>Merma</Text>
-                  <Text style={s.statValue}>{monthlyStats.merma.toLocaleString("es-AR")}</Text>
+                  <Text style={s.statValue}>{(monthlyStats.mermaAdultos + monthlyStats.mermaKids).toLocaleString("es-AR")}</Text>
+                  <Text style={s.statSubText}>Ad: {monthlyStats.mermaAdultos} | Kd: {monthlyStats.mermaKids}</Text>
                 </View>
               </View>
               <View style={[s.statBox, s.statBoxHighlight]}>
                 <Text style={s.statIcon}>📉</Text>
-                <View>
+                <View style={{ flex: 1 }}>
                   <Text style={s.statLabel}>Pérdida %</Text>
-                  <Text style={[s.statValue, { color: monthlyStats.usados > 0 && ((monthlyStats.perdidos + monthlyStats.merma) / monthlyStats.usados) * 100 > 5 ? "#DC2626" : "#0F172A" }]}>
-                    {monthlyStats.usados > 0
-                      ? `${(((monthlyStats.perdidos + monthlyStats.merma) / monthlyStats.usados) * 100).toFixed(1)}%`
-                      : "0.0%"}
-                  </Text>
+                  {(() => {
+                    const totalUsados = monthlyStats.usadosAdultos + monthlyStats.usadosKids;
+                    const totalPerdidos = monthlyStats.perdidosAdultos + monthlyStats.perdidosKids;
+                    const totalMerma = monthlyStats.mermaAdultos + monthlyStats.mermaKids;
+                    const totalLoss = totalPerdidos + totalMerma;
+                    const pct = totalUsados > 0 ? (totalLoss / totalUsados) * 100 : 0;
+                    return (
+                      <>
+                        <Text style={[s.statValue, { color: pct > 5 ? "#DC2626" : "#0F172A" }]}>
+                          {pct.toFixed(1)}%
+                        </Text>
+                        <Text style={s.statSubText}>Total pérdida: {totalLoss}</Text>
+                      </>
+                    );
+                  })()}
                 </View>
               </View>
             </View>
@@ -1228,12 +1257,37 @@ export default function CoordinadoresLentesScreen() {
             onPress={() => setExpandHistorico(!expandHistorico)}
             activeOpacity={0.8}
           >
-            <Text style={s.historicoTitle}>📜 Historial de Cierres y Embolsados</Text>
+            <Text style={s.historicoTitle}>📜 Historial de Cierres y Ajustes</Text>
             <Text style={s.historicoChevron}>{expandHistorico ? "▼" : "▶"}</Text>
           </TouchableOpacity>
 
           {expandHistorico && (
             <View style={s.historicoContent}>
+              {/* Filtros de Tipo */}
+              <View style={s.filterRow}>
+                <Text style={s.filterLabel}>Filtrar por tipo:</Text>
+                
+                <TouchableOpacity
+                  style={[s.filterCheckbox, filterCierres && s.filterCheckboxActive]}
+                  onPress={() => setFilterCierres(!filterCierres)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[s.filterCheckboxText, filterCierres && s.filterCheckboxTextActive]}>
+                    {filterCierres ? "✓ Cierres" : "Cierres"}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[s.filterCheckbox, filterAjustes && s.filterCheckboxActive]}
+                  onPress={() => setFilterAjustes(!filterAjustes)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[s.filterCheckboxText, filterAjustes && s.filterCheckboxTextActive]}>
+                    {filterAjustes ? "✓ Ajustes" : "Ajustes"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
               {/* Navegador de Mes */}
               <View style={s.monthNavRow}>
                 <TouchableOpacity onPress={handlePrevMonth} style={s.monthNavBtn}>
@@ -1249,11 +1303,19 @@ export default function CoordinadoresLentesScreen() {
                 <View style={{ paddingVertical: 20 }}>
                   <ActivityIndicator color={COLORS.primary} size="small" />
                 </View>
-              ) : cierres.length === 0 ? (
-                <Text style={s.noHistoryText}>No hay registros para este mes.</Text>
-              ) : (
-                <View style={{ gap: 12 }}>
-                  {cierres.map((c) => {
+              ) : (() => {
+                const filteredCierres = cierres.filter((c) => {
+                  if (c.tipo === "ajuste") return filterAjustes;
+                  return filterCierres;
+                });
+
+                if (filteredCierres.length === 0) {
+                  return <Text style={s.noHistoryText}>No hay registros para este mes con los filtros seleccionados.</Text>;
+                }
+
+                return (
+                  <View style={{ gap: 12 }}>
+                  {filteredCierres.map((c) => {
                     const dateParts = c.creadoEn ? new Date(c.creadoEn) : new Date();
                     const formattedTime = dateParts.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
                     const [y, m, d] = c.fecha.split("-");
@@ -1310,17 +1372,17 @@ export default function CoordinadoresLentesScreen() {
                             ) : c.complejo ? (
                               <>
                                 <Text style={s.historyColText}>• Entregados: <Text style={{ fontWeight: "700" }}>{c.adultos.usados || 0}</Text></Text>
-                                <Text style={s.historyColText}>• Fin Día: <Text style={{ fontWeight: "700" }}>{(c.finalDelDia?.adultos?.embolsados || 0) + (c.finalDelDia?.adultos?.sucios || 0)}</Text> (E:{c.finalDelDia?.adultos?.embolsados || 0}, S:{c.finalDelDia?.adultos?.sucios || 0})</Text>
+                                <Text style={s.historyColText}>• Fin de Día: <Text style={{ fontWeight: "700" }}>{(c.finalDelDia?.adultos?.embolsados || 0) + (c.finalDelDia?.adultos?.sucios || 0)}</Text> (Embolsados: {c.finalDelDia?.adultos?.embolsados || 0}, Sucios: {c.finalDelDia?.adultos?.sucios || 0})</Text>
                                 {(() => {
                                   const diff = ((c.finalDelDia?.adultos?.embolsados || 0) + (c.finalDelDia?.adultos?.sucios || 0)) - (c.adultos.usados || 0);
                                   return (
                                     <Text style={s.historyColText}>
-                                      • Dif: <Text style={{ fontWeight: "700", color: diff < 0 ? "#DC2626" : "#16A34A" }}>{diff > 0 ? `+${diff}` : diff}</Text>
+                                      • Diferencia: <Text style={{ fontWeight: "700", color: diff < 0 ? "#DC2626" : "#16A34A" }}>{diff > 0 ? `+${diff}` : diff}</Text>
                                     </Text>
                                   );
                                 })()}
-                                <Text style={s.historyColText}>• En Complejo: S:{c.complejo?.adultos?.sucios || 0} L:{c.complejo?.adultos?.limpios || 0} E:{c.complejo?.adultos?.embolsados || 0}</Text>
-                                <Text style={s.historyColText}>• Merma: <Text style={{ fontWeight: "700", color: "#DC2626" }}>{c.merma?.adultos || 0}</Text></Text>
+                                <Text style={s.historyColText}>• En Complejo: Sucios: {c.complejo?.adultos?.sucios || 0} | Limpios: {c.complejo?.adultos?.limpios || 0} | Embolsados: {c.complejo?.adultos?.embolsados || 0}</Text>
+                                <Text style={s.historyColText}>• Merma: <Text style={{ fontWeight: "700", color: "#DC2626" }}>{c.merma?.adultos || c.adultos.merma || 0}</Text></Text>
                               </>
                             ) : (
                               <>
@@ -1348,17 +1410,17 @@ export default function CoordinadoresLentesScreen() {
                             ) : c.complejo ? (
                               <>
                                 <Text style={s.historyColText}>• Entregados: <Text style={{ fontWeight: "700" }}>{c.kids.usados || 0}</Text></Text>
-                                <Text style={s.historyColText}>• Fin Día: <Text style={{ fontWeight: "700" }}>{(c.finalDelDia?.kids?.embolsados || 0) + (c.finalDelDia?.kids?.sucios || 0)}</Text> (E:{c.finalDelDia?.kids?.embolsados || 0}, S:{c.finalDelDia?.kids?.sucios || 0})</Text>
+                                <Text style={s.historyColText}>• Fin de Día: <Text style={{ fontWeight: "700" }}>{(c.finalDelDia?.kids?.embolsados || 0) + (c.finalDelDia?.kids?.sucios || 0)}</Text> (Embolsados: {c.finalDelDia?.kids?.embolsados || 0}, Sucios: {c.finalDelDia?.kids?.sucios || 0})</Text>
                                 {(() => {
                                   const diff = ((c.finalDelDia?.kids?.embolsados || 0) + (c.finalDelDia?.kids?.sucios || 0)) - (c.kids.usados || 0);
                                   return (
                                     <Text style={s.historyColText}>
-                                      • Dif: <Text style={{ fontWeight: "700", color: diff < 0 ? "#DC2626" : "#16A34A" }}>{diff > 0 ? `+${diff}` : diff}</Text>
+                                      • Diferencia: <Text style={{ fontWeight: "700", color: diff < 0 ? "#DC2626" : "#16A34A" }}>{diff > 0 ? `+${diff}` : diff}</Text>
                                     </Text>
                                   );
                                 })()}
-                                <Text style={s.historyColText}>• En Complejo: S:{c.complejo?.kids?.sucios || 0} L:{c.complejo?.kids?.limpios || 0} E:{c.complejo?.kids?.embolsados || 0}</Text>
-                                <Text style={s.historyColText}>• Merma: <Text style={{ fontWeight: "700", color: "#DC2626" }}>{c.merma?.kids || 0}</Text></Text>
+                                <Text style={s.historyColText}>• En Complejo: Sucios: {c.complejo?.kids?.sucios || 0} | Limpios: {c.complejo?.kids?.limpios || 0} | Embolsados: {c.complejo?.kids?.embolsados || 0}</Text>
+                                <Text style={s.historyColText}>• Merma: <Text style={{ fontWeight: "700", color: "#DC2626" }}>{c.merma?.kids || c.kids.merma || 0}</Text></Text>
                               </>
                             ) : (
                               <>
@@ -1407,7 +1469,8 @@ export default function CoordinadoresLentesScreen() {
                     </TouchableOpacity>
                   )}
                 </View>
-              )}
+              );
+            })()}
             </View>
           )}
         </View>
@@ -2495,5 +2558,43 @@ const s = StyleSheet.create({
     fontSize: 16,
     fontWeight: "900",
     color: Platform.OS === "web" ? "var(--teal, #0D9488)" : "#0D9488",
+  },
+  statSubText: {
+    fontSize: 10,
+    fontWeight: "600",
+    color: COLORS.muted,
+    marginTop: 2,
+  },
+  filterRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 16,
+    flexWrap: "wrap",
+  },
+  filterLabel: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: COLORS.text,
+  },
+  filterCheckbox: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.bg,
+  },
+  filterCheckboxActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  filterCheckboxText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: COLORS.text,
+  },
+  filterCheckboxTextActive: {
+    color: "#FFFFFF",
   },
 });
