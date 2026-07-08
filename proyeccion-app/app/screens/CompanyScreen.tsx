@@ -26,6 +26,16 @@ const THEATERS = [
   { id: "110", name: "Moreno", icon: "map-marker-radius-outline" }
 ];
 
+const DAYS_OF_WEEK = [
+  { key: "jueves", label: "Jueves" },
+  { key: "viernes", label: "Viernes" },
+  { key: "sabado", label: "Sábado" },
+  { key: "domingo", label: "Domingo" },
+  { key: "lunes", label: "Lunes" },
+  { key: "martes", label: "Martes" },
+  { key: "miercoles", label: "Miércoles" }
+];
+
 type Session = {
   sessionId: number;
   movieId: string;
@@ -52,9 +62,59 @@ type TheaterShowtimes = {
   sessions: Session[];
 };
 
+// Generar color determinista basado en el título de la película
+function getMovieColor(title: string) {
+  let hash = 0;
+  for (let i = 0; i < title.length; i++) {
+    hash = title.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const hue = Math.abs(hash) % 360;
+  return `hsl(${hue}, 70%, 35%)`;
+}
+
+// Formatear semana en rango de jueves a miércoles
+function formatWeekRange(weekStart: string): string {
+  if (!weekStart) return "";
+  const [y, m, d] = weekStart.split('-').map(Number);
+  const thur = new Date(Date.UTC(y, m - 1, d));
+  const wed = new Date(thur.getTime() + 6 * 24 * 60 * 60 * 1000);
+  
+  const thurD = thur.getUTCDate();
+  const thurM = thur.getUTCMonth() + 1;
+  const wedD = wed.getUTCDate();
+  const wedM = wed.getUTCMonth() + 1;
+  
+  return `Semana del ${thurD}/${thurM} al ${wedD}/${wedM}`;
+}
+
+// Obtener la clave del día según la fecha y hora de la función (zona horaria de Argentina y día operativo que empieza a las 6 AM)
+function getSessionDayKey(sessionDateTimeStr: string): string {
+  const date = new Date(sessionDateTimeStr);
+  // Ajuste aproximado a Argentina (UTC-3)
+  const arDate = new Date(date.getTime() - (3 * 60 * 60 * 1000));
+  
+  // Si es antes de las 6:00 AM, seguimos en el día operativo anterior
+  if (arDate.getUTCHours() < 6) {
+    arDate.setTime(arDate.getTime() - 24 * 60 * 60 * 1000);
+  }
+  
+  const dayNum = arDate.getUTCDay(); // 0 = Domingo, 1 = Lunes, etc.
+  const map: Record<number, string> = {
+    0: "domingo",
+    1: "lunes",
+    2: "martes",
+    3: "miercoles",
+    4: "jueves",
+    5: "viernes",
+    6: "sabado",
+  };
+  return map[dayNum] || "jueves";
+}
+
 export default function CompanyScreen() {
   const [loadingTheaters, setLoadingTheaters] = useState(true);
   const [selectedTheater, setSelectedTheater] = useState<typeof THEATERS[0] | null>(null);
+  const [selectedDay, setSelectedDay] = useState<string>("jueves");
   
   // Datos de ocupación consolidados para las tarjetas del grid (semana actual de cada cine)
   const [theaterStats, setTheaterStats] = useState<Record<string, {
@@ -104,21 +164,18 @@ export default function CompanyScreen() {
     
     for (const theater of THEATERS) {
       try {
-        // 1. Obtener las semanas disponibles
         const weeks: string[] = await fetchFromApi(`/company/weeks/${theater.id}`);
         if (weeks && weeks.length > 0) {
-          // Ordenar para tomar la semana más reciente
           const sortedWeeks = [...weeks].sort((a, b) => b.localeCompare(a));
           const latestWeek = sortedWeeks[0];
 
-          // 2. Obtener showtimes de esa semana
           const data: TheaterShowtimes = await fetchFromApi(`/company/showtimes/${theater.id}/${latestWeek}`);
           if (data && data.sessions) {
             let totalSold = 0;
             let totalCap = 0;
             
             data.sessions.forEach(s => {
-              const cap = s.occupation?.capacity || 200; // fallback standard capacity
+              const cap = s.occupation?.capacity || 200;
               const sold = s.soldSeats || s.occupiedSeats?.length || 0;
               totalSold += sold;
               totalCap += cap;
@@ -146,7 +203,7 @@ export default function CompanyScreen() {
     loadInitialStats();
   }, []);
 
-  // Al seleccionar un cine, cargar sus semanas disponibles
+  // Al seleccionar un cine, cargar sus semanas y autodetectar el día actual
   const handleSelectTheater = async (theater: typeof THEATERS[0]) => {
     setSelectedTheater(theater);
     setLoadingDetails(true);
@@ -155,12 +212,25 @@ export default function CompanyScreen() {
     setSelectedWeek("");
     setSearchQuery("");
 
+    // Autodetectar día actual cinematográfico
+    let now = new Date();
+    const arHours = new Date(now.getTime() - 3 * 60 * 60 * 1000).getUTCHours();
+    if (arHours < 6) {
+      now = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    }
+    const dayNum = new Date(now.getTime() - 3 * 60 * 60 * 1000).getUTCDay();
+    const map: Record<number, string> = {
+      0: "domingo", 1: "lunes", 2: "martes", 3: "miercoles",
+      4: "jueves", 5: "viernes", 6: "sabado"
+    };
+    setSelectedDay(map[dayNum] || "jueves");
+
     try {
       const weeks: string[] = await fetchFromApi(`/company/weeks/${theater.id}`);
       if (weeks && weeks.length > 0) {
         const sortedWeeks = [...weeks].sort((a, b) => b.localeCompare(a));
         setAvailableWeeks(sortedWeeks);
-        setSelectedWeek(sortedWeeks[0]); // Seleccionar por defecto la última semana
+        setSelectedWeek(sortedWeeks[0]);
       } else {
         setLoadingDetails(false);
       }
@@ -170,7 +240,7 @@ export default function CompanyScreen() {
     }
   };
 
-  // Al cambiar la semana seleccionada, cargar los showtimes detallados
+  // Al cambiar la semana seleccionada, cargar los showtimes
   useEffect(() => {
     if (!selectedTheater || !selectedWeek) return;
 
@@ -189,7 +259,7 @@ export default function CompanyScreen() {
     loadWeeklyShowtimes();
   }, [selectedTheater, selectedWeek]);
 
-  // KPIs Globales (Suma de los datos cargados de la semana más reciente)
+  // KPIs Globales
   const globalKpis = useMemo(() => {
     let totalSold = 0;
     let totalCap = 0;
@@ -214,74 +284,80 @@ export default function CompanyScreen() {
     };
   }, [theaterStats]);
 
-  // Filtrar funciones detalladas por el buscador de películas
+  // Filtrar funciones detalladas por día de la semana y buscador
   const filteredSessions = useMemo(() => {
     if (!showtimesData?.sessions) return [];
-    if (!searchQuery.trim()) return showtimesData.sessions;
     
-    const query = searchQuery.toLowerCase().trim();
-    return showtimesData.sessions.filter(s =>
-      s.movieName.toLowerCase().includes(query) ||
-      s.theaterRoom.toLowerCase().includes(query)
-    );
-  }, [showtimesData, searchQuery]);
+    let list = showtimesData.sessions;
 
-  // Renderizar cada función individual en la lista detallada
+    // 1. Filtrar por el día operativo seleccionado
+    list = list.filter(s => getSessionDayKey(s.sessionDateTime) === selectedDay);
+
+    // 2. Filtrar por el buscador
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      list = list.filter(s =>
+        s.movieName.toLowerCase().includes(query) ||
+        s.theaterRoom.toLowerCase().includes(query)
+      );
+    }
+
+    // Ordenar por hora de inicio
+    return [...list].sort((a, b) => a.sessionTime.localeCompare(b.sessionTime));
+  }, [showtimesData, selectedDay, searchQuery]);
+
+  // Renderizar cada función (Estilo idéntico a la vista de Programación del cine)
   const renderSessionItem = ({ item }: { item: Session }) => {
     const sold = item.soldSeats || item.occupiedSeats?.length || 0;
     const capacity = item.occupation?.capacity || 200;
     const occupancyPercent = capacity > 0 ? (sold / capacity) * 100 : 0;
+    const movieAccentColor = getMovieColor(item.movieName);
 
-    // Colores dinámicos del porcentaje
     let progressColor = COLORS.danger; // > 60%
     if (occupancyPercent < 25) progressColor = COLORS.info; // < 25% (baja)
     else if (occupancyPercent < 60) progressColor = COLORS.success; // 25-60% (media)
 
-    const dateFormatted = item.sessionDateTime
-      ? new Date(item.sessionDateTime).toLocaleDateString("es-AR", {
-          day: "numeric",
-          month: "short",
-          weekday: "short",
-        })
-      : item.sessionDisplayDate;
-
     return (
-      <View style={styles.sessionCard}>
-        <View style={styles.sessionRow}>
-          <View style={styles.sessionInfoLeft}>
-            <Text style={styles.sessionMovieName}>{item.movieName}</Text>
-            <View style={styles.sessionMetaRow}>
-              <Text style={styles.sessionMetaLabel}>{item.formatName}</Text>
-              <Text style={styles.sessionMetaDivider}>•</Text>
-              <Text style={styles.sessionMetaLabel}>Sala {item.theaterRoom}</Text>
-              <Text style={styles.sessionMetaDivider}>•</Text>
-              <Text style={styles.sessionMetaLabel}>{item.languageName}</Text>
-            </View>
+      <View style={[styles.listCard, { borderLeftColor: movieAccentColor }]}>
+        {/* Badge de Sala (Estilo circular idéntico al original) */}
+        <View style={styles.listRoomBadge}>
+          <Text style={styles.listRoomBadgeText}>SALA</Text>
+          <Text style={styles.listRoomNumberText}>{item.theaterRoom}</Text>
+        </View>
+
+        {/* Información de Película y Ocupación */}
+        <View style={styles.listInfoContainer}>
+          <Text style={styles.listMovieTitle}>{item.movieName}</Text>
+          <View style={styles.sessionMetaRow}>
+            <Text style={styles.sessionMetaLabel}>{item.formatName}</Text>
+            <Text style={styles.sessionMetaDivider}>•</Text>
+            <Text style={styles.sessionMetaLabel}>{item.languageName}</Text>
           </View>
-          
-          <View style={styles.sessionTimeCol}>
-            <Text style={styles.sessionTimeText}>{item.sessionTime} hs</Text>
-            <Text style={styles.sessionDateText}>{dateFormatted}</Text>
+
+          {/* Barra de progreso de ocupación */}
+          <View style={styles.occupancyBarContainer}>
+            <View style={styles.occupancyLabelRow}>
+              <Text style={styles.occupancyTickets}>
+                {sold} / {capacity} tickets vendidos
+              </Text>
+              <Text style={[styles.occupancyPercentText, { color: progressColor }]}>
+                {occupancyPercent.toFixed(1)}%
+              </Text>
+            </View>
+            <View style={styles.progressBarBg}>
+              <View 
+                style={[
+                  styles.progressBarFill, 
+                  { width: `${Math.min(100, occupancyPercent)}%`, backgroundColor: progressColor }
+                ]} 
+              />
+            </View>
           </View>
         </View>
 
-        <View style={styles.occupancyBarContainer}>
-          <View style={styles.occupancyLabelRow}>
-            <Text style={styles.occupancyTickets}>
-              {sold} / {capacity} tickets vendidos
-            </Text>
-            <Text style={[styles.occupancyPercentText, { color: progressColor }]}>
-              {occupancyPercent.toFixed(1)}%
-            </Text>
-          </View>
-          <View style={styles.progressBarBg}>
-            <View 
-              style={[
-                styles.progressBarFill, 
-                { width: `${Math.min(100, occupancyPercent)}%`, backgroundColor: progressColor }
-              ]} 
-            />
-          </View>
+        {/* Horario a la derecha */}
+        <View style={styles.sessionTimeCol}>
+          <Text style={styles.sessionTimeText}>{item.sessionTime} hs</Text>
         </View>
       </View>
     );
@@ -293,7 +369,7 @@ export default function CompanyScreen() {
       contentContainerStyle={styles.contentContainer}
       showsVerticalScrollIndicator={false}
     >
-      {/* Cabecera de la Sección */}
+      {/* Cabecera */}
       <View style={styles.header}>
         <View style={styles.headerIconCircle}>
           <MaterialCommunityIcons name="office-building" size={28} color={COLORS.primary} />
@@ -306,7 +382,7 @@ export default function CompanyScreen() {
         </View>
       </View>
 
-      {/* Tarjetas KPI Globales */}
+      {/* KPIs Globales */}
       <View style={styles.kpiRow}>
         <View style={styles.kpiCard}>
           <MaterialCommunityIcons name="ticket-percent-outline" size={24} color={COLORS.info} />
@@ -406,7 +482,7 @@ export default function CompanyScreen() {
         </View>
       )}
 
-      {/* Drilldown Detalle del Cine Seleccionado */}
+      {/* Detalle del Cine Seleccionado */}
       {selectedTheater && (
         <View style={styles.detailSection}>
           <View style={styles.detailHeader}>
@@ -437,7 +513,7 @@ export default function CompanyScreen() {
                         styles.weekBtnText,
                         selectedWeek === w && styles.weekBtnTextActive
                       ]}>
-                        {w}
+                        {formatWeekRange(w)}
                       </Text>
                     </TouchableOpacity>
                   ))}
@@ -445,6 +521,32 @@ export default function CompanyScreen() {
               </View>
             )}
           </View>
+
+          {/* Selector de Días (Thursday to Wednesday) */}
+          {availableWeeks.length > 0 && (
+            <View style={styles.daySelectorContainer}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.tabBar}
+              >
+                {DAYS_OF_WEEK.map((day) => {
+                  const isActive = selectedDay === day.key;
+                  return (
+                    <TouchableOpacity
+                      key={day.key}
+                      onPress={() => setSelectedDay(day.key)}
+                      style={[styles.tabButton, isActive && styles.tabButtonActive]}
+                    >
+                      <Text style={[styles.tabButtonText, isActive && styles.tabButtonTextActive]}>
+                        {day.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          )}
 
           {/* Buscador de Películas */}
           <View style={styles.searchBar}>
@@ -474,14 +576,14 @@ export default function CompanyScreen() {
               data={filteredSessions}
               renderItem={renderSessionItem}
               keyExtractor={(item) => `${item.sessionId}_${item.theaterRoom}`}
-              scrollEnabled={false} // Ya estamos dentro de un ScrollView
-              initialNumToRender={10}
+              scrollEnabled={false}
+              initialNumToRender={15}
             />
           ) : (
             <View style={styles.noSessionsBox}>
               <MaterialCommunityIcons name="movie-filter-outline" size={40} color={COLORS.muted} />
               <Text style={styles.noSessionsText}>
-                No se encontraron funciones para esta selección
+                No hay funciones programadas para este día
               </Text>
             </View>
           )}
@@ -677,8 +779,8 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: Platform.OS === "web" ? "center" : "stretch",
     gap: THEME.spacing.md,
-    marginBottom: THEME.spacing.lg,
-    paddingBottom: THEME.spacing.md,
+    marginBottom: THEME.spacing.md,
+    paddingBottom: THEME.spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
@@ -725,6 +827,36 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     fontWeight: "600",
   },
+  daySelectorContainer: {
+    marginBottom: THEME.spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    paddingBottom: 10,
+  },
+  tabBar: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  tabButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: THEME.radius.full,
+    backgroundColor: COLORS.bgMobile,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  tabButtonActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  tabButtonText: {
+    fontSize: 13,
+    fontWeight: "bold",
+    color: COLORS.textSoft,
+  },
+  tabButtonTextActive: {
+    color: "#FFFFFF",
+  },
   searchBar: {
     flexDirection: "row",
     alignItems: "center",
@@ -744,25 +876,48 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     fontSize: THEME.fontSize.sm,
   },
-  sessionCard: {
-    backgroundColor: COLORS.bgMobile,
-    borderRadius: THEME.radius.md,
-    padding: THEME.spacing.md,
-    marginBottom: THEME.spacing.md,
+  listCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.card,
+    borderRadius: 12,
+    padding: 12,
+    borderLeftWidth: 5,
+    marginBottom: THEME.spacing.sm,
     borderWidth: 1,
     borderColor: COLORS.border,
+    ...Platform.select({
+      web: {
+        boxShadow: "0 2px 8px rgba(0, 0, 0, 0.08)",
+      },
+    }),
   },
-  sessionRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+  listRoomBadge: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: COLORS.primarySoft,
+    justifyContent: "center",
     alignItems: "center",
+    marginRight: 12,
   },
-  sessionInfoLeft: {
+  listRoomBadgeText: {
+    fontSize: 8,
+    color: COLORS.primary,
+    fontWeight: "bold",
+  },
+  listRoomNumberText: {
+    fontSize: 16,
+    color: COLORS.primary,
+    fontWeight: "bold",
+    lineHeight: 18,
+  },
+  listInfoContainer: {
     flex: 1,
-    paddingRight: THEME.spacing.md,
+    justifyContent: "center",
   },
-  sessionMovieName: {
-    fontSize: THEME.fontSize.md,
+  listMovieTitle: {
+    fontSize: 14,
     fontWeight: "bold",
     color: COLORS.text,
     marginBottom: 4,
@@ -771,6 +926,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
+    marginBottom: 6,
   },
   sessionMetaLabel: {
     fontSize: THEME.fontSize.xs,
@@ -781,43 +937,40 @@ const styles = StyleSheet.create({
     color: COLORS.muted,
   },
   sessionTimeCol: {
+    justifyContent: "center",
     alignItems: "flex-end",
+    paddingLeft: THEME.spacing.md,
   },
   sessionTimeText: {
     fontSize: THEME.fontSize.md,
     fontWeight: "bold",
     color: COLORS.primary,
   },
-  sessionDateText: {
-    fontSize: THEME.fontSize.xs,
-    color: COLORS.muted,
-    marginTop: 2,
-  },
   occupancyBarContainer: {
-    marginTop: THEME.spacing.md,
+    marginTop: THEME.spacing.xs,
   },
   occupancyLabelRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: THEME.spacing.xs,
+    marginBottom: 4,
   },
   occupancyTickets: {
-    fontSize: THEME.fontSize.xs,
+    fontSize: 11,
     color: COLORS.textSoft,
   },
   occupancyPercentText: {
-    fontSize: THEME.fontSize.xs,
+    fontSize: 11,
     fontWeight: "bold",
   },
   progressBarBg: {
-    height: 8,
+    height: 6,
     backgroundColor: COLORS.border,
-    borderRadius: 4,
+    borderRadius: 3,
     overflow: "hidden",
   },
   progressBarFill: {
     height: "100%",
-    borderRadius: 4,
+    borderRadius: 3,
   },
   noSessionsBox: {
     padding: THEME.spacing.xxl,
