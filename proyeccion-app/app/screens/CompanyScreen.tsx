@@ -658,28 +658,26 @@ export default function CompanyScreen() {
       {statsMode === "daily" && (
         <View style={styles.statsDaySelectorContainer}>
           <Text style={styles.statsDaySelectorLabel}>Filtrar estadísticas de cines por día:</Text>
-          <View style={styles.centeredTabBarWrapper}>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.centeredTabBar}
-            >
-              {DAYS_OF_WEEK.map((day) => {
-                const isActive = statsDay === day.key;
-                return (
-                  <TouchableOpacity
-                    key={day.key}
-                    onPress={() => setStatsDay(day.key)}
-                    style={[styles.tabButton, isActive && styles.tabButtonActive]}
-                  >
-                    <Text style={[styles.tabButtonText, isActive && styles.tabButtonTextActive]}>
-                      {day.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </View>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.centeredTabBar}
+          >
+            {DAYS_OF_WEEK.map((day) => {
+              const isActive = statsDay === day.key;
+              return (
+                <TouchableOpacity
+                  key={day.key}
+                  onPress={() => setStatsDay(day.key)}
+                  style={[styles.tabButton, isActive && styles.tabButtonActive]}
+                >
+                  <Text style={[styles.tabButtonText, isActive && styles.tabButtonTextActive]}>
+                    {day.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
         </View>
       )}
 
@@ -850,28 +848,26 @@ export default function CompanyScreen() {
 
           {/* Selector de Días centrado */}
           <View style={styles.daySelectorContainer}>
-            <View style={styles.centeredTabBarWrapper}>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.centeredTabBar}
-              >
-                {DAYS_OF_WEEK.map((day) => {
-                  const isActive = selectedDay === day.key;
-                  return (
-                    <TouchableOpacity
-                      key={day.key}
-                      onPress={() => setSelectedDay(day.key)}
-                      style={[styles.tabButton, isActive && styles.tabButtonActive]}
-                    >
-                      <Text style={[styles.tabButtonText, isActive && styles.tabButtonTextActive]}>
-                        {day.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.centeredTabBar}
+            >
+              {DAYS_OF_WEEK.map((day) => {
+                const isActive = selectedDay === day.key;
+                return (
+                  <TouchableOpacity
+                    key={day.key}
+                    onPress={() => setSelectedDay(day.key)}
+                    style={[styles.tabButton, isActive && styles.tabButtonActive]}
+                  >
+                    <Text style={[styles.tabButtonText, isActive && styles.tabButtonTextActive]}>
+                      {day.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
           </View>
 
           {/* Buscador de Películas */}
