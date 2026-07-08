@@ -940,7 +940,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
     const list: DailyShow[] = [];
 
     // Pre-calculate API mapping for the selected day to speed up lookups
-    const apiLookup: Record<string, any[]> = {};
+    const apiLookup: Record<number, any[]> = {};
     if (useApiData && apiData && selectedWeekStart) {
       apiData.forEach((session) => {
         const utcDate = new Date(session.sessionDateTime);
@@ -959,15 +959,11 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
         const sessionDay = map[dayNum];
         if (sessionDay !== selectedDay) return;
 
-        const hours = String(arDate.getUTCHours()).padStart(2, '0');
-        const mins = String(arDate.getUTCMinutes()).padStart(2, '0');
-        const sessionTimeStr = `${hours}:${mins}`;
-
-        const key = `${session.theaterRoom}_${sessionTimeStr}`;
-        if (!apiLookup[key]) {
-          apiLookup[key] = [];
+        const room = Number(session.theaterRoom);
+        if (!apiLookup[room]) {
+          apiLookup[room] = [];
         }
-        apiLookup[key].push(session);
+        apiLookup[room].push(session);
       });
     }
 
@@ -1006,10 +1002,57 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
           // If in API mode, try to enrich with occupancy details
           if (useApiData) {
-            const key = `${show.sala}_${show.inicio}`;
-            const matchingSessions = apiLookup[key];
+            const room = Number(show.sala);
+            const sessionsInRoom = apiLookup[room] || [];
+            const showInicioMins = timeToMinutes(show.inicio);
             
-            if (matchingSessions && matchingSessions.length > 0) {
+            // Buscar todas las sesiones en la misma sala que comiencen dentro de un rango de 60 minutos
+            // Agrupamos por sessionId para combinar sesiones normales y DBOX
+            const sessionsBySessionId: Record<string, any[]> = {};
+            
+            sessionsInRoom.forEach((s) => {
+              const sDate = new Date(s.sessionDateTime);
+              const sHours = String(sDate.getUTCHours()).padStart(2, "0");
+              const sMins = String(sDate.getUTCMinutes()).padStart(2, "0");
+              const sTimeStr = `${sHours}:${sMins}`;
+              const sTimeMins = timeToMinutes(sTimeStr);
+              
+              const diff = Math.abs(sTimeMins - showInicioMins);
+              const finalDiff = Math.min(diff, 1440 - diff); // Manejar cambio de medianoche
+              
+              if (finalDiff <= 60) {
+                if (!sessionsBySessionId[s.sessionId]) {
+                  sessionsBySessionId[s.sessionId] = [];
+                }
+                sessionsBySessionId[s.sessionId].push(s);
+              }
+            });
+            
+            const sessionIds = Object.keys(sessionsBySessionId);
+            if (sessionIds.length > 0) {
+              // Seleccionar la sesión que tenga la menor diferencia de horario
+              let bestSessionId = sessionIds[0];
+              let bestDiff = 9999;
+              
+              sessionIds.forEach((sid) => {
+                const s = sessionsBySessionId[sid][0];
+                const sDate = new Date(s.sessionDateTime);
+                const sHours = String(sDate.getUTCHours()).padStart(2, "0");
+                const sMins = String(sDate.getUTCMinutes()).padStart(2, "0");
+                const sTimeStr = `${sHours}:${sMins}`;
+                const sTimeMins = timeToMinutes(sTimeStr);
+                
+                const diff = Math.abs(sTimeMins - showInicioMins);
+                const finalDiff = Math.min(diff, 1440 - diff);
+                
+                if (finalDiff < bestDiff) {
+                  bestDiff = finalDiff;
+                  bestSessionId = sid;
+                }
+              });
+              
+              const matchingSessions = sessionsBySessionId[bestSessionId];
+              
               let totalCapacity = 0;
               let totalAvailable = 0;
               let formats: string[] = [];
@@ -1044,7 +1087,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
               show.isSimulated = true;
               show.sessionId = matchingSessions[0].sessionId;
               show.sessionDateTime = matchingSessions[0].sessionDateTime;
-              show.sessionFormat = Array.from(new Set(formats)).join(" / ");
+              show.sessionFormat = Array.from(new Set(formats)).join(" / "),
               show.language = matchingSessions[0].language.name;
               show.premiere = isPremiere;
               show.corporateId = matchingSessions[0].corporateId;
