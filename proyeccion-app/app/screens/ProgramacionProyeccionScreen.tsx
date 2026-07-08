@@ -1469,6 +1469,17 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
     timelineWidth,
   ]);
 
+  // Synchronize and reset scroll positions when changing cinema or week
+  useEffect(() => {
+    lastScrolledDay.current = null;
+    if (timelineScrollRef.current) {
+      timelineScrollRef.current.scrollTo({ x: 0, animated: false });
+    }
+    if (headerScrollRef.current) {
+      headerScrollRef.current.scrollTo({ x: 0, animated: false });
+    }
+  }, [cineId, selectedWeekStart]);
+
   if (loading) {
     return (
       <View style={styles.centerContainer}>
