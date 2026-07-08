@@ -47,8 +47,9 @@ import MantenimientosScreen from "./screens/MantenimientosScreen";
 import ProgramacionProyeccionScreen from "./screens/ProgramacionProyeccionScreen";
 import ControlSalasScreen from "./screens/ControlSalasScreen";
 import MapaBannersScreen from "./screens/MapaBannersScreen";
+import CompanyScreen from "./screens/CompanyScreen";
 
-type MainTab = "PROGRAMACIÓN" | "CALENDARIO" | "EVENTOS" | "PROYECCIÓN" | "SERVICIOS" | "COORDINADORES";
+type MainTab = "PROGRAMACIÓN" | "CALENDARIO" | "EVENTOS" | "PROYECCIÓN" | "SERVICIOS" | "COORDINADORES" | "COMPAÑÍA";
 type ProyeccionTab = "RMA" | "MANTENIMIENTOS" | "CREDITOS" | "DCP" | "TRAILERS_SEMANALES" | "CHEQUEO_COPIAS" | "CONTROL_SEMANAL" | "LAMPARAS" | "CIERRE_MES";
 type MarketingSubTab = "MKT" | "PROGRAMACION" | "CONTROL_SALAS" | "MAPA_BANNERS";
 type CoordinadoresSubTab = "QUIMICOS" | "LENTES_3D" | "PROXIMAMENTE";
@@ -60,6 +61,7 @@ const MAIN_TAB_META = {
   PROYECCIÓN: { label: "Proyección", icon: "projector" },
   SERVICIOS: { label: "Servicios", icon: "briefcase-outline" },
   COORDINADORES: { label: "Coordinadores", icon: "account-group-outline" },
+  COMPAÑÍA: { label: "Compañía", icon: "office-building" },
 } as const;
 
 const SUB_TABS = {
@@ -164,6 +166,7 @@ export default function Home() {
     loading: sessionLoading,
     isLoggedIn,
     isOficinas,
+    isAdmin,
     displayName,
     cineId,
   } = useAuthUser();
@@ -245,10 +248,17 @@ export default function Home() {
 
   const visibleMainTabs = useMemo(
     () => {
+      const tabs: MainTab[] = [];
       if (isOficinas) {
-        return ["PROGRAMACIÓN", "CALENDARIO", "EVENTOS"] as const;
+        tabs.push("PROGRAMACIÓN", "CALENDARIO", "EVENTOS");
+      } else {
+        tabs.push("PROGRAMACIÓN", "CALENDARIO", "EVENTOS", "PROYECCIÓN", "SERVICIOS", "COORDINADORES");
       }
-      return ["PROGRAMACIÓN", "CALENDARIO", "EVENTOS", "PROYECCIÓN", "SERVICIOS", "COORDINADORES"] as const;
+      
+      // Mostrar pestaña Compañía para todos los usuarios (cines, oficinas, administradores)
+      tabs.push("COMPAÑÍA");
+      
+      return tabs;
     },
     [isOficinas]
   );
@@ -820,6 +830,16 @@ export default function Home() {
             {coordinadoresTab === "QUIMICOS" && <CoordinadoresQuimicosScreen />}
             {coordinadoresTab === "LENTES_3D" && <CoordinadoresLentesScreen />}
             {coordinadoresTab === "PROXIMAMENTE" && <CoordinadoresProximamenteScreen />}
+          </View>
+        </View>
+      );
+    }
+
+    if (mainTab === "COMPAÑÍA") {
+      return (
+        <View style={styles.screenWrap}>
+          <View style={styles.subContent}>
+            <CompanyScreen />
           </View>
         </View>
       );
