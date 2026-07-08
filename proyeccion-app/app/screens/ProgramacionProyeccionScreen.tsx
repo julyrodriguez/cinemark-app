@@ -800,12 +800,12 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
   const shows = useMemo(() => {
     if (useApiData) {
       const currentWeek = getMovieWeekStartForNow();
-      const isCurrentWeek = selectedWeekStart === currentWeek;
+      const hasSavedProgramming = !!savedWeekly?.weeklyRows && savedWeekly.weeklyRows.length > 0 && savedWeekly.startDate === selectedWeekStart;
 
-      console.log("[shows] currentWeek:", currentWeek, "selectedWeekStart:", selectedWeekStart, "isCurrentWeek:", isCurrentWeek, "savedWeekly rows:", savedWeekly?.weeklyRows?.length ?? "null");
+      console.log("[shows] currentWeek:", currentWeek, "selectedWeekStart:", selectedWeekStart, "savedWeekly startDate:", savedWeekly?.startDate, "hasSavedProgramming:", hasSavedProgramming, "savedWeekly rows:", savedWeekly?.weeklyRows?.length ?? "null");
 
-      // Case A: Future pre-sale weeks OR current week when there's no saved weekly programming layout.
-      if (!isCurrentWeek || !savedWeekly?.weeklyRows || savedWeekly.weeklyRows.length === 0) {
+      // Case A: If there's no saved weekly programming layout matching the selected week.
+      if (!hasSavedProgramming) {
         console.log("[shows] → CASO A (solo API, fin=+120min)");
         if (!apiData || !selectedWeekStart) return [];
 
