@@ -65,12 +65,32 @@ type LentesCierre = {
     chequeados?: number;
     listos?: number;
   };
+  entregados?: { label: string; adultos: number; kids: number }[];
+  finalDelDia?: {
+    adultos: { embolsados: number; sucios: number };
+    kids: { embolsados: number; sucios: number };
+  };
+  complejo?: {
+    adultos: { sucios: number; limpios: number; embolsados: number };
+    kids: { sucios: number; limpios: number; embolsados: number };
+  };
+  merma?: {
+    adultos: number;
+    kids: number;
+  };
+  prevStock?: {
+    adultos: { sucios: number; listos: number; chequeados: number };
+    kids: { sucios: number; listos: number; chequeados: number };
+  };
 };
 
 type MonthlyStats = {
   usados: number;
   perdidos: number;
 };
+
+const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
+const getFirstDayOfMonth = (year: number, month: number) => new Date(year, month, 1).getDay();
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -126,19 +146,46 @@ export default function CoordinadoresLentesScreen() {
   const [showCierre, setShowCierre] = useState(false);
   const [showEmbolsado, setShowEmbolsado] = useState(false);
 
-  // ── Formulario de Ajuste Manual ──
+  // ── Formulario de Ajuste Manual (PIN & Inputs) ──
+  const [showAjustarPin, setShowAjustarPin] = useState<"adultos" | "kids" | null>(null);
+  const [enteredPin, setEnteredPin] = useState("");
+  const [pinError, setPinError] = useState("");
+  const [proyeccionPin, setProyeccionPin] = useState<string | null>(null);
+
   const [editSucios, setEditSucios] = useState("");
   const [editChequeados, setEditChequeados] = useState("");
   const [editListos, setEditListos] = useState("");
   const [ajustarError, setAjustarError] = useState("");
   const [savingAjustar, setSavingAjustar] = useState(false);
 
-  // ── Formulario de Cierre Diario ──
+  // ── Formulario de Cierre Diario Moderno ──
   const [cierreResponsable, setCierreResponsable] = useState("");
-  const [cierreUsadosAdultos, setCierreUsadosAdultos] = useState("");
-  const [cierrePerdidosAdultos, setCierrePerdidosAdultos] = useState("");
-  const [cierreUsadosKids, setCierreUsadosKids] = useState("");
-  const [cierrePerdidosKids, setCierrePerdidosKids] = useState("");
+  const [cierreFecha, setCierreFecha] = useState(() => new Date());
+  const [showCalendarPicker, setShowCalendarPicker] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState(() => new Date());
+
+  // Seccion 1: Lentes entregados a porteria
+  const [entregadosRows, setEntregadosRows] = useState([
+    { id: 1, label: "Apertura", adultos: "", kids: "" },
+    { id: 2, label: "", adultos: "", kids: "" }
+  ]);
+
+  // Seccion 2: Lentes al final del dia
+  const [cierreEmbolsadosAdultos, setCierreEmbolsadosAdultos] = useState("");
+  const [cierreEmbolsadosKids, setCierreEmbolsadosKids] = useState("");
+  const [cierreSuciosAdultos, setCierreSuciosAdultos] = useState("");
+  const [cierreSuciosKids, setCierreSuciosKids] = useState("");
+
+  // Seccion 4: Lentes totales en el complejo y merma
+  const [complejoSuciosAdultos, setComplejoSuciosAdultos] = useState("");
+  const [complejoSuciosKids, setComplejoSuciosKids] = useState("");
+  const [complejoLimpiosAdultos, setComplejoLimpiosAdultos] = useState("");
+  const [complejoLimpiosKids, setComplejoLimpiosKids] = useState("");
+  const [complejoEmbolsadosAdultos, setComplejoEmbolsadosAdultos] = useState("");
+  const [complejoEmbolsadosKids, setComplejoEmbolsadosKids] = useState("");
+  const [mermaAdultos, setMermaAdultos] = useState("");
+  const [mermaKids, setMermaKids] = useState("");
+
   const [cierreError, setCierreError] = useState("");
   const [savingCierre, setSavingCierre] = useState(false);
 
@@ -190,6 +237,23 @@ export default function CoordinadoresLentesScreen() {
     };
     loadStock();
   }, [fetchStock]);
+
+  useEffect(() => {
+    if (!cineId) return;
+    const configRef = doc(db, CINES_COLLECTION, cineId, "info", "config");
+    const loadPin = async () => {
+      try {
+        const snap = await getDoc(configRef);
+        if (snap.exists()) {
+          const pinVal = snap.data()?.proyeccionPin ? String(snap.data().proyeccionPin).trim() : null;
+          setProyeccionPin(pinVal);
+        }
+      } catch (e) {
+        console.error("Error fetching proyeccionPin:", e);
+      }
+    };
+    loadPin();
+  }, [cineId]);
 
   // ─── Fetch Cierres (Paginados y Filtrados por Mes) ────────────────────────────
 
@@ -349,13 +413,9 @@ export default function CoordinadoresLentesScreen() {
   // ─── Guardar Ajuste Manual ──────────────────────────────────────────────────
 
   const handleOpenAjustar = (type: "adultos" | "kids") => {
-    const current = type === "adultos" ? stockAdultos : stockKids;
-    if (!current) return;
-    setEditSucios(String(current.sucios));
-    setEditChequeados(String(current.chequeados));
-    setEditListos(String(current.listos));
-    setAjustarError("");
-    setShowAjustar(type);
+    setEnteredPin("");
+    setPinError("");
+    setShowAjustarPin(type);
   };
 
   const guardarAjuste = async () => {
@@ -456,12 +516,59 @@ export default function CoordinadoresLentesScreen() {
 
   const handleOpenCierre = () => {
     setCierreResponsable(displayName || "");
-    setCierreUsadosAdultos("");
-    setCierrePerdidosAdultos("");
-    setCierreUsadosKids("");
-    setCierrePerdidosKids("");
+    setCierreFecha(new Date());
+    setCalendarMonth(new Date());
+    setShowCalendarPicker(false);
+
+    setEntregadosRows([
+      { id: 1, label: "Apertura", adultos: "", kids: "" },
+      { id: 2, label: "", adultos: "", kids: "" }
+    ]);
+
+    setCierreEmbolsadosAdultos("");
+    setCierreEmbolsadosKids("");
+    setCierreSuciosAdultos("");
+    setCierreSuciosKids("");
+
+    setComplejoSuciosAdultos("");
+    setComplejoSuciosKids("");
+    setComplejoLimpiosAdultos("");
+    setComplejoLimpiosKids("");
+    setComplejoEmbolsadosAdultos("");
+    setComplejoEmbolsadosKids("");
+    setMermaAdultos("");
+    setMermaKids("");
+
     setCierreError("");
     setShowCierre(true);
+  };
+
+  const handleRowValueChange = (index: number, field: "adultos" | "kids", value: string) => {
+    const cleanVal = value.replace(/[^0-9]/g, "");
+    const updated = [...entregadosRows];
+    updated[index][field] = cleanVal;
+
+    if (index === updated.length - 1 && (updated[index].adultos.trim() !== "" || updated[index].kids.trim() !== "")) {
+      updated.push({ id: Date.now(), label: "", adultos: "", kids: "" });
+    } else {
+      while (
+        updated.length > 2 &&
+        updated[updated.length - 1].adultos.trim() === "" &&
+        updated[updated.length - 1].kids.trim() === "" &&
+        updated[updated.length - 2].adultos.trim() === "" &&
+        updated[updated.length - 2].kids.trim() === ""
+      ) {
+        updated.pop();
+      }
+    }
+    setEntregadosRows(updated);
+  };
+
+  const getEntregadosTotal = (field: "adultos" | "kids") => {
+    return entregadosRows.reduce((sum, row) => {
+      const val = parseInt(row[field]) || 0;
+      return sum + val;
+    }, 0);
   };
 
   const guardarCierre = async () => {
@@ -473,33 +580,33 @@ export default function CoordinadoresLentesScreen() {
       return;
     }
 
-    // Parsear inputs (si se dejan vacíos, se asume 0)
-    const uAdultos = cierreUsadosAdultos.trim() !== "" ? parseInt(cierreUsadosAdultos.trim()) : 0;
-    const pAdultos = cierrePerdidosAdultos.trim() !== "" ? parseInt(cierrePerdidosAdultos.trim()) : 0;
-    const uKids = cierreUsadosKids.trim() !== "" ? parseInt(cierreUsadosKids.trim()) : 0;
-    const pKids = cierrePerdidosKids.trim() !== "" ? parseInt(cierrePerdidosKids.trim()) : 0;
+    const parseNum = (val: string) => {
+      const parsed = parseInt(val.trim());
+      return isNaN(parsed) || parsed < 0 ? 0 : parsed;
+    };
 
-    if (isNaN(uAdultos) || uAdultos < 0 ||
-      isNaN(pAdultos) || pAdultos < 0 ||
-      isNaN(uKids) || uKids < 0 ||
-      isNaN(pKids) || pKids < 0) {
-      setCierreError("Las cantidades de usados y perdidos deben ser enteros positivos.");
-      return;
-    }
+    const eAdultos = getEntregadosTotal("adultos");
+    const eKids = getEntregadosTotal("kids");
 
-    // Validar stock disponible: listos >= usados + perdidos
-    if ((uAdultos + pAdultos) > stockAdultos.listos) {
-      setCierreError(`Adultos: No podés descontar ${uAdultos} usados y ${pAdultos} perdidos ya que solo hay ${stockAdultos.listos} listos para chequear.`);
-      return;
-    }
-    if ((uKids + pKids) > stockKids.listos) {
-      setCierreError(`Kids: No podés descontar ${uKids} usados y ${pKids} perdidos ya que solo hay ${stockKids.listos} listos para chequear.`);
-      return;
-    }
+    const embAd = parseNum(cierreEmbolsadosAdultos);
+    const embKd = parseNum(cierreEmbolsadosKids);
+    const sucAd = parseNum(cierreSuciosAdultos);
+    const sucKd = parseNum(cierreSuciosKids);
+
+    const compSucAd = parseNum(complejoSuciosAdultos);
+    const compSucKd = parseNum(complejoSuciosKids);
+    const compLimAd = parseNum(complejoLimpiosAdultos);
+    const compLimKd = parseNum(complejoLimpiosKids);
+    const compEmbAd = parseNum(complejoEmbolsadosAdultos);
+    const compEmbKd = parseNum(complejoEmbolsadosKids);
+
+    const mermaAd = parseNum(mermaAdultos);
+    const mermaKd = parseNum(mermaKids);
 
     setSavingCierre(true);
     try {
-      // Transacción para garantizar consistencia del stock y escritura de auditoría
+      const todayStr = cierreFecha.toISOString().split("T")[0];
+
       await runTransaction(db, async (transaction) => {
         const refA = doc(db, CINES_COLLECTION, cineId, "lentes3d", "adultos");
         const refK = doc(db, CINES_COLLECTION, cineId, "lentes3d", "kids");
@@ -507,25 +614,28 @@ export default function CoordinadoresLentesScreen() {
         const snapA = await transaction.get(refA);
         const snapK = await transaction.get(refK);
 
+        if (!snapA.exists() || !snapK.exists()) {
+          throw new Error("No se pudo obtener el stock actual para realizar el cierre.");
+        }
+
         const currentA = snapA.data() as LentesStock;
         const currentK = snapK.data() as LentesStock;
 
-        // Actualizar Adultos
+        // Actualizar stocks en base a la Seccion 4 (totales del complejo)
         transaction.update(refA, {
-          sucios: currentA.sucios + uAdultos,
-          listos: currentA.listos - uAdultos - pAdultos,
+          sucios: compSucAd,
+          listos: compEmbAd,
+          chequeados: compLimAd,
           ultimaActualizacion: new Date().toISOString()
         });
 
-        // Actualizar Kids
         transaction.update(refK, {
-          sucios: currentK.sucios + uKids,
-          listos: currentK.listos - uKids - pKids,
+          sucios: compSucKd,
+          listos: compEmbKd,
+          chequeados: compLimKd,
           ultimaActualizacion: new Date().toISOString()
         });
 
-        // Guardar Auditoría Histórica
-        const todayStr = new Date().toISOString().split("T")[0];
         const auditRef = doc(collection(db, CINES_COLLECTION, cineId, "lentes3d_cierres"));
         transaction.set(auditRef, {
           tipo: "cierre",
@@ -534,8 +644,46 @@ export default function CoordinadoresLentesScreen() {
           creadoPorEmail: user?.email ?? "coordinador@cinemark.com.ar",
           creadoPorNombre: displayName || "Coordinador",
           responsable: cierreResponsable.trim(),
-          adultos: { usados: uAdultos, perdidos: pAdultos },
-          kids: { usados: uKids, perdidos: pKids }
+          
+          entregados: entregadosRows.filter(r => r.adultos.trim() !== "" || r.kids.trim() !== "").map(r => ({
+            label: r.label || "",
+            adultos: parseInt(r.adultos) || 0,
+            kids: parseInt(r.kids) || 0
+          })),
+          finalDelDia: {
+            adultos: { embolsados: embAd, sucios: sucAd },
+            kids: { embolsados: embKd, sucios: sucKd }
+          },
+          complejo: {
+            adultos: { sucios: compSucAd, limpios: compLimAd, embolsados: compEmbAd },
+            kids: { sucios: compSucKd, limpios: compLimKd, embolsados: compEmbKd }
+          },
+          merma: {
+            adultos: mermaAd,
+            kids: mermaKd
+          },
+          
+          prevStock: {
+            adultos: {
+              sucios: currentA.sucios,
+              listos: currentA.listos,
+              chequeados: currentA.chequeados
+            },
+            kids: {
+              sucios: currentK.sucios,
+              listos: currentK.listos,
+              chequeados: currentK.chequeados
+            }
+          },
+
+          adultos: {
+            usados: eAdultos,
+            perdidos: mermaAd
+          },
+          kids: {
+            usados: eKids,
+            perdidos: mermaKd
+          }
         });
       });
 
@@ -544,7 +692,7 @@ export default function CoordinadoresLentesScreen() {
       await fetchMonthlyStats(selectedMonth);
       if (expandHistorico) {
         setLastDoc(null);
-        fetchCierres(selectedMonth, false);
+        await fetchCierres(selectedMonth, false);
       }
       showAlert("Cierre Completado", "El stock de lentes 3D se ha actualizado de forma exitosa.");
     } catch (e: any) {
@@ -684,13 +832,13 @@ export default function CoordinadoresLentesScreen() {
 
         let suciosFinalA = currentA.sucios;
         let listosFinalA = currentA.listos;
+        let chequeadosFinalA = currentA.chequeados;
 
         let suciosFinalK = currentK.sucios;
         let listosFinalK = currentK.listos;
+        let chequeadosFinalK = currentK.chequeados;
 
         if (isEmbolsado) {
-          // Revertir Embolsado:
-          // Inverso: sucios = sucios + e, listos = listos - e
           const eA = cierre.adultos?.embolsados || 0;
           const eK = cierre.kids?.embolsados || 0;
 
@@ -706,9 +854,15 @@ export default function CoordinadoresLentesScreen() {
 
           suciosFinalK = currentK.sucios + eK;
           listosFinalK = currentK.listos - eK;
+        } else if (cierre.prevStock) {
+          suciosFinalA = cierre.prevStock.adultos.sucios;
+          listosFinalA = cierre.prevStock.adultos.listos;
+          chequeadosFinalA = cierre.prevStock.adultos.chequeados;
+
+          suciosFinalK = cierre.prevStock.kids.sucios;
+          listosFinalK = cierre.prevStock.kids.listos;
+          chequeadosFinalK = cierre.prevStock.kids.chequeados;
         } else {
-          // Revertir Cierre:
-          // Inverso: sucios = sucios - u, listos = listos + u + p
           const uA = cierre.adultos?.usados || 0;
           const pA = cierre.adultos?.perdidos || 0;
 
@@ -729,20 +883,20 @@ export default function CoordinadoresLentesScreen() {
           listosFinalK = currentK.listos + uK + pK;
         }
 
-        // Actualizar stocks en la transacción
         transaction.update(refA, {
           sucios: suciosFinalA,
           listos: listosFinalA,
+          chequeados: chequeadosFinalA,
           ultimaActualizacion: new Date().toISOString(),
         });
 
         transaction.update(refK, {
           sucios: suciosFinalK,
           listos: listosFinalK,
+          chequeados: chequeadosFinalK,
           ultimaActualizacion: new Date().toISOString(),
         });
 
-        // Eliminar reporte de auditoría en la transacción
         const docRef = doc(db, CINES_COLLECTION, cineId, "lentes3d_cierres", cierre.id);
         transaction.delete(docRef);
       });
@@ -829,7 +983,7 @@ export default function CoordinadoresLentesScreen() {
           </View>
           <View style={s.headerButtons}>
             <TouchableOpacity style={s.cierreBtn} onPress={handleOpenCierre}>
-              <Text style={s.cierreBtnText}>📝 Cierre</Text>
+              <Text style={s.cierreBtnText}>📝 Cierre del día</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[s.cierreBtn, { backgroundColor: "#0284C7", marginLeft: 6 }]}
@@ -1046,6 +1200,21 @@ export default function CoordinadoresLentesScreen() {
                               </>
                             ) : isEmbolsado ? (
                               <Text style={s.historyColText}>• Embolsados: <Text style={{ fontWeight: "700", color: "#047857" }}>{c.adultos.embolsados || 0}</Text></Text>
+                            ) : c.complejo ? (
+                              <>
+                                <Text style={s.historyColText}>• Entregados: <Text style={{ fontWeight: "700" }}>{c.adultos.usados || 0}</Text></Text>
+                                <Text style={s.historyColText}>• Fin Día: <Text style={{ fontWeight: "700" }}>{(c.finalDelDia?.adultos?.embolsados || 0) + (c.finalDelDia?.adultos?.sucios || 0)}</Text> (E:{c.finalDelDia?.adultos?.embolsados || 0}, S:{c.finalDelDia?.adultos?.sucios || 0})</Text>
+                                {(() => {
+                                  const diff = ((c.finalDelDia?.adultos?.embolsados || 0) + (c.finalDelDia?.adultos?.sucios || 0)) - (c.adultos.usados || 0);
+                                  return (
+                                    <Text style={s.historyColText}>
+                                      • Dif: <Text style={{ fontWeight: "700", color: diff < 0 ? "#DC2626" : "#16A34A" }}>{diff > 0 ? `+${diff}` : diff}</Text>
+                                    </Text>
+                                  );
+                                })()}
+                                <Text style={s.historyColText}>• En Complejo: S:{c.complejo?.adultos?.sucios || 0} L:{c.complejo?.adultos?.limpios || 0} E:{c.complejo?.adultos?.embolsados || 0}</Text>
+                                <Text style={s.historyColText}>• Merma: <Text style={{ fontWeight: "700", color: "#DC2626" }}>{c.merma?.adultos || 0}</Text></Text>
+                              </>
                             ) : (
                               <>
                                 <Text style={s.historyColText}>• Usados: <Text style={{ fontWeight: "700" }}>{c.adultos.usados || 0}</Text></Text>
@@ -1068,6 +1237,21 @@ export default function CoordinadoresLentesScreen() {
                               </>
                             ) : isEmbolsado ? (
                               <Text style={s.historyColText}>• Embolsados: <Text style={{ fontWeight: "700", color: "#047857" }}>{c.kids.embolsados || 0}</Text></Text>
+                            ) : c.complejo ? (
+                              <>
+                                <Text style={s.historyColText}>• Entregados: <Text style={{ fontWeight: "700" }}>{c.kids.usados || 0}</Text></Text>
+                                <Text style={s.historyColText}>• Fin Día: <Text style={{ fontWeight: "700" }}>{(c.finalDelDia?.kids?.embolsados || 0) + (c.finalDelDia?.kids?.sucios || 0)}</Text> (E:{c.finalDelDia?.kids?.embolsados || 0}, S:{c.finalDelDia?.kids?.sucios || 0})</Text>
+                                {(() => {
+                                  const diff = ((c.finalDelDia?.kids?.embolsados || 0) + (c.finalDelDia?.kids?.sucios || 0)) - (c.kids.usados || 0);
+                                  return (
+                                    <Text style={s.historyColText}>
+                                      • Dif: <Text style={{ fontWeight: "700", color: diff < 0 ? "#DC2626" : "#16A34A" }}>{diff > 0 ? `+${diff}` : diff}</Text>
+                                    </Text>
+                                  );
+                                })()}
+                                <Text style={s.historyColText}>• En Complejo: S:{c.complejo?.kids?.sucios || 0} L:{c.complejo?.kids?.limpios || 0} E:{c.complejo?.kids?.embolsados || 0}</Text>
+                                <Text style={s.historyColText}>• Merma: <Text style={{ fontWeight: "700", color: "#DC2626" }}>{c.merma?.kids || 0}</Text></Text>
+                              </>
                             ) : (
                               <>
                                 <Text style={s.historyColText}>• Usados: <Text style={{ fontWeight: "700" }}>{c.kids.usados || 0}</Text></Text>
@@ -1122,6 +1306,65 @@ export default function CoordinadoresLentesScreen() {
 
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* ── Modal PIN de Ajuste ── */}
+      <Modal
+        visible={showAjustarPin !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowAjustarPin(null)}
+      >
+        <View style={s.backdrop}>
+          <View style={s.modalCard}>
+            <Text style={s.modalTitle}>PIN de Seguridad</Text>
+            <Text style={s.modalSubtitle}>Se requiere el PIN de Proyección para ajustar el stock.</Text>
+
+            <TextInput
+              value={enteredPin}
+              onChangeText={setEnteredPin}
+              placeholder="Ingresá el PIN"
+              secureTextEntry
+              keyboardType="number-pad"
+              style={s.input}
+            />
+
+            {!!pinError && <Text style={s.errorText}>{pinError}</Text>}
+
+            <View style={s.modalActions}>
+              <TouchableOpacity style={s.btnGhost} onPress={() => setShowAjustarPin(null)}>
+                <Text style={s.btnGhostText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={s.btnPrimary}
+                onPress={() => {
+                  if (!proyeccionPin) {
+                    setPinError("No hay un PIN de proyección configurado en el cine.");
+                    return;
+                  }
+                  if (enteredPin.trim() === proyeccionPin) {
+                    const target = showAjustarPin;
+                    setShowAjustarPin(null);
+                    if (target) {
+                      const current = target === "adultos" ? stockAdultos : stockKids;
+                      if (current) {
+                        setEditSucios(String(current.sucios));
+                        setEditChequeados(String(current.chequeados));
+                        setEditListos(String(current.listos));
+                        setAjustarError("");
+                        setShowAjustar(target);
+                      }
+                    }
+                  } else {
+                    setPinError("PIN incorrecto.");
+                  }
+                }}
+              >
+                <Text style={s.btnPrimaryText}>Confirmar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* ── Modal Ajuste Manual ── */}
       <Modal
@@ -1192,68 +1435,340 @@ export default function CoordinadoresLentesScreen() {
 
               {/* Responsable Input */}
               <View style={s.responsableContainer}>
-                <Text style={s.label}>Responsable del Cierre</Text>
+                <Text style={s.label}>Responsable del Cierre *</Text>
                 <TextInput
+                  value={cierreResponsable}
                   onChangeText={setCierreResponsable}
                   placeholder="Nombre de quien hace el cierre"
                   style={s.input}
                 />
               </View>
 
-              {/* Seccion Adultos */}
-              <View style={s.cierreSection}>
-                <Text style={s.cierreSectionTitle}>🕶️ Adultos</Text>
-                <View style={s.cierreInputsCol}>
-                  <View style={s.inputGroup}>
-                    <Text style={s.label}>Usados (descuenta listos)</Text>
-                    <TextInput
-                      value={cierreUsadosAdultos}
-                      onChangeText={setCierreUsadosAdultos}
-                      placeholder="Ej: 50"
-                      keyboardType="number-pad"
-                      style={s.input}
-                    />
+              {/* Calendario de Selección de Fecha */}
+              <View style={s.responsableContainer}>
+                <Text style={s.label}>Fecha del Cierre</Text>
+                <TouchableOpacity
+                  style={s.dateTrigger}
+                  onPress={() => setShowCalendarPicker(!showCalendarPicker)}
+                >
+                  <Text style={s.dateTriggerText}>
+                    📅 {cierreFecha.getDate()}/{cierreFecha.getMonth() + 1}/{cierreFecha.getFullYear()} (Hacé click para cambiar)
+                  </Text>
+                </TouchableOpacity>
+
+                {showCalendarPicker && (
+                  <View style={s.calendarEmbed}>
+                    <View style={s.calendarHeader}>
+                      <TouchableOpacity
+                        onPress={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))}
+                        style={s.calendarNavBtn}
+                      >
+                        <Text style={s.calendarNavBtnText}>◀</Text>
+                      </TouchableOpacity>
+                      <Text style={s.calendarMonthTitle}>
+                        {formatMonthName(calendarMonth)}
+                      </Text>
+                      <TouchableOpacity
+                        onPress={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))}
+                        style={s.calendarNavBtn}
+                      >
+                        <Text style={s.calendarNavBtnText}>▶</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    <View style={s.calendarWeekdays}>
+                      {["Do", "Lu", "Ma", "Mi", "Ju", "Vi", "Sá"].map((wd) => (
+                        <Text key={wd} style={s.calendarWeekdayText}>{wd}</Text>
+                      ))}
+                    </View>
+
+                    <View style={s.calendarGrid}>
+                      {(() => {
+                        const yr = calendarMonth.getFullYear();
+                        const mt = calendarMonth.getMonth();
+                        const daysInMt = getDaysInMonth(yr, mt);
+                        const startDay = getFirstDayOfMonth(yr, mt);
+
+                        const gridItems = [];
+                        for (let i = 0; i < startDay; i++) {
+                          gridItems.push(<View key={`empty-${i}`} style={s.calendarDayBoxEmpty} />);
+                        }
+
+                        for (let d = 1; d <= daysInMt; d++) {
+                          const thisDate = new Date(yr, mt, d);
+                          const isSelected = thisDate.getDate() === cierreFecha.getDate() &&
+                                             thisDate.getMonth() === cierreFecha.getMonth() &&
+                                             thisDate.getFullYear() === cierreFecha.getFullYear();
+                          const isToday = (() => {
+                            const today = new Date();
+                            return thisDate.getDate() === today.getDate() &&
+                                   thisDate.getMonth() === today.getMonth() &&
+                                   thisDate.getFullYear() === today.getFullYear();
+                          })();
+
+                          gridItems.push(
+                            <TouchableOpacity
+                              key={`day-${d}`}
+                              style={[
+                                s.calendarDayBox,
+                                isSelected && s.calendarDaySelected,
+                                isToday && !isSelected && s.calendarDayToday
+                              ]}
+                              onPress={() => {
+                                setCierreFecha(thisDate);
+                                setShowCalendarPicker(false);
+                              }}
+                            >
+                              <Text style={[
+                                s.calendarDayText,
+                                isSelected && s.calendarDayTextSelected,
+                                isToday && !isSelected && s.calendarDayTextToday
+                              ]}>
+                                {d}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        }
+                        return gridItems;
+                      })()}
+                    </View>
                   </View>
-                  <View style={s.inputGroup}>
-                    <Text style={s.label}>Perdidos (descuenta listos)</Text>
-                    <TextInput
-                      value={cierrePerdidosAdultos}
-                      onChangeText={setCierrePerdidosAdultos}
-                      placeholder="Ej: 5"
-                      keyboardType="number-pad"
-                      style={s.input}
-                    />
-                  </View>
-                </View>
-                {renderPreview(stockAdultos, cierreUsadosAdultos, cierrePerdidosAdultos)}
+                )}
               </View>
 
-              {/* Seccion Kids */}
+              {/* Seccion 1: Lentes entregados a porteria */}
               <View style={s.cierreSection}>
-                <Text style={s.cierreSectionTitle}>🕶️ Kids</Text>
-                <View style={s.cierreInputsCol}>
-                  <View style={s.inputGroup}>
-                    <Text style={s.label}>Usados (descuenta listos)</Text>
+                <Text style={s.cierreSectionTitle}>1. Lentes entregados a portería</Text>
+                
+                {entregadosRows.map((row, idx) => (
+                  <View key={row.id || idx} style={s.cierreInputsRow}>
+                    <View style={{ flex: 1.2, justifyContent: 'center' }}>
+                      <Text style={s.rowLabel}>{idx === 0 ? "Apertura" : `Entrega #${idx + 1}`}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <TextInput
+                        value={row.adultos}
+                        onChangeText={(val) => handleRowValueChange(idx, "adultos", val)}
+                        placeholder="Adultos"
+                        keyboardType="number-pad"
+                        style={s.input}
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <TextInput
+                        value={row.kids}
+                        onChangeText={(val) => handleRowValueChange(idx, "kids", val)}
+                        placeholder="Kids"
+                        keyboardType="number-pad"
+                        style={s.input}
+                      />
+                    </View>
+                  </View>
+                ))}
+
+                <View style={s.sectionTotalRow}>
+                  <Text style={s.sectionTotalLabel}>Total entregados:</Text>
+                  <Text style={s.sectionTotalValue}>
+                    Adultos: {getEntregadosTotal("adultos")} | Kids: {getEntregadosTotal("kids")}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Seccion 2: Lentes al final del dia */}
+              <View style={s.cierreSection}>
+                <Text style={s.cierreSectionTitle}>2. Lentes al final del día</Text>
+
+                <View style={s.cierreInputsRow}>
+                  <View style={{ flex: 1.2, justifyContent: 'center' }}>
+                    <Text style={s.rowLabel}>Embolsados</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
                     <TextInput
-                      value={cierreUsadosKids}
-                      onChangeText={setCierreUsadosKids}
-                      placeholder="Ej: 40"
+                      value={cierreEmbolsadosAdultos}
+                      onChangeText={setCierreEmbolsadosAdultos}
+                      placeholder="Adultos"
                       keyboardType="number-pad"
                       style={s.input}
                     />
                   </View>
-                  <View style={s.inputGroup}>
-                    <Text style={s.label}>Perdidos (descuenta listos)</Text>
+                  <View style={{ flex: 1 }}>
                     <TextInput
-                      value={cierrePerdidosKids}
-                      onChangeText={setCierrePerdidosKids}
-                      placeholder="Ej: 2"
+                      value={cierreEmbolsadosKids}
+                      onChangeText={setCierreEmbolsadosKids}
+                      placeholder="Kids"
                       keyboardType="number-pad"
                       style={s.input}
                     />
                   </View>
                 </View>
-                {renderPreview(stockKids, cierreUsadosKids, cierrePerdidosKids)}
+
+                <View style={s.cierreInputsRow}>
+                  <View style={{ flex: 1.2, justifyContent: 'center' }}>
+                    <Text style={s.rowLabel}>Sucios</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <TextInput
+                      value={cierreSuciosAdultos}
+                      onChangeText={setCierreSuciosAdultos}
+                      placeholder="Adultos"
+                      keyboardType="number-pad"
+                      style={s.input}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <TextInput
+                      value={cierreSuciosKids}
+                      onChangeText={setCierreSuciosKids}
+                      placeholder="Kids"
+                      keyboardType="number-pad"
+                      style={s.input}
+                    />
+                  </View>
+                </View>
+
+                <View style={s.sectionTotalRow}>
+                  <Text style={s.sectionTotalLabel}>Total final del día:</Text>
+                  <Text style={s.sectionTotalValue}>
+                    Adultos: {(parseInt(cierreEmbolsadosAdultos) || 0) + (parseInt(cierreSuciosAdultos) || 0)} | Kids: {(parseInt(cierreEmbolsadosKids) || 0) + (parseInt(cierreSuciosKids) || 0)}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Seccion 3: Diferencias */}
+              <View style={s.cierreSection}>
+                <Text style={s.cierreSectionTitle}>3. Diferencias (Fin de Día vs Entregados)</Text>
+                {(() => {
+                  const totAdEnt = getEntregadosTotal("adultos");
+                  const totAdFin = (parseInt(cierreEmbolsadosAdultos) || 0) + (parseInt(cierreSuciosAdultos) || 0);
+                  const diffAd = totAdFin - totAdEnt;
+
+                  const totKdEnt = getEntregadosTotal("kids");
+                  const totKdFin = (parseInt(cierreEmbolsadosKids) || 0) + (parseInt(cierreSuciosKids) || 0);
+                  const diffKd = totKdFin - totKdEnt;
+
+                  return (
+                    <View style={s.diffContainer}>
+                      <View style={s.diffItem}>
+                        <Text style={s.diffItemLabel}>Diferencia Adultos:</Text>
+                        <Text style={[s.diffValue, { color: diffAd < 0 ? COLORS.danger : "#16A34A" }]}>
+                          {diffAd > 0 ? `+${diffAd}` : diffAd}
+                        </Text>
+                      </View>
+                      <View style={s.diffItem}>
+                        <Text style={s.diffItemLabel}>Diferencia Kids:</Text>
+                        <Text style={[s.diffValue, { color: diffKd < 0 ? COLORS.danger : "#16A34A" }]}>
+                          {diffKd > 0 ? `+${diffKd}` : diffKd}
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })()}
+              </View>
+
+              {/* Seccion 4: Lentes totales en el complejo */}
+              <View style={s.cierreSection}>
+                <Text style={s.cierreSectionTitle}>4. Lentes totales en el complejo</Text>
+
+                <View style={s.cierreInputsRow}>
+                  <View style={{ flex: 1.2, justifyContent: 'center' }}>
+                    <Text style={s.rowLabel}>Sucios</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <TextInput
+                      value={complejoSuciosAdultos}
+                      onChangeText={setComplejoSuciosAdultos}
+                      placeholder="Adultos"
+                      keyboardType="number-pad"
+                      style={s.input}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <TextInput
+                      value={complejoSuciosKids}
+                      onChangeText={setComplejoSuciosKids}
+                      placeholder="Kids"
+                      keyboardType="number-pad"
+                      style={s.input}
+                    />
+                  </View>
+                </View>
+
+                <View style={s.cierreInputsRow}>
+                  <View style={{ flex: 1.2, justifyContent: 'center' }}>
+                    <Text style={s.rowLabel}>Limpios</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <TextInput
+                      value={complejoLimpiosAdultos}
+                      onChangeText={setComplejoLimpiosAdultos}
+                      placeholder="Adultos"
+                      keyboardType="number-pad"
+                      style={s.input}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <TextInput
+                      value={complejoLimpiosKids}
+                      onChangeText={setComplejoLimpiosKids}
+                      placeholder="Kids"
+                      keyboardType="number-pad"
+                      style={s.input}
+                    />
+                  </View>
+                </View>
+
+                <View style={s.cierreInputsRow}>
+                  <View style={{ flex: 1.2, justifyContent: 'center' }}>
+                    <Text style={s.rowLabel}>Embolsados</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <TextInput
+                      value={complejoEmbolsadosAdultos}
+                      onChangeText={setComplejoEmbolsadosAdultos}
+                      placeholder="Adultos"
+                      keyboardType="number-pad"
+                      style={s.input}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <TextInput
+                      value={complejoEmbolsadosKids}
+                      onChangeText={setComplejoEmbolsadosKids}
+                      placeholder="Kids"
+                      keyboardType="number-pad"
+                      style={s.input}
+                    />
+                  </View>
+                </View>
+              </View>
+
+              {/* Merma diaria */}
+              <View style={s.cierreSection}>
+                <Text style={s.cierreSectionTitle}>Merma diaria</Text>
+
+                <View style={s.cierreInputsRow}>
+                  <View style={{ flex: 1.2, justifyContent: 'center' }}>
+                    <Text style={s.rowLabel}>Merma</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <TextInput
+                      value={mermaAdultos}
+                      onChangeText={setMermaAdultos}
+                      placeholder="Adultos"
+                      keyboardType="number-pad"
+                      style={s.input}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <TextInput
+                      value={mermaKids}
+                      onChangeText={setMermaKids}
+                      placeholder="Kids"
+                      keyboardType="number-pad"
+                      style={s.input}
+                    />
+                  </View>
+                </View>
               </View>
 
               {/* Error */}
@@ -1846,5 +2361,153 @@ const s = StyleSheet.create({
     fontSize: 11,
     fontWeight: "800",
     color: COLORS.danger,
+  },
+  
+  // Calendario y nuevos campos
+  dateTrigger: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: COLORS.bg,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  dateTriggerText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: COLORS.text,
+  },
+  calendarEmbed: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 16,
+    padding: 12,
+    marginTop: 8,
+    backgroundColor: COLORS.card,
+    ...THEME.shadow.soft,
+    width: "100%",
+  },
+  calendarHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  calendarMonthTitle: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: COLORS.text,
+  },
+  calendarNavBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: COLORS.bg,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  calendarNavBtnText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: COLORS.text,
+  },
+  calendarWeekdays: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    marginBottom: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    paddingBottom: 4,
+  },
+  calendarWeekdayText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: COLORS.muted,
+    width: 32,
+    textAlign: "center",
+  },
+  calendarGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "flex-start",
+  },
+  calendarDayBox: {
+    width: "14.28%",
+    aspectRatio: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    borderRadius: 8,
+    marginVertical: 2,
+  },
+  calendarDayBoxEmpty: {
+    width: "14.28%",
+    aspectRatio: 1,
+  },
+  calendarDaySelected: {
+    backgroundColor: COLORS.primary,
+  },
+  calendarDayToday: {
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+  },
+  calendarDayText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: COLORS.text,
+  },
+  calendarDayTextSelected: {
+    color: "#FFFFFF",
+    fontWeight: "800",
+  },
+  calendarDayTextToday: {
+    color: COLORS.primary,
+    fontWeight: "800",
+  },
+  rowLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: COLORS.text,
+  },
+  sectionTotalRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    marginTop: 4,
+  },
+  sectionTotalLabel: {
+    fontSize: 11,
+    fontWeight: "900",
+    color: COLORS.muted,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  sectionTotalValue: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: COLORS.text,
+  },
+  diffContainer: {
+    flexDirection: "column",
+    gap: 8,
+  },
+  diffItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  diffItemLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: COLORS.text,
+  },
+  diffValue: {
+    fontSize: 14,
+    fontWeight: "900",
   },
 });
