@@ -1126,34 +1126,30 @@ export default function CoordinadoresLentesScreen() {
                   <View style={[s.stateItem, s.stateBlue]}>
                     <View style={s.stateLabelRow}>
                       <Text style={s.stateLabel}>Sucios</Text>
-                      <Text style={s.stateSubLabel}>Por limpiar y embolsar</Text>
                     </View>
                     <Text style={s.stateValueBlue}>{item.sucios.toLocaleString("es-AR")}</Text>
-                  </View>
-
-                  {/* Listos para chequear */}
-                  <View style={[s.stateItem, s.stateOrange]}>
-                    <View style={s.stateLabelRow}>
-                      <Text style={s.stateLabel}>Listos para chequear</Text>
-                      <Text style={s.stateSubLabel}>Cierre diario</Text>
-                    </View>
-                    <Text style={s.stateValueOrange}>{item.listos.toLocaleString("es-AR")}</Text>
                   </View>
 
                   {/* Limpios */}
                   <View style={[s.stateItem, s.stateTeal]}>
                     <View style={s.stateLabelRow}>
                       <Text style={s.stateLabel}>Limpios</Text>
-                      <Text style={s.stateSubLabel}>Listos para chequear/embolsar</Text>
                     </View>
                     <Text style={s.stateValueTeal}>{(item.limpios ?? 0).toLocaleString("es-AR")}</Text>
+                  </View>
+
+                  {/* Listos para chequear */}
+                  <View style={[s.stateItem, s.stateOrange]}>
+                    <View style={s.stateLabelRow}>
+                      <Text style={s.stateLabel}>Listos para chequear</Text>
+                    </View>
+                    <Text style={s.stateValueOrange}>{item.listos.toLocaleString("es-AR")}</Text>
                   </View>
 
                   {/* Chequeados para usar */}
                   <View style={[s.stateItem, s.stateGreen]}>
                     <View style={s.stateLabelRow}>
                       <Text style={s.stateLabel}>Chequeados para usar</Text>
-                      <Text style={s.stateSubLabel}>Listos para usar AUD</Text>
                     </View>
                     <Text style={s.stateValueGreen}>{item.chequeados.toLocaleString("es-AR")}</Text>
                   </View>
