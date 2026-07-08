@@ -802,8 +802,11 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
       const currentWeek = getMovieWeekStartForNow();
       const isCurrentWeek = selectedWeekStart === currentWeek;
 
+      console.log("[shows] currentWeek:", currentWeek, "selectedWeekStart:", selectedWeekStart, "isCurrentWeek:", isCurrentWeek, "savedWeekly rows:", savedWeekly?.weeklyRows?.length ?? "null");
+
       // Case A: Future pre-sale weeks OR current week when there's no saved weekly programming layout.
       if (!isCurrentWeek || !savedWeekly?.weeklyRows || savedWeekly.weeklyRows.length === 0) {
+        console.log("[shows] → CASO A (solo API, fin=+120min)");
         if (!apiData || !selectedWeekStart) return [];
 
         // Group API sessions by sessionId (to merge DBOX and normal)
@@ -932,6 +935,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
     // Case B: Current Week (either static view, or live view enriched with API data).
     // We use the static PDF/Excel structure as the master timeline layout.
+    console.log("[shows] → CASO B (savedWeekly con fin real del PDF). Rows:", savedWeekly?.weeklyRows?.length, "día:", selectedDay);
     if (!savedWeekly?.weeklyRows) return [];
     const list: DailyShow[] = [];
 
