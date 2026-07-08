@@ -21,6 +21,7 @@ import {
   View,
   Platform,
   useWindowDimensions,
+  ScrollView,
 } from "react-native";
 import { Calendar, DateData, LocaleConfig } from "react-native-calendars";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
@@ -555,7 +556,9 @@ export default function CalendarTab({ readOnly = false }: { readOnly?: boolean }
   return (
     <View style={{ flex: 1 }}>
       {isDesktop ? (
-        renderDesktopCalendar()
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16 }}>
+          {renderDesktopCalendar()}
+        </ScrollView>
       ) : (
         <>
           <SectionCard>
@@ -1040,7 +1043,7 @@ const styles = StyleSheet.create({
   },
   desktopDayCell: {
     width: "14.285%",
-    height: 120,
+    height: 95,
     borderWidth: 0.5,
     borderColor: COLORS.border,
     padding: 6,
