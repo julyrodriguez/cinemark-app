@@ -88,6 +88,7 @@ type LentesCierre = {
 type MonthlyStats = {
   usados: number;
   perdidos: number;
+  merma: number;
 };
 
 const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
@@ -346,18 +347,21 @@ export default function CoordinadoresLentesScreen() {
 
       let totalUsados = 0;
       let totalPerdidos = 0;
+      let totalMerma = 0;
 
       snap.docs.forEach((d) => {
         const data = d.data();
         if (data.tipo === "cierre" || !data.tipo) {
           totalUsados += (data.adultos?.usados || 0) + (data.kids?.usados || 0);
           totalPerdidos += (data.adultos?.perdidos || 0) + (data.kids?.perdidos || 0);
+          totalMerma += (data.adultos?.merma || 0) + (data.kids?.merma || 0);
         }
       });
 
       setMonthlyStats({
         usados: totalUsados,
         perdidos: totalPerdidos,
+        merma: totalMerma,
       });
     } catch (e) {
       console.error("fetchMonthlyStats error:", e);
@@ -518,7 +522,7 @@ export default function CoordinadoresLentesScreen() {
   // ─── Guardar Cierre de Día ──────────────────────────────────────────────────
 
   const handleOpenCierre = () => {
-    setCierreResponsable(displayName || "");
+    setCierreResponsable("");
     setCierreFecha(new Date());
     setCalendarMonth(new Date());
     setShowCalendarPicker(false);
@@ -662,6 +666,12 @@ export default function CoordinadoresLentesScreen() {
     const mermaAd = parseNum(mermaAdultos);
     const mermaKd = parseNum(mermaKids);
 
+    const diffAd = (embAd + sucAd) - eAdultos;
+    const lostAd = diffAd < 0 ? Math.abs(diffAd) : 0;
+
+    const diffKd = (embKd + sucKd) - eKids;
+    const lostKd = diffKd < 0 ? Math.abs(diffKd) : 0;
+
     setSavingCierre(true);
     try {
       const todayStr = cierreFecha.toISOString().split("T")[0];
@@ -737,11 +747,13 @@ export default function CoordinadoresLentesScreen() {
 
           adultos: {
             usados: eAdultos,
-            perdidos: mermaAd
+            perdidos: lostAd,
+            merma: mermaAd
           },
           kids: {
             usados: eKids,
-            perdidos: mermaKd
+            perdidos: lostKd,
+            merma: mermaKd
           }
         });
       });
@@ -1157,13 +1169,20 @@ export default function CoordinadoresLentesScreen() {
                   <Text style={s.statValue}>{monthlyStats.perdidos.toLocaleString("es-AR")}</Text>
                 </View>
               </View>
+              <View style={s.statBox}>
+                <Text style={s.statIcon}>🧺</Text>
+                <View>
+                  <Text style={s.statLabel}>Merma</Text>
+                  <Text style={s.statValue}>{monthlyStats.merma.toLocaleString("es-AR")}</Text>
+                </View>
+              </View>
               <View style={[s.statBox, s.statBoxHighlight]}>
                 <Text style={s.statIcon}>📉</Text>
                 <View>
                   <Text style={s.statLabel}>Pérdida %</Text>
-                  <Text style={[s.statValue, { color: monthlyStats.usados > 0 && (monthlyStats.perdidos / monthlyStats.usados) * 100 > 5 ? "#DC2626" : "#0F172A" }]}>
+                  <Text style={[s.statValue, { color: monthlyStats.usados > 0 && ((monthlyStats.perdidos + monthlyStats.merma) / monthlyStats.usados) * 100 > 5 ? "#DC2626" : "#0F172A" }]}>
                     {monthlyStats.usados > 0
-                      ? `${((monthlyStats.perdidos / monthlyStats.usados) * 100).toFixed(1)}%`
+                      ? `${(((monthlyStats.perdidos + monthlyStats.merma) / monthlyStats.usados) * 100).toFixed(1)}%`
                       : "0.0%"}
                   </Text>
                 </View>
@@ -1498,8 +1517,9 @@ export default function CoordinadoresLentesScreen() {
                 <TextInput
                   value={cierreResponsable}
                   onChangeText={setCierreResponsable}
-                  placeholder="Nombre de quien hace el cierre"
-                  style={s.input}
+                  placeholder="Nombre y apellido"
+                  placeholderTextColor="#64748B"
+                  style={[s.input, { backgroundColor: "#F1F5F9" }]}
                 />
               </View>
 
@@ -2145,10 +2165,12 @@ const s = StyleSheet.create({
   },
   statsGrid: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: 10,
   },
   statBox: {
     flex: 1,
+    minWidth: 120,
     backgroundColor: COLORS.bg,
     borderRadius: 12,
     borderWidth: 1,
