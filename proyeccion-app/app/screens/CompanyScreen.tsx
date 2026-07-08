@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useMemo } from "react";
 import {
   ActivityIndicator,
-  FlatList,
   Platform,
   ScrollView,
   StyleSheet,
@@ -13,6 +12,7 @@ import {
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { auth } from "@/lib/firebaseConfig";
 import { COLORS, THEME } from "@/lib/theme";
+import dayjs from "dayjs";
 
 // Lista de cines trackeados por la compañía
 const THEATERS = [
@@ -37,7 +37,7 @@ const DAYS_OF_WEEK = [
 ];
 
 type Session = {
-  sessionId: number;
+  sessionId: string;
   movieId: string;
   movieName: string;
   sessionDateTime: string;
@@ -84,21 +84,51 @@ function formatWeekRange(weekStart: string): string {
   const wedD = wed.getUTCDate();
   const wedM = wed.getUTCMonth() + 1;
   
-  return `Semana del ${thurD}/${thurM} al ${wedD}/${wedM}`;
+  return `Del ${thurD}/${String(thurM).padStart(2, '0')} al ${wedD}/${String(wedM).padStart(2, '0')}`;
 }
 
-// Obtener la clave del día según la fecha y hora de la función (zona horaria de Argentina y día operativo que empieza a las 6 AM)
+// Obtener la fecha de inicio de la semana de cine actual (jueves)
+function getMovieWeekStartForNow(): string {
+  const localDate = new Date(Date.now() - (3 * 60 * 60 * 1000));
+  if (localDate.getUTCHours() < 6) {
+    localDate.setTime(localDate.getTime() - 24 * 60 * 60 * 1000);
+  }
+  const dayNum = localDate.getUTCDay();
+  const daysToSubtract = dayNum <= 3 ? dayNum + 3 : dayNum - 4;
+  const thurDate = new Date(localDate.getTime() - daysToSubtract * 24 * 60 * 60 * 1000);
+  const yyyy = thurDate.getUTCFullYear();
+  const mm = String(thurDate.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(thurDate.getUTCDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+// Obtener el día operativo actual de cine (empieza a las 6 AM)
+function getCurrentWeekdayKey(): string {
+  let now = dayjs();
+  if (now.hour() < 6) {
+    now = now.subtract(1, "day");
+  }
+  const dayNum = now.day(); // 0 = Domingo, 1 = Lunes, etc.
+  const map: Record<number, string> = {
+    0: "domingo",
+    1: "lunes",
+    2: "martes",
+    3: "miercoles",
+    4: "jueves",
+    5: "viernes",
+    6: "sabado",
+  };
+  return map[dayNum] || "jueves";
+}
+
+// Obtener el día de la semana de la función según el día operativo de cine (comienza a las 6 AM)
 function getSessionDayKey(sessionDateTimeStr: string): string {
   const date = new Date(sessionDateTimeStr);
-  // Ajuste aproximado a Argentina (UTC-3)
   const arDate = new Date(date.getTime() - (3 * 60 * 60 * 1000));
-  
-  // Si es antes de las 6:00 AM, seguimos en el día operativo anterior
   if (arDate.getUTCHours() < 6) {
     arDate.setTime(arDate.getTime() - 24 * 60 * 60 * 1000);
   }
-  
-  const dayNum = arDate.getUTCDay(); // 0 = Domingo, 1 = Lunes, etc.
+  const dayNum = arDate.getUTCDay();
   const map: Record<number, string> = {
     0: "domingo",
     1: "lunes",
@@ -114,9 +144,10 @@ function getSessionDayKey(sessionDateTimeStr: string): string {
 export default function CompanyScreen() {
   const [loadingTheaters, setLoadingTheaters] = useState(true);
   const [selectedTheater, setSelectedTheater] = useState<typeof THEATERS[0] | null>(null);
-  const [selectedDay, setSelectedDay] = useState<string>("jueves");
+  const [selectedDay, setSelectedDay] = useState<string>(() => getCurrentWeekdayKey());
+  const [selectedWeek, setSelectedWeek] = useState<string>(() => getMovieWeekStartForNow());
   
-  // Datos de ocupación consolidados para las tarjetas del grid (semana actual de cada cine)
+  // Datos de ocupación consolidados para las tarjetas del grid
   const [theaterStats, setTheaterStats] = useState<Record<string, {
     occupancy: number;
     totalTickets: number;
@@ -125,12 +156,26 @@ export default function CompanyScreen() {
     weekStart: string;
   }>>({});
 
-  // Detalle del cine seleccionado
-  const [availableWeeks, setAvailableWeeks] = useState<string[]>([]);
-  const [selectedWeek, setSelectedWeek] = useState<string>("");
   const [showtimesData, setShowtimesData] = useState<TheaterShowtimes | null>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Generar la lista de semanas de cine de forma dinámica (4 pasadas, la actual, y 5 futuras)
+  const availableWeeks = useMemo(() => {
+    const list: string[] = [];
+    const currentThur = getMovieWeekStartForNow();
+    const [y, m, d] = currentThur.split('-').map(Number);
+    const thurDate = new Date(Date.UTC(y, m - 1, d));
+
+    for (let i = -4; i < 6; i++) {
+      const nextThur = new Date(thurDate.getTime() + i * 7 * 24 * 60 * 60 * 1000);
+      const yyyy = nextThur.getUTCFullYear();
+      const mm = String(nextThur.getUTCMonth() + 1).padStart(2, '0');
+      const dd = String(nextThur.getUTCDate()).padStart(2, '0');
+      list.push(`${yyyy}-${mm}-${dd}`);
+    }
+    return list;
+  }, []);
 
   // Petición HTTP Helper con Tokens
   const fetchFromApi = async (endpoint: string) => {
@@ -157,20 +202,16 @@ export default function CompanyScreen() {
     return await res.json();
   };
 
-  // Cargar estadísticas iniciales para todos los cines (semana más reciente)
-  const loadInitialStats = async () => {
+  // Cargar estadísticas para todos los cines para la semana seleccionada
+  const loadStatsForWeek = async (week: string) => {
     setLoadingTheaters(true);
     const stats: typeof theaterStats = {};
     
-    for (const theater of THEATERS) {
-      try {
-        const weeks: string[] = await fetchFromApi(`/company/weeks/${theater.id}`);
-        if (weeks && weeks.length > 0) {
-          const sortedWeeks = [...weeks].sort((a, b) => b.localeCompare(a));
-          const latestWeek = sortedWeeks[0];
-
-          const data: TheaterShowtimes = await fetchFromApi(`/company/showtimes/${theater.id}/${latestWeek}`);
-          if (data && data.sessions) {
+    await Promise.all(
+      THEATERS.map(async (theater) => {
+        try {
+          const data: TheaterShowtimes = await fetchFromApi(`/company/showtimes/${theater.id}/${week}`);
+          if (data && data.sessions && data.sessions.length > 0) {
             let totalSold = 0;
             let totalCap = 0;
             
@@ -186,66 +227,47 @@ export default function CompanyScreen() {
               totalTickets: totalSold,
               totalCapacity: totalCap,
               sessionsCount: data.sessions.length,
-              weekStart: latestWeek
+              weekStart: week
+            };
+          } else {
+            stats[theater.id] = {
+              occupancy: 0,
+              totalTickets: 0,
+              totalCapacity: 0,
+              sessionsCount: 0,
+              weekStart: week
             };
           }
+        } catch (err) {
+          stats[theater.id] = {
+            occupancy: 0,
+            totalTickets: 0,
+            totalCapacity: 0,
+            sessionsCount: 0,
+            weekStart: week
+          };
         }
-      } catch (err) {
-        console.warn(`[CompanyScreen] No se pudieron cargar estadísticas para el cine ${theater.name}:`, err);
-      }
-    }
+      })
+    );
     
     setTheaterStats(stats);
     setLoadingTheaters(false);
   };
 
+  // Cargar estadísticas cuando cambia la semana seleccionada
   useEffect(() => {
-    loadInitialStats();
-  }, []);
-
-  // Al seleccionar un cine, cargar sus semanas y autodetectar el día actual
-  const handleSelectTheater = async (theater: typeof THEATERS[0]) => {
-    setSelectedTheater(theater);
-    setLoadingDetails(true);
-    setShowtimesData(null);
-    setAvailableWeeks([]);
-    setSelectedWeek("");
-    setSearchQuery("");
-
-    // Autodetectar día actual cinematográfico
-    let now = new Date();
-    const arHours = new Date(now.getTime() - 3 * 60 * 60 * 1000).getUTCHours();
-    if (arHours < 6) {
-      now = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    if (selectedWeek) {
+      loadStatsForWeek(selectedWeek);
     }
-    const dayNum = new Date(now.getTime() - 3 * 60 * 60 * 1000).getUTCDay();
-    const map: Record<number, string> = {
-      0: "domingo", 1: "lunes", 2: "martes", 3: "miercoles",
-      4: "jueves", 5: "viernes", 6: "sabado"
-    };
-    setSelectedDay(map[dayNum] || "jueves");
+  }, [selectedWeek]);
 
-    try {
-      const weeks: string[] = await fetchFromApi(`/company/weeks/${theater.id}`);
-      if (weeks && weeks.length > 0) {
-        const sortedWeeks = [...weeks].sort((a, b) => b.localeCompare(a));
-        setAvailableWeeks(sortedWeeks);
-        setSelectedWeek(sortedWeeks[0]);
-      } else {
-        setLoadingDetails(false);
-      }
-    } catch (err) {
-      console.error("[CompanyScreen] Error al obtener semanas para el cine:", err);
-      setLoadingDetails(false);
-    }
-  };
-
-  // Al cambiar la semana seleccionada, cargar los showtimes
+  // Al cambiar el cine seleccionado o la semana seleccionada, cargar los showtimes detallados
   useEffect(() => {
     if (!selectedTheater || !selectedWeek) return;
 
     const loadWeeklyShowtimes = async () => {
       setLoadingDetails(true);
+      setShowtimesData(null);
       try {
         const data = await fetchFromApi(`/company/showtimes/${selectedTheater.id}/${selectedWeek}`);
         setShowtimesData(data);
@@ -258,6 +280,13 @@ export default function CompanyScreen() {
 
     loadWeeklyShowtimes();
   }, [selectedTheater, selectedWeek]);
+
+  const handleSelectTheater = (theater: typeof THEATERS[0]) => {
+    setSelectedTheater(theater);
+    setSearchQuery("");
+    const currentDayKey = getCurrentWeekdayKey();
+    setSelectedDay(currentDayKey);
+  };
 
   // KPIs Globales
   const globalKpis = useMemo(() => {
@@ -289,11 +318,8 @@ export default function CompanyScreen() {
     if (!showtimesData?.sessions) return [];
     
     let list = showtimesData.sessions;
-
-    // 1. Filtrar por el día operativo seleccionado
     list = list.filter(s => getSessionDayKey(s.sessionDateTime) === selectedDay);
 
-    // 2. Filtrar por el buscador
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase().trim();
       list = list.filter(s =>
@@ -302,7 +328,6 @@ export default function CompanyScreen() {
       );
     }
 
-    // Ordenar por hora de inicio
     return [...list].sort((a, b) => a.sessionTime.localeCompare(b.sessionTime));
   }, [showtimesData, selectedDay, searchQuery]);
 
@@ -363,6 +388,60 @@ export default function CompanyScreen() {
     );
   };
 
+  // Selector de semanas (Estilo idéntico a Programación con flechas)
+  const renderWeekSelector = () => {
+    const currentIndex = availableWeeks.indexOf(selectedWeek);
+    if (currentIndex === -1) return null;
+    
+    const canGoPrev = currentIndex > 0;
+    const canGoNext = currentIndex < availableWeeks.length - 1;
+    const currentWeek = getMovieWeekStartForNow();
+    const isCurrent = selectedWeek === currentWeek;
+    
+    let label = formatWeekRange(selectedWeek);
+    if (isCurrent) {
+      label += " (Actual)";
+    } else if (selectedWeek > currentWeek) {
+      label += " (Preventa)";
+    } else if (selectedWeek < currentWeek) {
+      label += " (Pasada)";
+    }
+    
+    return (
+      <View style={styles.singleWeekSelectorContainer}>
+        <TouchableOpacity
+          disabled={!canGoPrev}
+          onPress={() => setSelectedWeek(availableWeeks[currentIndex - 1])}
+          style={[styles.arrowButton, !canGoPrev && styles.arrowButtonDisabled]}
+          activeOpacity={0.7}
+        >
+          <MaterialCommunityIcons 
+            name="chevron-left" 
+            size={20} 
+            color={canGoPrev ? COLORS.text : COLORS.muted} 
+          />
+        </TouchableOpacity>
+        
+        <View style={styles.singleWeekLabelContainer}>
+          <Text style={styles.singleWeekLabelText}>{label}</Text>
+        </View>
+
+        <TouchableOpacity
+          disabled={!canGoNext}
+          onPress={() => setSelectedWeek(availableWeeks[currentIndex + 1])}
+          style={[styles.arrowButton, !canGoNext && styles.arrowButtonDisabled]}
+          activeOpacity={0.7}
+        >
+          <MaterialCommunityIcons 
+            name="chevron-right" 
+            size={20} 
+            color={canGoNext ? COLORS.text : COLORS.muted} 
+          />
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
   return (
     <ScrollView 
       style={styles.container} 
@@ -377,10 +456,13 @@ export default function CompanyScreen() {
         <View style={styles.headerTextCol}>
           <Text style={styles.title}>Panel de Compañía</Text>
           <Text style={styles.subtitle}>
-            Estadísticas y programaciones de salas externas de Cinemark & Hoyts
+            Estadísticas y programaciones de cines de Cinemark & Hoyts
           </Text>
         </View>
       </View>
+
+      {/* Selector de Semanas a nivel global superior */}
+      {renderWeekSelector()}
 
       {/* KPIs Globales */}
       <View style={styles.kpiRow}>
@@ -474,7 +556,7 @@ export default function CompanyScreen() {
                     </Text>
                   </View>
                 ) : (
-                  <Text style={styles.noDataText}>Sin programación reciente</Text>
+                  <Text style={styles.noDataText}>Sin programación registrada</Text>
                 )}
               </TouchableOpacity>
             );
@@ -490,63 +572,31 @@ export default function CompanyScreen() {
               <MaterialCommunityIcons name="television-play" size={24} color={COLORS.primary} />
               <Text style={styles.detailTitle}>{selectedTheater.name}</Text>
             </View>
-
-            {/* Selector de Semanas */}
-            {availableWeeks.length > 0 && (
-              <View style={styles.weekSelectorContainer}>
-                <Text style={styles.weekLabel}>Semana:</Text>
-                <ScrollView 
-                  horizontal 
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.weeksScroll}
-                >
-                  {availableWeeks.map(w => (
-                    <TouchableOpacity
-                      key={w}
-                      style={[
-                        styles.weekBtn,
-                        selectedWeek === w && styles.weekBtnActive
-                      ]}
-                      onPress={() => setSelectedWeek(w)}
-                    >
-                      <Text style={[
-                        styles.weekBtnText,
-                        selectedWeek === w && styles.weekBtnTextActive
-                      ]}>
-                        {formatWeekRange(w)}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
-            )}
           </View>
 
           {/* Selector de Días (Thursday to Wednesday) */}
-          {availableWeeks.length > 0 && (
-            <View style={styles.daySelectorContainer}>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.tabBar}
-              >
-                {DAYS_OF_WEEK.map((day) => {
-                  const isActive = selectedDay === day.key;
-                  return (
-                    <TouchableOpacity
-                      key={day.key}
-                      onPress={() => setSelectedDay(day.key)}
-                      style={[styles.tabButton, isActive && styles.tabButtonActive]}
-                    >
-                      <Text style={[styles.tabButtonText, isActive && styles.tabButtonTextActive]}>
-                        {day.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-            </View>
-          )}
+          <View style={styles.daySelectorContainer}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.tabBar}
+            >
+              {DAYS_OF_WEEK.map((day) => {
+                const isActive = selectedDay === day.key;
+                return (
+                  <TouchableOpacity
+                    key={day.key}
+                    onPress={() => setSelectedDay(day.key)}
+                    style={[styles.tabButton, isActive && styles.tabButtonActive]}
+                  >
+                    <Text style={[styles.tabButtonText, isActive && styles.tabButtonTextActive]}>
+                      {day.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
 
           {/* Buscador de Películas */}
           <View style={styles.searchBar}>
@@ -565,20 +615,20 @@ export default function CompanyScreen() {
             )}
           </View>
 
-          {/* Listado de Funciones */}
+          {/* Listado de Funciones en View/map para prevenir blank screen en ScrollView */}
           {loadingDetails ? (
             <View style={styles.centerLoadingDetail}>
               <ActivityIndicator size="medium" color={COLORS.primary} />
               <Text style={styles.loadingText}>Cargando cartelera detallada...</Text>
             </View>
           ) : filteredSessions.length > 0 ? (
-            <FlatList
-              data={filteredSessions}
-              renderItem={renderSessionItem}
-              keyExtractor={(item) => `${item.sessionId}_${item.theaterRoom}`}
-              scrollEnabled={false}
-              initialNumToRender={15}
-            />
+            <View style={styles.sessionsList}>
+              {filteredSessions.map((session) => (
+                <React.Fragment key={`${session.sessionId}_${session.theaterRoom}`}>
+                  {renderSessionItem({ item: session })}
+                </React.Fragment>
+              ))}
+            </View>
           ) : (
             <View style={styles.noSessionsBox}>
               <MaterialCommunityIcons name="movie-filter-outline" size={40} color={COLORS.muted} />
@@ -775,10 +825,9 @@ const styles = StyleSheet.create({
     ...THEME.shadow.soft,
   },
   detailHeader: {
-    flexDirection: Platform.OS === "web" ? "row" : "column",
+    flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: Platform.OS === "web" ? "center" : "stretch",
-    gap: THEME.spacing.md,
+    alignItems: "center",
     marginBottom: THEME.spacing.md,
     paddingBottom: THEME.spacing.sm,
     borderBottomWidth: 1,
@@ -794,38 +843,45 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: COLORS.text,
   },
-  weekSelectorContainer: {
+  singleWeekSelectorContainer: {
     flexDirection: "row",
     alignItems: "center",
-    gap: THEME.spacing.sm,
+    justifyContent: "center",
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: THEME.radius.md,
+    paddingHorizontal: THEME.spacing.md,
+    paddingVertical: THEME.spacing.sm,
+    gap: 16,
+    marginBottom: THEME.spacing.lg,
   },
-  weekLabel: {
-    fontSize: THEME.fontSize.sm,
-    fontWeight: "600",
-    color: COLORS.text,
-  },
-  weeksScroll: {
-    gap: THEME.spacing.xs,
-  },
-  weekBtn: {
-    paddingHorizontal: THEME.spacing.sm,
+  singleWeekLabelContainer: {
+    paddingHorizontal: 16,
     paddingVertical: 6,
-    borderRadius: THEME.radius.sm,
+    backgroundColor: COLORS.bgMobile,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    minWidth: 260,
+    alignItems: "center",
+  },
+  singleWeekLabelText: {
+    fontSize: 13,
+    color: COLORS.text,
+    fontWeight: "bold",
+  },
+  arrowButton: {
+    padding: 6,
+    borderRadius: 6,
     backgroundColor: COLORS.bgMobile,
     borderWidth: 1,
     borderColor: COLORS.border,
+    justifyContent: "center",
+    alignItems: "center",
   },
-  weekBtnActive: {
-    backgroundColor: COLORS.primarySoft,
-    borderColor: COLORS.primary,
-  },
-  weekBtnText: {
-    fontSize: THEME.fontSize.xs,
-    color: COLORS.textSoft,
-  },
-  weekBtnTextActive: {
-    color: COLORS.primary,
-    fontWeight: "600",
+  arrowButtonDisabled: {
+    opacity: 0.4,
   },
   daySelectorContainer: {
     marginBottom: THEME.spacing.lg,
@@ -982,5 +1038,8 @@ const styles = StyleSheet.create({
     color: COLORS.muted,
     marginTop: THEME.spacing.sm,
     textAlign: "center",
+  },
+  sessionsList: {
+    gap: THEME.spacing.sm,
   },
 });
