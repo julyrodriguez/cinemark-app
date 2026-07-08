@@ -146,6 +146,33 @@ function getSessionDayKey(sessionDateTimeStr: string): string {
   return map[dayNum] || "jueves";
 }
 
+// Determinar si una función es trasnoche (comienza a partir de las 23:30 hs o antes de las 6:00 AM)
+function isTrasnocheSession(timeStr: string): boolean {
+  if (!timeStr || !timeStr.includes(":")) return false;
+  const [hourStr, minStr] = timeStr.split(":");
+  const hour = parseInt(hourStr, 10);
+  const min = parseInt(minStr, 10);
+  
+  if (hour < 6) return true;
+  if (hour === 23 && min >= 30) return true;
+  return false;
+}
+
+// Obtener un peso numérico para la ordenación de funciones (las trasnoches del día operativo van al fondo)
+function getSessionSortWeight(timeStr: string): number {
+  if (!timeStr || !timeStr.includes(":")) return 0;
+  const [hourStr, minStr] = timeStr.split(":");
+  let hour = parseInt(hourStr, 10);
+  const min = parseInt(minStr, 10);
+  
+  // Si la función es trasnoche de madrugada (entre 00:00 y 05:59 AM), le sumamos 24 horas para ordenarla al final
+  if (hour < 6) {
+    hour += 24;
+  }
+  
+  return hour * 60 + min;
+}
+
 export default function CompanyScreen() {
   const [loadingTheaters, setLoadingTheaters] = useState(true);
   const [selectedTheater, setSelectedTheater] = useState<typeof THEATERS[0] | null>(null);
@@ -155,6 +182,9 @@ export default function CompanyScreen() {
   // Toggles de Modo de Estadísticas (semanal o diaria)
   const [statsMode, setStatsMode] = useState<"weekly" | "daily">("weekly");
   const [statsDay, setStatsDay] = useState<string>(() => getCurrentWeekdayKey());
+
+  // Modo de visualización de cartelera (list o grid)
+  const [viewMode, setViewMode] = useState<"list" | "grid">("list");
 
   // Caché de showtimes de toda la semana de todos los cines
   const [weeklyDataCache, setWeeklyDataCache] = useState<Record<string, TheaterShowtimes>>({});
@@ -344,7 +374,64 @@ export default function CompanyScreen() {
     };
   }, [computedTheaterStats]);
 
-  // Filtrar funciones detalladas por día de la semana y buscador
+  // Estadísticas Especiales de Trasnoche (23:30 hs a 06:00 hs)
+  const trasnocheStats = useMemo(() => {
+    let totalSold = 0;
+    let totalCap = 0;
+    let bestTheaterName = "-";
+    let bestTheaterPercent = 0;
+    let bestTheaterSold = 0;
+    let hasTrasnocheData = false;
+
+    THEATERS.forEach((theater) => {
+      const data = weeklyDataCache[theater.id];
+      if (data && data.sessions) {
+        let tSold = 0;
+        let tCap = 0;
+        
+        data.sessions.forEach((s) => {
+          // Filtrar por día si el modo de estadística es diario
+          if (statsMode === "daily" && getSessionDayKey(s.sessionDateTime) !== statsDay) {
+            return;
+          }
+          
+          const time = s.sessionDateTime ? s.sessionDateTime.substring(11, 16) : "";
+          if (isTrasnocheSession(time)) {
+            const cap = s.occupation?.capacity || 200;
+            let sold = s.soldSeats || s.occupiedSeats?.length || 0;
+            if (!sold && s.occupation) {
+              sold = Math.max(0, s.occupation.capacity - s.occupation.availableSeats);
+            }
+            tSold += sold;
+            tCap += cap;
+          }
+        });
+
+        if (tCap > 0) {
+          hasTrasnocheData = true;
+          totalSold += tSold;
+          totalCap += tCap;
+          const occupancy = (tSold / tCap) * 100;
+          if (occupancy > bestTheaterPercent) {
+            bestTheaterPercent = occupancy;
+            bestTheaterName = theater.name;
+            bestTheaterSold = tSold;
+          }
+        }
+      }
+    });
+
+    return {
+      hasTrasnocheData,
+      totalSold,
+      avgOccupancy: totalCap > 0 ? (totalSold / totalCap) * 100 : 0,
+      bestTheaterName,
+      bestTheaterPercent,
+      bestTheaterSold
+    };
+  }, [weeklyDataCache, statsMode, statsDay]);
+
+  // Filtrar funciones detalladas por día de la semana y buscador (con ordenación trasnoche al fondo)
   const filteredSessions = useMemo(() => {
     if (!showtimesData?.sessions) return [];
     
@@ -359,15 +446,21 @@ export default function CompanyScreen() {
       );
     }
 
-    // Ordenar de forma segura por el campo sessionDateTime (HH:MM)
+    // Ordenar de forma que los trasnoches del día de cine operativo (1:00 AM, etc) vayan al fondo
     return [...list].sort((a, b) => {
       const aTime = a.sessionDateTime ? a.sessionDateTime.substring(11, 16) : "";
       const bTime = b.sessionDateTime ? b.sessionDateTime.substring(11, 16) : "";
-      return aTime.localeCompare(bTime);
+      return getSessionSortWeight(aTime) - getSessionSortWeight(bTime);
     });
   }, [showtimesData, selectedDay, searchQuery]);
 
-  // Renderizar cada función (Estilo idéntico a la vista de Programación del cine)
+  // Obtener lista única de salas para el renderizado en cuadrícula/grid
+  const roomsList = useMemo(() => {
+    const rooms = filteredSessions.map(s => s.theaterRoom);
+    return Array.from(new Set(rooms)).sort((a, b) => parseInt(a, 10) - parseInt(b, 10));
+  }, [filteredSessions]);
+
+  // Renderizar cada función en modo de lista
   const renderSessionItem = ({ item }: { item: Session }) => {
     const sold = item.soldSeats || item.occupiedSeats?.length || 0;
     const capacity = item.occupation?.capacity || 200;
@@ -381,10 +474,11 @@ export default function CompanyScreen() {
     const format = item.sessionFormat || (item.formats && item.formats[0]?.name) || "";
     const language = (item.language && item.language.name) || "";
     const time = item.sessionDateTime ? item.sessionDateTime.substring(11, 16) : "";
+    const isTrasnoche = isTrasnocheSession(time);
 
     return (
       <View style={[styles.listCard, { borderLeftColor: movieAccentColor }]}>
-        {/* Badge de Sala (Estilo circular idéntico al original) */}
+        {/* Badge de Sala (Estilo circular) */}
         <View style={styles.listRoomBadge}>
           <Text style={styles.listRoomBadgeText}>SALA</Text>
           <Text style={styles.listRoomNumberText}>{item.theaterRoom || "-"}</Text>
@@ -392,7 +486,15 @@ export default function CompanyScreen() {
 
         {/* Información de Película y Ocupación */}
         <View style={styles.listInfoContainer}>
-          <Text style={styles.listMovieTitle}>{item.movieName || "Película"}</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <Text style={styles.listMovieTitle}>{item.movieName || "Película"}</Text>
+            {isTrasnoche && (
+              <View style={styles.trasnocheBadge}>
+                <MaterialCommunityIcons name="weather-night" size={10} color="#F59E0B" />
+                <Text style={styles.trasnocheBadgeText}>Trasnoche</Text>
+              </View>
+            )}
+          </View>
           <View style={styles.sessionMetaRow}>
             {format ? <Text style={styles.sessionMetaLabel}>{format}</Text> : null}
             {format && language ? <Text style={styles.sessionMetaDivider}>•</Text> : null}
@@ -539,30 +641,32 @@ export default function CompanyScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Selector de día para estadísticas (modo diario) */}
+      {/* Selector de día centrado para estadísticas (modo diario) */}
       {statsMode === "daily" && (
         <View style={styles.statsDaySelectorContainer}>
           <Text style={styles.statsDaySelectorLabel}>Filtrar estadísticas de cines por día:</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.tabBar}
-          >
-            {DAYS_OF_WEEK.map((day) => {
-              const isActive = statsDay === day.key;
-              return (
-                <TouchableOpacity
-                  key={day.key}
-                  onPress={() => setStatsDay(day.key)}
-                  style={[styles.tabButton, isActive && styles.tabButtonActive]}
-                >
-                  <Text style={[styles.tabButtonText, isActive && styles.tabButtonTextActive]}>
-                    {day.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
+          <View style={styles.centeredTabBarWrapper}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.centeredTabBar}
+            >
+              {DAYS_OF_WEEK.map((day) => {
+                const isActive = statsDay === day.key;
+                return (
+                  <TouchableOpacity
+                    key={day.key}
+                    onPress={() => setStatsDay(day.key)}
+                    style={[styles.tabButton, isActive && styles.tabButtonActive]}
+                  >
+                    <Text style={[styles.tabButtonText, isActive && styles.tabButtonTextActive]}>
+                      {day.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
         </View>
       )}
 
@@ -596,6 +700,38 @@ export default function CompanyScreen() {
           </Text>
         </View>
       </View>
+
+      {/* Sección Especial Trasnoche */}
+      {trasnocheStats.hasTrasnocheData && (
+        <View style={styles.trasnocheStatsContainer}>
+          <View style={styles.trasnocheStatsHeader}>
+            <MaterialCommunityIcons name="weather-night" size={18} color="#F59E0B" />
+            <Text style={styles.trasnocheStatsTitle}>Especial Trasnoche 🌙 (23:30 hs a 06:00 AM)</Text>
+          </View>
+          <View style={styles.trasnocheStatsBody}>
+            <View style={styles.trasnocheStatCol}>
+              <Text style={styles.trasnocheStatValue}>
+                {trasnocheStats.totalSold.toLocaleString("es-AR")}
+              </Text>
+              <Text style={styles.trasnocheStatLabel}>Tickets Trasnoche</Text>
+            </View>
+            <View style={styles.trasnocheStatCol}>
+              <Text style={styles.trasnocheStatValue}>
+                {trasnocheStats.avgOccupancy.toFixed(1)}%
+              </Text>
+              <Text style={styles.trasnocheStatLabel}>Ocupación Promedio</Text>
+            </View>
+            <View style={styles.trasnocheStatCol}>
+              <Text style={[styles.trasnocheStatValue, { color: "#F59E0B" }]}>
+                {trasnocheStats.bestTheaterName}
+              </Text>
+              <Text style={styles.trasnocheStatLabel}>
+                Líder Trasnoche ({trasnocheStats.bestTheaterPercent.toFixed(1)}%)
+              </Text>
+            </View>
+          </View>
+        </View>
+      )}
 
       {/* Grid de Cines */}
       <Text style={styles.sectionTitle}>Seleccionar Cine</Text>
@@ -676,30 +812,49 @@ export default function CompanyScreen() {
               <MaterialCommunityIcons name="television-play" size={24} color={COLORS.primary} />
               <Text style={styles.detailTitle}>{selectedTheater.name}</Text>
             </View>
+            
+            {/* Toggle de Vista (Lista vs Grilla) */}
+            <TouchableOpacity
+              onPress={() => setViewMode(prev => prev === "grid" ? "list" : "grid")}
+              style={styles.toggleViewButton}
+              activeOpacity={0.8}
+            >
+              <MaterialCommunityIcons
+                name={viewMode === "grid" ? "view-list" : "view-grid"}
+                size={16}
+                color={COLORS.text}
+                style={{ marginRight: 6 }}
+              />
+              <Text style={styles.toggleViewButtonText}>
+                {viewMode === "grid" ? "Modo Lista" : "Modo Grilla"}
+              </Text>
+            </TouchableOpacity>
           </View>
 
-          {/* Selector de Días (Thursday to Wednesday) */}
+          {/* Selector de Días centrado */}
           <View style={styles.daySelectorContainer}>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.tabBar}
-            >
-              {DAYS_OF_WEEK.map((day) => {
-                const isActive = selectedDay === day.key;
-                return (
-                  <TouchableOpacity
-                    key={day.key}
-                    onPress={() => setSelectedDay(day.key)}
-                    style={[styles.tabButton, isActive && styles.tabButtonActive]}
-                  >
-                    <Text style={[styles.tabButtonText, isActive && styles.tabButtonTextActive]}>
-                      {day.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
+            <View style={styles.centeredTabBarWrapper}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.centeredTabBar}
+              >
+                {DAYS_OF_WEEK.map((day) => {
+                  const isActive = selectedDay === day.key;
+                  return (
+                    <TouchableOpacity
+                      key={day.key}
+                      onPress={() => setSelectedDay(day.key)}
+                      style={[styles.tabButton, isActive && styles.tabButtonActive]}
+                    >
+                      <Text style={[styles.tabButtonText, isActive && styles.tabButtonTextActive]}>
+                        {day.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
           </View>
 
           {/* Buscador de Películas */}
@@ -719,20 +874,82 @@ export default function CompanyScreen() {
             )}
           </View>
 
-          {/* Listado de Funciones en View/map para prevenir blank screen en ScrollView */}
+          {/* Renderizado Condicional: List View vs Grid View */}
           {loadingDetails ? (
             <View style={styles.centerLoadingDetail}>
               <ActivityIndicator size="medium" color={COLORS.primary} />
               <Text style={styles.loadingText}>Cargando cartelera detallada...</Text>
             </View>
           ) : filteredSessions.length > 0 ? (
-            <View style={styles.sessionsList}>
-              {filteredSessions.map((session) => (
-                <React.Fragment key={`${session.sessionId}_${session.theaterRoom}`}>
-                  {renderSessionItem({ item: session })}
-                </React.Fragment>
-              ))}
-            </View>
+            viewMode === "grid" ? (
+              /* MODO CUADRÍCULA / GRID DE SALAS */
+              <View style={styles.gridRoomsContainer}>
+                {roomsList.map((salaNum) => {
+                  const sessionsInSala = filteredSessions.filter(s => s.theaterRoom === salaNum);
+                  if (sessionsInSala.length === 0) return null;
+
+                  return (
+                    <View key={salaNum} style={styles.gridRoomRow}>
+                      <View style={styles.gridRoomLabelCell}>
+                        <Text style={styles.gridRoomLabelText}>Sala</Text>
+                        <Text style={styles.gridRoomNumberText}>{salaNum}</Text>
+                      </View>
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={styles.gridRoomSessionsScroll}
+                      >
+                        {sessionsInSala.map((session) => {
+                          const sold = session.soldSeats || session.occupiedSeats?.length || 0;
+                          const capacity = session.occupation?.capacity || 200;
+                          const occupancyPercent = capacity > 0 ? (sold / capacity) * 100 : 0;
+                          const movieAccentColor = getMovieColor(session.movieName);
+                          const time = session.sessionDateTime ? session.sessionDateTime.substring(11, 16) : "";
+                          const format = session.sessionFormat || (session.formats && session.formats[0]?.name) || "";
+                          const isTrasnoche = isTrasnocheSession(time);
+                          
+                          let progressColor = COLORS.danger; // > 60%
+                          if (occupancyPercent < 25) progressColor = COLORS.info; // < 25% (baja)
+                          else if (occupancyPercent < 60) progressColor = COLORS.success; // 25-60% (media)
+
+                          return (
+                            <View key={session.sessionId} style={[styles.gridSessionCard, { borderTopColor: movieAccentColor }]}>
+                              <View style={styles.gridSessionHeaderRow}>
+                                <Text style={styles.gridSessionTime}>{time} hs</Text>
+                                {isTrasnoche && (
+                                  <MaterialCommunityIcons name="weather-night" size={10} color="#F59E0B" />
+                                )}
+                              </View>
+                              <Text style={styles.gridSessionMovie} numberOfLines={1}>
+                                {session.movieName}
+                              </Text>
+                              <Text style={styles.gridSessionFormat}>{format}</Text>
+                              <View style={styles.gridSessionOccupancyBox}>
+                                <Text style={styles.gridSessionOccupancyText}>
+                                  {sold}/{capacity} tix
+                                </Text>
+                                <Text style={[styles.gridSessionPercentText, { color: progressColor }]}>
+                                  {occupancyPercent.toFixed(0)}%
+                                </Text>
+                              </View>
+                            </View>
+                          );
+                        })}
+                      </ScrollView>
+                    </View>
+                  );
+                })}
+              </View>
+            ) : (
+              /* MODO LISTA TRADICIONAL */
+              <View style={styles.sessionsList}>
+                {filteredSessions.map((session) => (
+                  <React.Fragment key={`${session.sessionId}_${session.theaterRoom}`}>
+                    {renderSessionItem({ item: session })}
+                  </React.Fragment>
+                ))}
+              </View>
+            )
           ) : (
             <View style={styles.noSessionsBox}>
               <MaterialCommunityIcons name="movie-filter-outline" size={40} color={COLORS.muted} />
@@ -997,6 +1214,18 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
   },
+  centeredTabBarWrapper: {
+    width: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  centeredTabBar: {
+    flexDirection: "row",
+    gap: 8,
+    justifyContent: "center",
+    alignItems: "center",
+    minWidth: "100%",
+  },
   tabButton: {
     paddingHorizontal: 14,
     paddingVertical: 6,
@@ -1189,5 +1418,164 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: COLORS.textSoft,
     marginBottom: 8,
+    textAlign: "center",
+  },
+  trasnocheStatsContainer: {
+    backgroundColor: "#111827", // Fondo oscuro noche
+    borderRadius: THEME.radius.md,
+    borderWidth: 1,
+    borderColor: "#374151",
+    padding: THEME.spacing.md,
+    marginBottom: THEME.spacing.xl,
+    ...THEME.shadow.soft,
+  },
+  trasnocheStatsHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#374151",
+    paddingBottom: 8,
+  },
+  trasnocheStatsTitle: {
+    fontSize: 13,
+    fontWeight: "bold",
+    color: "#F3F4F6",
+  },
+  trasnocheStatsBody: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  trasnocheStatCol: {
+    flex: 1,
+    alignItems: "center",
+  },
+  trasnocheStatValue: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#FFFFFF",
+  },
+  trasnocheStatLabel: {
+    fontSize: 10,
+    color: "#9CA3AF",
+    marginTop: 2,
+    textAlign: "center",
+  },
+  trasnocheBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FEF3C7",
+    borderColor: "#F59E0B",
+    borderWidth: 1,
+    borderRadius: 4,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    gap: 2,
+  },
+  trasnocheBadgeText: {
+    fontSize: 9,
+    fontWeight: "bold",
+    color: "#D97706",
+  },
+  toggleViewButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.bgMobile,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  toggleViewButtonText: {
+    fontSize: 12,
+    fontWeight: "bold",
+    color: COLORS.text,
+  },
+  gridRoomsContainer: {
+    gap: THEME.spacing.sm,
+  },
+  gridRoomRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.bgMobile,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 8,
+    overflow: "hidden",
+  },
+  gridRoomLabelCell: {
+    width: 60,
+    justifyContent: "center",
+    alignItems: "center",
+    borderRightWidth: 1,
+    borderRightColor: COLORS.border,
+    paddingRight: 6,
+    marginRight: 6,
+  },
+  gridRoomLabelText: {
+    fontSize: 9,
+    fontWeight: "bold",
+    color: COLORS.muted,
+    textTransform: "uppercase",
+  },
+  gridRoomNumberText: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: COLORS.primary,
+    lineHeight: 22,
+  },
+  gridRoomSessionsScroll: {
+    flexDirection: "row",
+    gap: 8,
+    alignItems: "center",
+    paddingRight: 12,
+  },
+  gridSessionCard: {
+    backgroundColor: COLORS.card,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderTopWidth: 4,
+    padding: 6,
+    width: 120,
+    justifyContent: "center",
+  },
+  gridSessionHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  gridSessionTime: {
+    fontSize: 12,
+    fontWeight: "bold",
+    color: COLORS.primary,
+  },
+  gridSessionMovie: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: COLORS.text,
+    marginVertical: 2,
+  },
+  gridSessionFormat: {
+    fontSize: 8,
+    color: COLORS.muted,
+  },
+  gridSessionOccupancyBox: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 4,
+  },
+  gridSessionOccupancyText: {
+    fontSize: 8,
+    color: COLORS.textSoft,
+  },
+  gridSessionPercentText: {
+    fontSize: 8,
+    fontWeight: "bold",
   },
 });
