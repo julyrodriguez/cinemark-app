@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -178,6 +178,26 @@ export default function CompanyScreen() {
   const [selectedTheater, setSelectedTheater] = useState<typeof THEATERS[0] | null>(null);
   const [selectedDay, setSelectedDay] = useState<string>(() => getCurrentWeekdayKey());
   const [selectedWeek, setSelectedWeek] = useState<string>(() => getMovieWeekStartForNow());
+  
+  // Refs para sincronización de scroll horizontal en modo grilla
+  const roomScrollRefs = useRef<Record<string, ScrollView | null>>({});
+  const isSyncingScroll = useRef(false);
+
+  const handleRoomScroll = (event: any, salaNum: string) => {
+    if (isSyncingScroll.current) return;
+    isSyncingScroll.current = true;
+    const x = event.nativeEvent.contentOffset.x;
+    
+    Object.entries(roomScrollRefs.current).forEach(([roomNum, ref]) => {
+      if (roomNum !== salaNum && ref) {
+        ref.scrollTo({ x, animated: false });
+      }
+    });
+    
+    setTimeout(() => {
+      isSyncingScroll.current = false;
+    }, 10);
+  };
   
   // Toggles de Modo de Estadísticas (semanal o diaria)
   const [statsMode, setStatsMode] = useState<"weekly" | "daily">("weekly");
@@ -459,6 +479,11 @@ export default function CompanyScreen() {
     const rooms = filteredSessions.map(s => s.theaterRoom);
     return Array.from(new Set(rooms)).sort((a, b) => parseInt(a, 10) - parseInt(b, 10));
   }, [filteredSessions]);
+
+  // Limpiar refs viejas al cambiar la lista de salas para evitar pérdidas de memoria
+  useEffect(() => {
+    roomScrollRefs.current = {};
+  }, [roomsList]);
 
   // Renderizar cada función en modo de lista
   const renderSessionItem = ({ item }: { item: Session }) => {
@@ -887,9 +912,12 @@ export default function CompanyScreen() {
                         <Text style={styles.gridRoomNumberText}>{salaNum}</Text>
                       </View>
                       <ScrollView
+                        ref={(ref) => { roomScrollRefs.current[salaNum] = ref; }}
                         horizontal
                         showsHorizontalScrollIndicator={false}
                         contentContainerStyle={styles.gridRoomSessionsScroll}
+                        onScroll={(e) => handleRoomScroll(e, salaNum)}
+                        scrollEventThrottle={16}
                       >
                         {sessionsInSala.map((session) => {
                           const sold = session.soldSeats || session.occupiedSeats?.length || 0;
@@ -1208,15 +1236,15 @@ const styles = StyleSheet.create({
   },
   centeredTabBarWrapper: {
     width: "100%",
-    alignItems: "center",
-    justifyContent: "center",
+    alignItems: "flex-start",
+    justifyContent: "flex-start",
   },
   centeredTabBar: {
     flexDirection: "row",
     gap: 8,
-    justifyContent: "center",
+    justifyContent: "flex-start",
     alignItems: "center",
-    minWidth: "100%",
+    paddingHorizontal: 8,
   },
   tabButton: {
     paddingHorizontal: 14,
