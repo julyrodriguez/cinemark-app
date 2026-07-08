@@ -1248,7 +1248,7 @@ export default function CoordinadoresLentesScreen() {
                           activeOpacity={0.7}
                         >
                           <View style={s.historyHeader}>
-                            <View style={{ flex: 1 }}>
+                            <View style={{ flex: 1, alignItems: "center", width: "100%" }}>
                               {/* Tipo y Chevron */}
                               <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 4 }}>
                                 <View style={[s.badge, isAjuste ? s.badgeAmber : isEmbolsado ? s.badgeBlue : s.badgeIndigo]}>
@@ -1260,12 +1260,12 @@ export default function CoordinadoresLentesScreen() {
                               </View>
 
                               {/* Título: Cierre del DD/MM/YYYY */}
-                              <Text style={s.historyRowTitleText}>
+                              <Text style={[s.historyRowTitleText, { textAlign: "center" }]}>
                                 {isAjuste ? "Ajuste" : isEmbolsado ? "Embolsado" : "Cierre"} del <Text style={{ fontWeight: "700" }}>{formattedDate}</Text>
                               </Text>
 
                               {/* Hecho por */}
-                              <Text style={s.historyRowAuthorText}>
+                              <Text style={[s.historyRowAuthorText, { textAlign: "center" }]}>
                                 hecho por <Text style={{ fontWeight: "700", color: "#475569" }}>{c.responsable || c.creadoPorNombre}</Text>
                               </Text>
 
@@ -1290,7 +1290,7 @@ export default function CoordinadoresLentesScreen() {
 
                             {/* Tres puntitos menu */}
                             {!isAjuste && (
-                              <View style={s.menuContainer}>
+                              <View style={[s.menuContainer, { position: "absolute", right: 8, top: 8 }]}>
                                 <TouchableOpacity
                                   style={s.menuBtn}
                                   onPress={(e) => {
@@ -2484,16 +2484,17 @@ const s = StyleSheet.create({
   headerDiffsContainer: {
     flexDirection: "row",
     gap: 8,
-    marginTop: 4,
+    marginTop: 6,
+    width: "100%",
   },
   headerDiffBox: {
+    flex: 1,
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 10,
     borderRadius: 8,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
-    minWidth: 80,
   },
   headerDiffBoxPos: {
     backgroundColor: "#F0FDF4",
