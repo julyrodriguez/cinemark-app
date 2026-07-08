@@ -42,10 +42,10 @@ type Session = {
   movieName: string;
   sessionDateTime: string;
   sessionDisplayDate: string;
-  sessionTime: string;
   theaterRoom: string;
-  formatName: string;
-  languageName: string;
+  sessionFormat?: string;
+  formats?: Array<{ name: string }>;
+  language?: { name: string };
   soldSeats?: number;
   occupiedSeats?: string[];
   occupation?: {
@@ -64,6 +64,7 @@ type TheaterShowtimes = {
 
 // Generar color determinista basado en el título de la película
 function getMovieColor(title: string) {
+  if (!title) return COLORS.primary;
   let hash = 0;
   for (let i = 0; i < title.length; i++) {
     hash = title.charCodeAt(i) + ((hash << 5) - hash);
@@ -123,6 +124,7 @@ function getCurrentWeekdayKey(): string {
 
 // Obtener el día de la semana de la función según el día operativo de cine (comienza a las 6 AM)
 function getSessionDayKey(sessionDateTimeStr: string): string {
+  if (!sessionDateTimeStr) return "jueves";
   const date = new Date(sessionDateTimeStr);
   const arDate = new Date(date.getTime() - (3 * 60 * 60 * 1000));
   if (arDate.getUTCHours() < 6) {
@@ -296,12 +298,14 @@ export default function CompanyScreen() {
     let leaderPercent = 0;
 
     Object.entries(theaterStats).forEach(([id, stat]) => {
-      totalSold += stat.totalTickets;
-      totalCap += stat.totalCapacity;
+      if (stat) {
+        totalSold += stat.totalTickets || 0;
+        totalCap += stat.totalCapacity || 0;
 
-      if (stat.occupancy > leaderPercent) {
-        leaderPercent = stat.occupancy;
-        leaderName = THEATERS.find(t => t.id === id)?.name || "-";
+        if (stat.occupancy > leaderPercent) {
+          leaderPercent = stat.occupancy;
+          leaderName = THEATERS.find(t => t.id === id)?.name || "-";
+        }
       }
     });
 
@@ -323,12 +327,17 @@ export default function CompanyScreen() {
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase().trim();
       list = list.filter(s =>
-        s.movieName.toLowerCase().includes(query) ||
-        s.theaterRoom.toLowerCase().includes(query)
+        (s.movieName || "").toLowerCase().includes(query) ||
+        (s.theaterRoom || "").toLowerCase().includes(query)
       );
     }
 
-    return [...list].sort((a, b) => a.sessionTime.localeCompare(b.sessionTime));
+    // Ordenar de forma segura por el campo sessionDateTime (HH:MM)
+    return [...list].sort((a, b) => {
+      const aTime = a.sessionDateTime ? a.sessionDateTime.substring(11, 16) : "";
+      const bTime = b.sessionDateTime ? b.sessionDateTime.substring(11, 16) : "";
+      return aTime.localeCompare(bTime);
+    });
   }, [showtimesData, selectedDay, searchQuery]);
 
   // Renderizar cada función (Estilo idéntico a la vista de Programación del cine)
@@ -342,21 +351,25 @@ export default function CompanyScreen() {
     if (occupancyPercent < 25) progressColor = COLORS.info; // < 25% (baja)
     else if (occupancyPercent < 60) progressColor = COLORS.success; // 25-60% (media)
 
+    const format = item.sessionFormat || (item.formats && item.formats[0]?.name) || "";
+    const language = (item.language && item.language.name) || "";
+    const time = item.sessionDateTime ? item.sessionDateTime.substring(11, 16) : "";
+
     return (
       <View style={[styles.listCard, { borderLeftColor: movieAccentColor }]}>
         {/* Badge de Sala (Estilo circular idéntico al original) */}
         <View style={styles.listRoomBadge}>
           <Text style={styles.listRoomBadgeText}>SALA</Text>
-          <Text style={styles.listRoomNumberText}>{item.theaterRoom}</Text>
+          <Text style={styles.listRoomNumberText}>{item.theaterRoom || "-"}</Text>
         </View>
 
         {/* Información de Película y Ocupación */}
         <View style={styles.listInfoContainer}>
-          <Text style={styles.listMovieTitle}>{item.movieName}</Text>
+          <Text style={styles.listMovieTitle}>{item.movieName || "Película"}</Text>
           <View style={styles.sessionMetaRow}>
-            <Text style={styles.sessionMetaLabel}>{item.formatName}</Text>
-            <Text style={styles.sessionMetaDivider}>•</Text>
-            <Text style={styles.sessionMetaLabel}>{item.languageName}</Text>
+            {format ? <Text style={styles.sessionMetaLabel}>{format}</Text> : null}
+            {format && language ? <Text style={styles.sessionMetaDivider}>•</Text> : null}
+            {language ? <Text style={styles.sessionMetaLabel}>{language}</Text> : null}
           </View>
 
           {/* Barra de progreso de ocupación */}
@@ -382,7 +395,7 @@ export default function CompanyScreen() {
 
         {/* Horario a la derecha */}
         <View style={styles.sessionTimeCol}>
-          <Text style={styles.sessionTimeText}>{item.sessionTime} hs</Text>
+          <Text style={styles.sessionTimeText}>{time || "--:--"} hs</Text>
         </View>
       </View>
     );
