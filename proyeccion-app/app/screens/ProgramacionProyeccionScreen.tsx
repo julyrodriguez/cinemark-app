@@ -645,8 +645,22 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
     if (!cineId) return;
     try {
       setSyncing(true);
-      const syncFunc = httpsCallable(functions, "forceSyncShowtimes");
-      await syncFunc({ cineId });
+      const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || "https://api-cinemark.jariel.com.ar/api";
+      const apiToken = process.env.EXPO_PUBLIC_API_TOKEN || "jariel2026";
+      
+      const response = await fetch(`${API_BASE_URL}/showtimes/sync`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiToken}`
+        },
+        body: JSON.stringify({ cineId })
+      });
+
+      if (!response.ok) {
+        const errJson = await response.json().catch(() => ({}));
+        throw new Error(errJson.error || `Servidor retornó estado ${response.status}`);
+      }
 
       // Reload active week from Firestore
       const docRef = doc(db, CINES_COLLECTION, cineId, "showtimes", selectedWeekStart);
