@@ -23,7 +23,10 @@ const THEATERS = [
   { id: "2016", name: "Parque Brown", icon: "tree-outline" },
   { id: "748", name: "San Justo", icon: "compass-outline" },
   { id: "101", name: "Morón", icon: "shield-star-outline" },
-  { id: "110", name: "Moreno", icon: "map-marker-radius-outline" }
+  { id: "110", name: "Moreno", icon: "map-marker-radius-outline" },
+  { id: "103", name: "Abasto", icon: "stadium-variant" },
+  { id: "104", name: "Unicenter", icon: "star-face" },
+  { id: "111", name: "DOT", icon: "google-circles-group" }
 ];
 
 const DAYS_OF_WEEK = [
@@ -149,14 +152,12 @@ export default function CompanyScreen() {
   const [selectedDay, setSelectedDay] = useState<string>(() => getCurrentWeekdayKey());
   const [selectedWeek, setSelectedWeek] = useState<string>(() => getMovieWeekStartForNow());
   
-  // Datos de ocupación consolidados para las tarjetas del grid
-  const [theaterStats, setTheaterStats] = useState<Record<string, {
-    occupancy: number;
-    totalTickets: number;
-    totalCapacity: number;
-    sessionsCount: number;
-    weekStart: string;
-  }>>({});
+  // Toggles de Modo de Estadísticas (semanal o diaria)
+  const [statsMode, setStatsMode] = useState<"weekly" | "daily">("weekly");
+  const [statsDay, setStatsDay] = useState<string>(() => getCurrentWeekdayKey());
+
+  // Caché de showtimes de toda la semana de todos los cines
+  const [weeklyDataCache, setWeeklyDataCache] = useState<Record<string, TheaterShowtimes>>({});
 
   const [showtimesData, setShowtimesData] = useState<TheaterShowtimes | null>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
@@ -204,55 +205,25 @@ export default function CompanyScreen() {
     return await res.json();
   };
 
-  // Cargar estadísticas para todos los cines para la semana seleccionada
+  // Cargar showtimes de todos los cines para la semana seleccionada (se guardan en cache)
   const loadStatsForWeek = async (week: string) => {
     setLoadingTheaters(true);
-    const stats: typeof theaterStats = {};
+    const cache: Record<string, TheaterShowtimes> = {};
     
     await Promise.all(
       THEATERS.map(async (theater) => {
         try {
           const data: TheaterShowtimes = await fetchFromApi(`/company/showtimes/${theater.id}/${week}`);
-          if (data && data.sessions && data.sessions.length > 0) {
-            let totalSold = 0;
-            let totalCap = 0;
-            
-            data.sessions.forEach(s => {
-              const cap = s.occupation?.capacity || 200;
-              const sold = s.soldSeats || s.occupiedSeats?.length || 0;
-              totalSold += sold;
-              totalCap += cap;
-            });
-
-            stats[theater.id] = {
-              occupancy: totalCap > 0 ? (totalSold / totalCap) * 100 : 0,
-              totalTickets: totalSold,
-              totalCapacity: totalCap,
-              sessionsCount: data.sessions.length,
-              weekStart: week
-            };
-          } else {
-            stats[theater.id] = {
-              occupancy: 0,
-              totalTickets: 0,
-              totalCapacity: 0,
-              sessionsCount: 0,
-              weekStart: week
-            };
+          if (data && data.sessions) {
+            cache[theater.id] = data;
           }
         } catch (err) {
-          stats[theater.id] = {
-            occupancy: 0,
-            totalTickets: 0,
-            totalCapacity: 0,
-            sessionsCount: 0,
-            weekStart: week
-          };
+          console.warn(`[CompanyScreen] Sin datos para el cine ${theater.name} en la semana ${week}`);
         }
       })
     );
     
-    setTheaterStats(stats);
+    setWeeklyDataCache(cache);
     setLoadingTheaters(false);
   };
 
@@ -290,14 +261,70 @@ export default function CompanyScreen() {
     setSelectedDay(currentDayKey);
   };
 
-  // KPIs Globales
+  // Computar estadísticas individuales por cine en base al caché, modo de filtro (Semana/Día) y día seleccionado
+  const computedTheaterStats = useMemo(() => {
+    const stats: Record<string, {
+      occupancy: number;
+      totalTickets: number;
+      totalCapacity: number;
+      sessionsCount: number;
+      weekStart: string;
+    }> = {};
+
+    THEATERS.forEach((theater) => {
+      const data = weeklyDataCache[theater.id];
+      if (data && data.sessions && data.sessions.length > 0) {
+        let totalSold = 0;
+        let totalCap = 0;
+        let count = 0;
+        
+        data.sessions.forEach(s => {
+          // Filtrar por día si el modo es diario
+          if (statsMode === "daily" && getSessionDayKey(s.sessionDateTime) !== statsDay) {
+            return;
+          }
+          
+          const cap = s.occupation?.capacity || 200;
+          let sold = s.soldSeats || s.occupiedSeats?.length || 0;
+          // Si el total es 0 (ej. preventas sin mapas cargados aún) pero hay ocupación en la API, calcular la diferencia
+          if (!sold && s.occupation) {
+            sold = Math.max(0, s.occupation.capacity - s.occupation.availableSeats);
+          }
+          
+          totalSold += sold;
+          totalCap += cap;
+          count++;
+        });
+
+        stats[theater.id] = {
+          occupancy: totalCap > 0 ? (totalSold / totalCap) * 100 : 0,
+          totalTickets: totalSold,
+          totalCapacity: totalCap,
+          sessionsCount: count,
+          weekStart: selectedWeek
+        };
+      } else {
+        stats[theater.id] = {
+          occupancy: 0,
+          totalTickets: 0,
+          totalCapacity: 0,
+          sessionsCount: 0,
+          weekStart: selectedWeek
+        };
+      }
+    });
+
+    return stats;
+  }, [weeklyDataCache, statsMode, statsDay, selectedWeek]);
+
+  // KPIs Globales consolidados
   const globalKpis = useMemo(() => {
     let totalSold = 0;
     let totalCap = 0;
     let leaderName = "-";
     let leaderPercent = 0;
 
-    Object.entries(theaterStats).forEach(([id, stat]) => {
+    Object.entries(computedTheaterStats).forEach(([id, stat]) => {
       if (stat) {
         totalSold += stat.totalTickets || 0;
         totalCap += stat.totalCapacity || 0;
@@ -315,7 +342,7 @@ export default function CompanyScreen() {
       leaderName,
       leaderPercent
     };
-  }, [theaterStats]);
+  }, [computedTheaterStats]);
 
   // Filtrar funciones detalladas por día de la semana y buscador
   const filteredSessions = useMemo(() => {
@@ -477,6 +504,68 @@ export default function CompanyScreen() {
       {/* Selector de Semanas a nivel global superior */}
       {renderWeekSelector()}
 
+      {/* Selector de Modo de Estadísticas (Semanal vs Diario) */}
+      <View style={styles.statsModeToggleContainer}>
+        <TouchableOpacity
+          style={[styles.toggleBtn, statsMode === "weekly" && styles.toggleBtnActive]}
+          onPress={() => setStatsMode("weekly")}
+          activeOpacity={0.7}
+        >
+          <MaterialCommunityIcons 
+            name="calendar-range" 
+            size={16} 
+            color={statsMode === "weekly" ? "#FFFFFF" : COLORS.text} 
+            style={{ marginRight: 6 }} 
+          />
+          <Text style={[styles.toggleBtnText, statsMode === "weekly" && styles.toggleBtnTextActive]}>
+            Semanal
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.toggleBtn, statsMode === "daily" && styles.toggleBtnActive]}
+          onPress={() => setStatsMode("daily")}
+          activeOpacity={0.7}
+        >
+          <MaterialCommunityIcons 
+            name="calendar-today" 
+            size={16} 
+            color={statsMode === "daily" ? "#FFFFFF" : COLORS.text} 
+            style={{ marginRight: 6 }} 
+          />
+          <Text style={[styles.toggleBtnText, statsMode === "daily" && styles.toggleBtnTextActive]}>
+            Diario
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Selector de día para estadísticas (modo diario) */}
+      {statsMode === "daily" && (
+        <View style={styles.statsDaySelectorContainer}>
+          <Text style={styles.statsDaySelectorLabel}>Filtrar estadísticas de cines por día:</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.tabBar}
+          >
+            {DAYS_OF_WEEK.map((day) => {
+              const isActive = statsDay === day.key;
+              return (
+                <TouchableOpacity
+                  key={day.key}
+                  onPress={() => setStatsDay(day.key)}
+                  style={[styles.tabButton, isActive && styles.tabButtonActive]}
+                >
+                  <Text style={[styles.tabButtonText, isActive && styles.tabButtonTextActive]}>
+                    {day.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
+
       {/* KPIs Globales */}
       <View style={styles.kpiRow}>
         <View style={styles.kpiCard}>
@@ -484,7 +573,9 @@ export default function CompanyScreen() {
           <Text style={styles.kpiValue}>
             {loadingTheaters ? "-" : `${globalKpis.totalSold.toLocaleString("es-AR")}`}
           </Text>
-          <Text style={styles.kpiLabel}>Tickets Semanales Vendidos</Text>
+          <Text style={styles.kpiLabel}>
+            Tickets {statsMode === "daily" ? "Diarios" : "Semanales"} Vendidos
+          </Text>
         </View>
 
         <View style={styles.kpiCard}>
@@ -517,7 +608,7 @@ export default function CompanyScreen() {
       ) : (
         <View style={styles.grid}>
           {THEATERS.map((theater) => {
-            const stats = theaterStats[theater.id];
+            const stats = computedTheaterStats[theater.id];
             const isSelected = selectedTheater?.id === theater.id;
 
             return (
@@ -752,7 +843,7 @@ const styles = StyleSheet.create({
     marginBottom: THEME.spacing.xxl,
   },
   theaterCard: {
-    width: Platform.OS === "web" ? "calc(25% - 12px)" : "calc(50% - 8px)",
+    width: Platform.OS === "web" ? "calc(25% - 12px)" : "calc(33.3% - 11px)",
     minWidth: 160,
     backgroundColor: COLORS.card,
     borderRadius: THEME.radius.md,
@@ -1054,5 +1145,49 @@ const styles = StyleSheet.create({
   },
   sessionsList: {
     gap: THEME.spacing.sm,
+  },
+  statsModeToggleContainer: {
+    flexDirection: "row",
+    justifyContent: "center",
+    backgroundColor: COLORS.card,
+    borderRadius: THEME.radius.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 4,
+    gap: 8,
+    marginBottom: THEME.spacing.md,
+  },
+  toggleBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+    borderRadius: THEME.radius.sm,
+  },
+  toggleBtnActive: {
+    backgroundColor: COLORS.primary,
+  },
+  toggleBtnText: {
+    fontSize: 13,
+    fontWeight: "bold",
+    color: COLORS.textSoft,
+  },
+  toggleBtnTextActive: {
+    color: "#FFFFFF",
+  },
+  statsDaySelectorContainer: {
+    marginBottom: THEME.spacing.lg,
+    backgroundColor: COLORS.card,
+    borderRadius: THEME.radius.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: THEME.spacing.md,
+  },
+  statsDaySelectorLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: COLORS.textSoft,
+    marginBottom: 8,
   },
 });
