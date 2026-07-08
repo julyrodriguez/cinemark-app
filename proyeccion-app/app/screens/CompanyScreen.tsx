@@ -480,10 +480,6 @@ export default function CompanyScreen() {
     return Array.from(new Set(rooms)).sort((a, b) => parseInt(a, 10) - parseInt(b, 10));
   }, [filteredSessions]);
 
-  // Limpiar refs viejas al cambiar la lista de salas para evitar pérdidas de memoria
-  useEffect(() => {
-    roomScrollRefs.current = {};
-  }, [roomsList]);
 
   // Renderizar cada función en modo de lista
   const renderSessionItem = ({ item }: { item: Session }) => {
