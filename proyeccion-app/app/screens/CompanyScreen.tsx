@@ -590,18 +590,6 @@ export default function CompanyScreen() {
       contentContainerStyle={styles.contentContainer}
       showsVerticalScrollIndicator={false}
     >
-      {/* Cabecera */}
-      <View style={styles.header}>
-        <View style={styles.headerIconCircle}>
-          <MaterialCommunityIcons name="office-building" size={28} color={COLORS.primary} />
-        </View>
-        <View style={styles.headerTextCol}>
-          <Text style={styles.title}>Panel de Compañía</Text>
-          <Text style={styles.subtitle}>
-            Estadísticas y programaciones de cines de Cinemark & Hoyts
-          </Text>
-        </View>
-      </View>
 
       {/* Selector de Semanas a nivel global superior */}
       {renderWeekSelector()}
@@ -767,7 +755,7 @@ export default function CompanyScreen() {
                     isSelected && styles.theaterIconBgSelected
                   ]}>
                     <MaterialCommunityIcons 
-                      name={theater.icon as any} 
+                      name="office-building" 
                       size={20} 
                       color={isSelected ? "#FFF" : COLORS.primary} 
                     />
