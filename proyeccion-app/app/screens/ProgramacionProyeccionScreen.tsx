@@ -800,8 +800,8 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
           const weekStart = getMovieWeekStart(utcDate);
           if (weekStart !== selectedWeekStart) return;
 
-          // Map UTC sessionDateTime to Argentina time (UTC-3)
-          const arDate = new Date(utcDate.getTime() - (3 * 60 * 60 * 1000));
+          // Map UTC sessionDateTime directly (BFF date string represents local time)
+          const arDate = new Date(utcDate.getTime());
           if (arDate.getUTCHours() < 6) {
             arDate.setTime(arDate.getTime() - 24 * 60 * 60 * 1000);
           }
@@ -831,7 +831,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
           const first = group[0];
 
           const utcDate = new Date(first.sessionDateTime);
-          const arDate = new Date(utcDate.getTime() - (3 * 60 * 60 * 1000));
+          const arDate = new Date(utcDate.getTime());
 
           const hours = String(arDate.getUTCHours()).padStart(2, '0');
           const mins = String(arDate.getUTCMinutes()).padStart(2, '0');
@@ -929,7 +929,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
         const weekStart = getMovieWeekStart(utcDate);
         if (weekStart !== selectedWeekStart) return;
 
-        const arDate = new Date(utcDate.getTime() - (3 * 60 * 60 * 1000));
+        const arDate = new Date(utcDate.getTime());
         if (arDate.getUTCHours() < 6) {
           arDate.setTime(arDate.getTime() - 24 * 60 * 60 * 1000);
         }
@@ -1101,8 +1101,8 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
       const room = Number(session.theaterRoom);
       roomSales[room] = (roomSales[room] || 0) + sold;
 
-      // Day sales (using GMT-3)
-      const arDate = new Date(utcDate.getTime() - (3 * 60 * 60 * 1000));
+      // Day sales
+      const arDate = new Date(utcDate.getTime());
       if (arDate.getUTCHours() < 6) {
         arDate.setTime(arDate.getTime() - 24 * 60 * 60 * 1000);
       }

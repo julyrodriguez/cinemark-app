@@ -3152,11 +3152,11 @@ const s = StyleSheet.create({
   },
   canvasViewport: {
     flex: 1,
-    minHeight: 450,
+    minHeight: 350,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: COLORS.border,
-    overflow: "hidden",
+    overflow: Platform.OS === "web" ? "auto" : "scroll",
     backgroundColor: "#f1f5f9",
     position: "relative",
   },

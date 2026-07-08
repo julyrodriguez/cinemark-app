@@ -1523,13 +1523,7 @@ export const getCinemarkShowtimes = onCall({ cors: true }, async (request) => {
     }
 
     const json = (await response.json()) as any;
-    if (json && json.data) {
-      json.data.forEach((s: any) => {
-        const originalDate = new Date(s.sessionDateTime);
-        const adjustedDate = new Date(originalDate.getTime() + 3 * 60 * 60 * 1000);
-        s.sessionDateTime = adjustedDate.toISOString();
-      });
-    }
+    // Return showtimes as-is from BFF without modifying sessionDateTime
     return json;
   } catch (error: any) {
     console.error("Error fetching Cinemark showtimes:", error);
@@ -1798,11 +1792,7 @@ async function syncShowtimesForCine(cineId: string, theaterId: string, skipSeatM
     // Group new sessions by weekStart
     const sessionsByWeek: Record<string, any[]> = {};
     sessions.forEach((s: any) => {
-      // Shift sessionDateTime by +3 hours to correct the timezone offset at the base level
-      const originalDate = new Date(s.sessionDateTime);
-      const adjustedDate = new Date(originalDate.getTime() + 3 * 60 * 60 * 1000);
-      s.sessionDateTime = adjustedDate.toISOString();
-
+      // No shift needed, original Date from BFF is already Argentine local time
       const utcDate = new Date(s.sessionDateTime);
       const weekStart = getMovieWeekStartForFunction(utcDate);
       if (!sessionsByWeek[weekStart]) {
