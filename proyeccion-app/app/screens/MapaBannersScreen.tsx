@@ -244,7 +244,6 @@ export default function MapaBannersScreen() {
     const handleKeyUp = (e: KeyboardEvent) => {
       if (isMovingWithKeysRef.current && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
         isMovingWithKeysRef.current = false;
-        handleSaveChanges();
       }
     };
 
@@ -321,7 +320,6 @@ export default function MapaBannersScreen() {
       return f;
     });
     setFloors(updatedFloors);
-    handleSaveChanges(updatedFloors);
   };
 
   const handleDistributeSelected = (axis: "x" | "y", gap: number) => {
@@ -851,7 +849,6 @@ export default function MapaBannersScreen() {
     if (activeDragId) {
       setActiveDragId(null);
       activeDragIdRef.current = null;
-      handleSaveChanges();
     }
   };
 
@@ -862,7 +859,6 @@ export default function MapaBannersScreen() {
     if (activeDragId) {
       setActiveDragId(null);
       activeDragIdRef.current = null;
-      handleSaveChanges();
     }
   };
 
@@ -959,7 +955,6 @@ export default function MapaBannersScreen() {
     if (activeDragIdRef.current) {
       activeDragIdRef.current = null;
       setActiveDragId(null);
-      handleSaveChanges();
     }
   };
 
@@ -1050,7 +1045,6 @@ export default function MapaBannersScreen() {
       return f;
     });
     setFloors(updated);
-    handleSaveChanges(updated);
   };
 
   // Print PDF Layout Generator
@@ -2199,7 +2193,6 @@ export default function MapaBannersScreen() {
                     onPress={() => {
                       const newX = Math.max(0, (selectedElement.x) - 5);
                       updateElementPosition(selectedElement.id, newX, selectedElement.y);
-                      handleSaveChanges();
                     }}
                   >
                     <Text style={s.stepperSmallBtnText}>-5</Text>
@@ -2209,7 +2202,6 @@ export default function MapaBannersScreen() {
                     onPress={() => {
                       const newX = Math.max(0, (selectedElement.x) - 1);
                       updateElementPosition(selectedElement.id, newX, selectedElement.y);
-                      handleSaveChanges();
                     }}
                   >
                     <Text style={s.stepperSmallBtnText}>-1</Text>
@@ -2226,7 +2218,6 @@ export default function MapaBannersScreen() {
                         updateElementPosition(selectedElement.id, constrained, selectedElement.y);
                       }
                     }}
-                    onBlur={() => handleSaveChanges()}
                   />
                   <Text style={s.percentSymbol}>%</Text>
 
@@ -2235,7 +2226,6 @@ export default function MapaBannersScreen() {
                     onPress={() => {
                       const newX = Math.min(100, (selectedElement.x) + 1);
                       updateElementPosition(selectedElement.id, newX, selectedElement.y);
-                      handleSaveChanges();
                     }}
                   >
                     <Text style={s.stepperSmallBtnText}>+1</Text>
@@ -2245,7 +2235,6 @@ export default function MapaBannersScreen() {
                     onPress={() => {
                       const newX = Math.min(100, (selectedElement.x) + 5);
                       updateElementPosition(selectedElement.id, newX, selectedElement.y);
-                      handleSaveChanges();
                     }}
                   >
                     <Text style={s.stepperSmallBtnText}>+5</Text>
@@ -2261,7 +2250,6 @@ export default function MapaBannersScreen() {
                     onPress={() => {
                       const newY = Math.max(0, (selectedElement.y) - 5);
                       updateElementPosition(selectedElement.id, selectedElement.x, newY);
-                      handleSaveChanges();
                     }}
                   >
                     <Text style={s.stepperSmallBtnText}>-5</Text>
@@ -2271,7 +2259,6 @@ export default function MapaBannersScreen() {
                     onPress={() => {
                       const newY = Math.max(0, (selectedElement.y) - 1);
                       updateElementPosition(selectedElement.id, selectedElement.x, newY);
-                      handleSaveChanges();
                     }}
                   >
                     <Text style={s.stepperSmallBtnText}>-1</Text>
@@ -2288,7 +2275,6 @@ export default function MapaBannersScreen() {
                         updateElementPosition(selectedElement.id, selectedElement.x, constrained);
                       }
                     }}
-                    onBlur={() => handleSaveChanges()}
                   />
                   <Text style={s.percentSymbol}>%</Text>
 
@@ -2297,7 +2283,6 @@ export default function MapaBannersScreen() {
                     onPress={() => {
                       const newY = Math.min(100, (selectedElement.y) + 1);
                       updateElementPosition(selectedElement.id, selectedElement.x, newY);
-                      handleSaveChanges();
                     }}
                   >
                     <Text style={s.stepperSmallBtnText}>+1</Text>
@@ -2307,7 +2292,6 @@ export default function MapaBannersScreen() {
                     onPress={() => {
                       const newY = Math.min(100, (selectedElement.y) + 5);
                       updateElementPosition(selectedElement.id, selectedElement.x, newY);
-                      handleSaveChanges();
                     }}
                   >
                     <Text style={s.stepperSmallBtnText}>+5</Text>
