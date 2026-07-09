@@ -1372,9 +1372,10 @@ const styles = StyleSheet.create({
   cardHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
+    justifyContent: "center",
+    paddingHorizontal: 36,
     marginBottom: THEME.spacing.sm,
+    position: "relative",
   },
 
   dcpTitle: {
@@ -1383,6 +1384,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "800",
     lineHeight: 22,
+    textAlign: "center",
   },
   dcpTitle2: {
     flex: 1,
@@ -1390,6 +1392,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "800",
     lineHeight: 22,
+    textAlign: "center",
   },
 
   metaRow: {
@@ -1404,7 +1407,7 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 8,
     marginBottom: 8,
-    justifyContent: "flex-start",
+    justifyContent: "center",
   },
 
   metaChip: {
@@ -1483,6 +1486,9 @@ const styles = StyleSheet.create({
 
   /* ── More button ── */
   moreBtn: {
+    position: "absolute",
+    right: 0,
+    top: -4,
     width: 32,
     height: 32,
     borderRadius: 16,

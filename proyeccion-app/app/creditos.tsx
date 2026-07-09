@@ -284,7 +284,7 @@ export default function CreditosScreen({ readOnly = false }: { readOnly?: boolea
     if (!cineId) return null;
     return collection(db, CINES_COLLECTION, cineId, "creditos");
   }, [cineId]);
-  const PAGE = 10;
+  const PAGE = 9;
 
   const mapDoc = (d: QueryDocumentSnapshot<DocumentData>): Credito => {
     const data = d.data();
@@ -965,9 +965,10 @@ const styles = StyleSheet.create({
   cardHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
+    justifyContent: "center",
+    paddingHorizontal: 36,
     marginBottom: THEME.spacing.md,
+    position: "relative",
   },
 
   title: {
@@ -976,10 +977,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "800",
     lineHeight: 22,
-    textAlign: "left",
+    textAlign: "center",
   },
 
   moreBtn: {
+    position: "absolute",
+    right: 0,
+    top: -4,
     width: 32,
     height: 32,
     borderRadius: 16,
@@ -988,6 +992,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.card,
     borderWidth: 1,
     borderColor: COLORS.border,
+    zIndex: 10,
     ...Platform.select({
       web: {
         cursor: "pointer",
@@ -998,7 +1003,7 @@ const styles = StyleSheet.create({
 
   credRow: {
     marginTop: 10,
-    alignItems: "flex-start",
+    alignItems: "center",
   },
   credRowLabel: {
     color: COLORS.muted,
@@ -1007,11 +1012,13 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 0.8,
     marginBottom: 6,
+    textAlign: "center",
   },
   credRowChips: {
     flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "center",
+    justifyContent: "center",
     gap: 8,
   },
 
