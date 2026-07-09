@@ -483,7 +483,10 @@ export default function CompanyScreen() {
 
   // Renderizar cada función en modo de lista
   const renderSessionItem = ({ item }: { item: Session }) => {
-    const sold = item.soldSeats || item.occupiedSeats?.length || 0;
+    let sold = item.soldSeats || item.occupiedSeats?.length || 0;
+    if (!sold && item.occupation) {
+      sold = Math.max(0, item.occupation.capacity - item.occupation.availableSeats);
+    }
     const capacity = item.occupation?.capacity || 200;
     const occupancyPercent = capacity > 0 ? (sold / capacity) * 100 : 0;
     const movieAccentColor = getMovieColor(item.movieName);
@@ -886,7 +889,7 @@ export default function CompanyScreen() {
           {/* Renderizado Condicional: List View vs Grid View */}
           {loadingDetails ? (
             <View style={styles.centerLoadingDetail}>
-              <ActivityIndicator size="medium" color={COLORS.primary} />
+              <ActivityIndicator size="small" color={COLORS.primary} />
               <Text style={styles.loadingText}>Cargando cartelera detallada...</Text>
             </View>
           ) : filteredSessions.length > 0 ? (
@@ -912,7 +915,10 @@ export default function CompanyScreen() {
                         scrollEventThrottle={16}
                       >
                         {sessionsInSala.map((session) => {
-                          const sold = session.soldSeats || session.occupiedSeats?.length || 0;
+                          let sold = session.soldSeats || session.occupiedSeats?.length || 0;
+                          if (!sold && session.occupation) {
+                            sold = Math.max(0, session.occupation.capacity - session.occupation.availableSeats);
+                          }
                           const capacity = session.occupation?.capacity || 200;
                           const occupancyPercent = capacity > 0 ? (sold / capacity) * 100 : 0;
                           const movieAccentColor = getMovieColor(session.movieName);
@@ -1072,7 +1078,7 @@ const styles = StyleSheet.create({
     marginBottom: THEME.spacing.xxl,
   },
   theaterCard: {
-    width: Platform.OS === "web" ? "calc(25% - 12px)" : "calc(33.3% - 11px)",
+    width: Platform.OS === "web" ? ("calc(25% - 12px)" as any) : ("calc(33.3% - 11px)" as any),
     minWidth: 160,
     backgroundColor: COLORS.card,
     borderRadius: THEME.radius.md,
