@@ -186,8 +186,17 @@ function applyConstraints(data: any[], constraints: any[]): any[] {
 
 // 3. Mock de query()
 export function query(dbRef: DbRef, ...queryConstraints: any[]): DbRef {
-  const realConstraints = queryConstraints.map(c => c._realConstraint || c);
-  const firestoreRef = firestoreQuery(dbRef.firestoreRef, ...realConstraints);
+  let firestoreRef: any = null;
+  try {
+    const realConstraints = queryConstraints
+      .map(c => (c && c._realConstraint !== undefined) ? c._realConstraint : c)
+      .filter(c => c !== null && c !== undefined);
+    if (dbRef.firestoreRef) {
+      firestoreRef = firestoreQuery(dbRef.firestoreRef, ...realConstraints);
+    }
+  } catch (err) {
+    // Gracefully catch errors if firestoreQuery complains about mock snapshots
+  }
   return new DbRef("query", dbRef.path, firestoreRef, queryConstraints);
 }
 
@@ -223,7 +232,12 @@ export function limit(count: number) {
 }
 
 export function startAt(...values: any[]) {
-  const real = firestoreStartAt(...values);
+  let real: any = null;
+  try {
+    real = firestoreStartAt(...values);
+  } catch (e) {
+    // Catch mock document snapshot errors
+  }
   return {
     type: "startAt",
     values,
@@ -232,7 +246,12 @@ export function startAt(...values: any[]) {
 }
 
 export function endAt(...values: any[]) {
-  const real = firestoreEndAt(...values);
+  let real: any = null;
+  try {
+    real = firestoreEndAt(...values);
+  } catch (e) {
+    // Catch mock document snapshot errors
+  }
   return {
     type: "endAt",
     values,
@@ -241,7 +260,12 @@ export function endAt(...values: any[]) {
 }
 
 export function startAfter(...values: any[]) {
-  const real = firestoreStartAfter(...values);
+  let real: any = null;
+  try {
+    real = firestoreStartAfter(...values);
+  } catch (e) {
+    // Catch mock document snapshot errors
+  }
   return {
     type: "startAfter",
     values,

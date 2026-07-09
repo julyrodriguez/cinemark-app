@@ -168,16 +168,29 @@ const CreditoCard = ({
     title: string;
     items: Array<{ kind: "on" | "off"; label: string; time: string }>;
   }) => {
-    if (!items.length) return null;
     return (
       <View style={styles.credRow}>
         <Text style={styles.credRowLabel} numberOfLines={1}>
           {title}
         </Text>
         <View style={styles.credRowChips}>
-          {items.map((it, i) => (
-            <Chip key={`${title}-${it.label}-${it.time}-${i}`} {...it} />
-          ))}
+          {items.length > 0 ? (
+            items.map((it, i) => (
+              <Chip key={`${title}-${it.label}-${it.time}-${i}`} {...it} />
+            ))
+          ) : (
+            <View style={[styles.credChip, styles.credChipPlaceholder]}>
+              <MaterialCommunityIcons
+                name="minus"
+                size={14}
+                color={COLORS.muted}
+                style={{ marginRight: 6 }}
+              />
+              <Text style={[styles.credChipText, { color: COLORS.muted }]}>
+                No aplica
+              </Text>
+            </View>
+          )}
         </View>
       </View>
     );
@@ -223,9 +236,11 @@ const CreditoCard = ({
             )}
           </View>
 
-          <Row title="Final" items={line1} />
-          <Row title="Postcrédito 1" items={line2} />
-          <Row title="Postcrédito 2" items={line3} />
+          <View style={styles.rowsContainer}>
+            <Row title="Final" items={line1} />
+            <Row title="Postcrédito 1" items={line2} />
+            <Row title="Postcrédito 2" items={line3} />
+          </View>
         </View>
       </View>
     </Animated.View>
@@ -916,6 +931,7 @@ const styles = StyleSheet.create({
     borderRadius: THEME.radius.lg,
     overflow: "hidden",
     flexDirection: "row",
+    minHeight: 250,
     ...Platform.select({
       web: {
         ...THEME.shadow.web,
@@ -939,7 +955,11 @@ const styles = StyleSheet.create({
   creditCardBody: {
     flex: 1,
     padding: THEME.spacing.lg,
-    justifyContent: "center",
+    justifyContent: "space-between",
+  },
+  rowsContainer: {
+    flex: 1,
+    justifyContent: "flex-end",
   },
 
   cardHeaderRow: {
@@ -1002,6 +1022,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderRadius: 999,
     borderWidth: 1,
+  },
+  credChipPlaceholder: {
+    backgroundColor: "transparent",
+    borderColor: COLORS.border,
+    borderStyle: "dashed",
   },
   credChipOn: {
     backgroundColor: "rgba(22, 163, 74, 0.08)",
