@@ -1459,6 +1459,7 @@ const styles = StyleSheet.create({
     color: COLORS.muted,
     marginTop: 6,
     fontSize: THEME.fontSize.sm - 1,
+    textAlign: "center",
   },
 
   retireBtn: {
