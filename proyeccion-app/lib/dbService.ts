@@ -143,7 +143,8 @@ export async function getDocs(dbRef: DbRef) {
       docs: data.map((docData: any) => ({
         id: docData.id,
         exists: () => true,
-        data: () => docData
+        data: () => docData,
+        get: (field: string) => docData[field]
       }))
     };
   } catch (err: any) {
@@ -200,7 +201,8 @@ export async function getDoc(dbRef: DbRef) {
     return {
       id: path[path.length - 1],
       exists: () => true,
-      data: () => data
+      data: () => data,
+      get: (field: string) => data[field]
     };
   } catch (err: any) {
     console.error("[DB Service] Error en getDoc al conectar con la API, usando Firestore:", err.message);
@@ -443,3 +445,13 @@ export function httpsCallable(functionsInstance: any, functionName: string) {
     }
   };
 }
+
+// Re-exportar tipos y funciones de consulta adicionales requeridos por las pantallas
+export {
+  DocumentData,
+  QueryDocumentSnapshot,
+  Timestamp,
+  startAt,
+  endAt,
+  startAfter
+} from "firebase/firestore";

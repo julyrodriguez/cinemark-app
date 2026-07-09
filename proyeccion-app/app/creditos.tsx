@@ -121,18 +121,21 @@ export default function CreditosScreen({ readOnly = false }: { readOnly?: boolea
   }, [cineId]);
   const PAGE = 10;
 
-  const mapDoc = (d: QueryDocumentSnapshot<DocumentData>): Credito => ({
-    id: d.id,
-    pelicula: d.get("pelicula") ?? "",
-    peliculaLower: d.get("peliculaLower") ?? undefined,
-    horaCredito: d.get("horaCredito") ?? "00:00:00",
-    horaApaga1: d.get("horaApaga1") ?? null,
-    horaPrende1: d.get("horaPrende1") ?? null,
-    horaApaga2: d.get("horaApaga2") ?? null,
-    horaPrende2: d.get("horaPrende2") ?? null,
-    createdAt: d.get("createdAt") ?? null,
-    createdBy: d.get("createdBy") ?? null,
-  });
+  const mapDoc = (d: QueryDocumentSnapshot<DocumentData>): Credito => {
+    const data = d.data();
+    return {
+      id: d.id,
+      pelicula: data.pelicula ?? "",
+      peliculaLower: data.peliculaLower ?? undefined,
+      horaCredito: data.horaCredito ?? "00:00:00",
+      horaApaga1: data.horaApaga1 ?? null,
+      horaPrende1: data.horaPrende1 ?? null,
+      horaApaga2: data.horaApaga2 ?? null,
+      horaPrende2: data.horaPrende2 ?? null,
+      createdAt: data.createdAt ?? null,
+      createdBy: data.createdBy ?? null,
+    };
+  };
 
   const loadFirstPage = async () => {
     if (sessionLoading) {
