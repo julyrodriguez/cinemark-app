@@ -19,7 +19,7 @@ import {
   updateDoc,
   where,
 } from "@/lib/dbService";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
   ScrollView,
   useWindowDimensions,
@@ -37,6 +37,7 @@ import {
   TouchableOpacity,
   TouchableWithoutFeedback,
   View,
+  Animated,
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 
@@ -74,6 +75,241 @@ const formatDiscoLabel = (disco: string) => {
 };
 
 /* ── component ── */
+
+/* ── component cards ── */
+
+const ActiveDcpCard = ({
+  item,
+  readOnly,
+  openMenuForDcp,
+  retirarDcp,
+  COLORS,
+  THEME,
+  formatDiscoLabel,
+  formatDate,
+}: {
+  item: Dcp;
+  readOnly: boolean;
+  openMenuForDcp: (e: any, item: Dcp) => void;
+  retirarDcp: (item: Dcp) => void;
+  COLORS: any;
+  THEME: any;
+  formatDiscoLabel: (disco: string) => string;
+  formatDate: (date: string) => string;
+}) => {
+  const [isHovered, setIsHovered] = useState(false);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 350,
+      useNativeDriver: Platform.OS !== "web",
+    }).start();
+  }, []);
+
+  return (
+    <Animated.View style={{ opacity: fadeAnim, flex: 1 }}>
+      <View
+        {...({
+          onMouseEnter: Platform.OS === "web" ? () => setIsHovered(true) : undefined,
+          onMouseLeave: Platform.OS === "web" ? () => setIsHovered(false) : undefined,
+        } as any)}
+        style={[
+          styles.dcpCard,
+          isHovered && styles.dcpCardHovered,
+          { borderColor: isHovered ? COLORS.primary : COLORS.border }
+        ]}
+      >
+        <View style={styles.dcpCardAccent} />
+        <View style={styles.dcpCardBody}>
+          <View style={styles.cardHeaderRow}>
+            <Text style={styles.dcpTitle} numberOfLines={2}>
+              {item.nombre}
+            </Text>
+            {!readOnly && (
+              <Pressable
+                onPress={(e) => openMenuForDcp(e, item)}
+                style={[
+                  styles.moreBtn,
+                  isHovered && { borderColor: COLORS.primary }
+                ]}
+              >
+                <MaterialCommunityIcons name="dots-vertical" size={18} color={COLORS.text} />
+              </Pressable>
+            )}
+          </View>
+
+          <View style={styles.metaRowCenter}>
+            <View style={styles.metaChip}>
+              <MaterialCommunityIcons name="disc" size={14} color={COLORS.primary} style={{ marginRight: 4 }} />
+              <Text style={styles.metaChipText}>{formatDiscoLabel(item.numeroDisco)}</Text>
+            </View>
+            <View style={styles.metaChip}>
+              <MaterialCommunityIcons name="map-marker" size={14} color={COLORS.primary} style={{ marginRight: 4 }} />
+              <Text style={styles.metaChipText}>{item.ubicacion}</Text>
+            </View>
+          </View>
+
+          <View style={{ alignItems: "center" }}>
+            <SubCasBadges item={item} COLORS={COLORS} />
+          </View>
+          
+          <View style={styles.metaRowCenter}>
+            <View style={styles.metaChipDate}>
+              <MaterialCommunityIcons name="calendar-arrow-right" size={14} color="#16A34A" style={{ marginRight: 4 }} />
+              <Text style={styles.metaChipDateText}>Llegó: {formatDate(item.fechaLlegada)}</Text>
+            </View>
+          </View>
+
+          {item.createdName ? (
+            <Text style={styles.dcpMetaCenter}>Cargado por: {item.createdName}</Text>
+          ) : null}
+
+          {!readOnly && (
+            <TouchableOpacity
+              style={styles.retireBtn}
+              onPress={() => retirarDcp(item)}
+              activeOpacity={0.8}
+            >
+              <MaterialCommunityIcons name="package-down" size={16} color="#fff" style={{ marginRight: 6 }} />
+              <Text style={styles.retireBtnText}>Marcar como retirado</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+    </Animated.View>
+  );
+};
+
+const RetiredDcpCard = ({
+  item,
+  readOnly,
+  openMenuForDcp,
+  revertirDcp,
+  COLORS,
+  THEME,
+  formatDiscoLabel,
+  formatDate,
+}: {
+  item: Dcp;
+  readOnly: boolean;
+  openMenuForDcp: (e: any, item: Dcp) => void;
+  revertirDcp: (item: Dcp) => void;
+  COLORS: any;
+  THEME: any;
+  formatDiscoLabel: (disco: string) => string;
+  formatDate: (date: string) => string;
+}) => {
+  const [isHovered, setIsHovered] = useState(false);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 350,
+      useNativeDriver: Platform.OS !== "web",
+    }).start();
+  }, []);
+
+  return (
+    <Animated.View style={{ opacity: fadeAnim, flex: 1 }}>
+      <View
+        {...({
+          onMouseEnter: Platform.OS === "web" ? () => setIsHovered(true) : undefined,
+          onMouseLeave: Platform.OS === "web" ? () => setIsHovered(false) : undefined,
+        } as any)}
+        style={[
+          styles.dcpCard,
+          styles.dcpCardRetired,
+          isHovered && styles.dcpCardHovered,
+          { borderColor: isHovered ? COLORS.muted : COLORS.border }
+        ]}
+      >
+        <View style={[styles.dcpCardAccent, { backgroundColor: COLORS.muted }]} />
+        <View style={styles.dcpCardBody}>
+          <View style={styles.cardHeaderRow}>
+            <Text style={[styles.dcpTitle2, { color: COLORS.muted }]} numberOfLines={2}>
+              {item.nombre}
+            </Text>
+            {!readOnly && (
+              <Pressable onPress={(e) => openMenuForDcp(e, item)} style={styles.moreBtn}>
+                <MaterialCommunityIcons name="dots-vertical" size={18} color={COLORS.muted} />
+              </Pressable>
+            )}
+          </View>
+
+          <View style={styles.metaRowCenter}>
+            <View style={[styles.metaChip, { backgroundColor: COLORS.bg }]}>
+              <MaterialCommunityIcons name="disc" size={14} color={COLORS.muted} style={{ marginRight: 4 }} />
+              <Text style={[styles.metaChipText, { color: COLORS.muted }]}>{formatDiscoLabel(item.numeroDisco)}</Text>
+            </View>
+            <View style={[styles.metaChip, { backgroundColor: COLORS.bg }]}>
+              <MaterialCommunityIcons name="map-marker" size={14} color={COLORS.muted} style={{ marginRight: 4 }} />
+              <Text style={[styles.metaChipText, { color: COLORS.muted }]}>{item.ubicacion}</Text>
+            </View>
+          </View>
+
+          <View style={{ alignItems: "center" }}>
+            <SubCasBadges item={item} muted COLORS={COLORS} />
+          </View>
+          
+          <View style={styles.metaRowCenter}>
+            <View style={[styles.metaChipDate, { backgroundColor: "rgba(22, 163, 74, 0.08)" }]}>
+              <MaterialCommunityIcons name="calendar-arrow-right" size={14} color="#16A34A" style={{ marginRight: 4 }} />
+              <Text style={styles.metaChipDateText}>Llegó: {formatDate(item.fechaLlegada)}</Text>
+            </View>
+            {item.fechaSalida ? (
+              <View style={[styles.metaChipDate, { backgroundColor: "rgba(220, 38, 38, 0.08)" }]}>
+                <MaterialCommunityIcons name="calendar-arrow-left" size={14} color="#DC2626" style={{ marginRight: 4 }} />
+                <Text style={[styles.metaChipDateText, { color: "#DC2626" }]}>Salió: {formatDate(item.fechaSalida)}</Text>
+              </View>
+            ) : null}
+          </View>
+
+          {item.createdName ? (
+            <Text style={styles.dcpMetaCenter}>Cargado por: {item.createdName}</Text>
+          ) : null}
+
+          {!readOnly && (
+            <TouchableOpacity
+              style={[styles.retireBtn, { backgroundColor: "#64748B" }]}
+              onPress={() => revertirDcp(item)}
+              activeOpacity={0.8}
+            >
+              <MaterialCommunityIcons name="undo" size={16} color="#fff" style={{ marginRight: 6 }} />
+              <Text style={styles.retireBtnText}>Marcar como no retirado</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+    </Animated.View>
+  );
+};
+
+const SubCasBadges = ({ item, muted, COLORS }: { item: Dcp; muted?: boolean; COLORS: any }) => {
+  const hasSub = item.sub !== false; // default true for old docs
+  const hasCas = item.cas !== false;
+  if (!hasSub && !hasCas) return null;
+
+  const color = muted ? COLORS.muted : "#6366F1";
+  const bg = muted ? COLORS.bg : COLORS.primarySoft;
+
+  return (
+    <View style={styles.metaRow}>
+      {hasSub && (
+        <View style={[styles.metaChipSmall, { backgroundColor: bg }]}>
+          <Text style={[styles.metaChipSmallText, { color }]}>SUB</Text>
+        </View>
+      )}
+      {hasCas && (
+        <View style={[styles.metaChipSmall, { backgroundColor: bg }]}>
+          <Text style={[styles.metaChipSmallText, { color }]}>CAS</Text>
+        </View>
+      )}
+    </View>
+  );
+};
 
 export default function DcpScreen({ readOnly = false }: { readOnly?: boolean }) {
   const { user, cineId, loading: sessionLoading, displayName } = useAuthUser();
@@ -553,148 +789,32 @@ export default function DcpScreen({ readOnly = false }: { readOnly?: boolean }) 
     }
   };
 
-  /* ── SUB / CAS badge helper ── */
-  const SubCasBadges = ({ item, muted }: { item: Dcp; muted?: boolean }) => {
-    const hasSub = item.sub !== false; // default true for old docs
-    const hasCas = item.cas !== false;
-    if (!hasSub && !hasCas) return null;
-
-    const color = muted ? COLORS.muted : "#6366F1";
-    const bg = muted ? COLORS.bg : COLORS.primarySoft;
-
-    return (
-      <View style={styles.metaRow}>
-        {hasSub && (
-          <View style={[styles.metaChipSmall, { backgroundColor: bg }]}>
-            <Text style={[styles.metaChipSmallText, { color }]}>SUB</Text>
-          </View>
-        )}
-        {hasCas && (
-          <View style={[styles.metaChipSmall, { backgroundColor: bg }]}>
-            <Text style={[styles.metaChipSmallText, { color }]}>CAS</Text>
-          </View>
-        )}
-      </View>
-    );
-  };
-
   /* ── render items ── */
 
   const renderActiveItem = ({ item }: { item: Dcp }) => (
-    <View style={[styles.dcpCardOuter, Platform.OS === 'web' && { height: "100%" }]}>
-      <View style={styles.dcpCard}>
-        <View style={styles.dcpCardAccent} />
-        <View style={styles.dcpCardBody}>
-          <View style={styles.cardHeaderRow}>
-            <Text style={styles.dcpTitle} numberOfLines={2}>
-              {item.nombre}
-            </Text>
-            {!readOnly && (
-              <Pressable onPress={(e) => openMenuForDcp(e, item)} style={styles.moreBtn}>
-                <Text style={styles.moreBtnText}>⋮</Text>
-              </Pressable>
-            )}
-          </View>
-
-          <View style={styles.metaRowCenter}>
-            <View style={styles.metaChip}>
-              <MaterialCommunityIcons name="disc" size={14} color={COLORS.primary} style={{ marginRight: 4 }} />
-              <Text style={styles.metaChipText}>{formatDiscoLabel(item.numeroDisco)}</Text>
-            </View>
-            <View style={styles.metaChip}>
-              <MaterialCommunityIcons name="map-marker" size={14} color={COLORS.primary} style={{ marginRight: 4 }} />
-              <Text style={styles.metaChipText}>{item.ubicacion}</Text>
-            </View>
-          </View>
-
-          <View style={{ alignItems: "center" }}>
-            <SubCasBadges item={item} muted />
-          </View>
-          <View style={styles.metaRowCenter}>
-            <View style={styles.metaChipDate}>
-              <MaterialCommunityIcons name="calendar-arrow-right" size={14} color="#16A34A" style={{ marginRight: 4 }} />
-              <Text style={styles.metaChipDateText}>Llegó: {formatDate(item.fechaLlegada)}</Text>
-            </View>
-          </View>
-
-          {item.createdName ? (
-            <Text style={styles.dcpMetaCenter}>Cargado por: {item.createdName}</Text>
-          ) : null}
-
-          {!readOnly && (
-            <TouchableOpacity
-              style={styles.retireBtn}
-              onPress={() => retirarDcp(item)}
-              activeOpacity={0.8}
-            >
-              <MaterialCommunityIcons name="package-down" size={16} color="#fff" style={{ marginRight: 6 }} />
-              <Text style={styles.retireBtnText}>Marcar como retirado</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
-    </View>
+    <ActiveDcpCard
+      item={item}
+      readOnly={readOnly}
+      openMenuForDcp={openMenuForDcp}
+      retirarDcp={retirarDcp}
+      COLORS={COLORS}
+      THEME={THEME}
+      formatDiscoLabel={formatDiscoLabel}
+      formatDate={formatDate}
+    />
   );
 
   const renderRetiredItem = ({ item }: { item: Dcp }) => (
-    <View style={[styles.dcpCardOuter, Platform.OS === 'web' && { height: "100%" }]}>
-      <View style={[styles.dcpCard, styles.dcpCardRetired]}>
-        <View style={[styles.dcpCardAccent, { backgroundColor: COLORS.muted }]} />
-        <View style={styles.dcpCardBody}>
-          <View style={styles.cardHeaderRow}>
-            <Text style={[styles.dcpTitle2, { color: COLORS.muted }]} numberOfLines={2}>
-              {item.nombre}
-            </Text>
-            {!readOnly && (
-              <Pressable onPress={(e) => openMenuForDcp(e, item)} style={styles.moreBtn}>
-                <Text style={styles.moreBtnText}>⋮</Text>
-              </Pressable>
-            )}
-          </View>
-
-          <View style={styles.metaRowCenter}>
-            <View style={[styles.metaChip, { backgroundColor: COLORS.bg }]}>
-              <MaterialCommunityIcons name="disc" size={14} color={COLORS.muted} style={{ marginRight: 4, alignItems: "center" }} />
-              <Text style={[styles.metaChipText, { color: COLORS.muted }]}>{formatDiscoLabel(item.numeroDisco)}</Text>
-            </View>
-            <View style={[styles.metaChip, { backgroundColor: COLORS.bg }]}>
-              <MaterialCommunityIcons name="map-marker" size={14} color={COLORS.muted} style={{ marginRight: 4 }} />
-              <Text style={[styles.metaChipText, { color: COLORS.muted }]}>{item.ubicacion}</Text>
-            </View>
-          </View>
-
-          <View style={{ alignItems: "center" }}>
-            <SubCasBadges item={item} muted />
-          </View>
-          <View style={styles.metaRowCenter}>
-            <View style={styles.metaChipDate}>
-              <MaterialCommunityIcons name="calendar-arrow-right" size={14} color="#16A34A" style={{ marginRight: 4 }} />
-              <Text style={styles.metaChipDateText}>Llegó: {formatDate(item.fechaLlegada)}</Text>
-            </View>
-            {item.fechaSalida ? (
-              <View style={[styles.metaChipDate, { backgroundColor: "#FEE2E2" }]}>
-                <MaterialCommunityIcons name="calendar-arrow-left" size={14} color="#DC2626" style={{ marginRight: 4 }} />
-                <Text style={[styles.metaChipDateText, { color: "#DC2626" }]}>Salió: {formatDate(item.fechaSalida)}</Text>
-              </View>
-            ) : null}
-          </View>
-
-          {item.createdName ? (
-            <Text style={styles.dcpMetaCenter}>Cargado por: {item.createdName}</Text>
-          ) : null}
-          {!readOnly && (
-            <TouchableOpacity
-              style={[styles.retireBtn, { backgroundColor: "#64748B" }]}
-              onPress={() => revertirDcp(item)}
-              activeOpacity={0.8}
-            >
-              <MaterialCommunityIcons name="undo" size={16} color="#fff" style={{ marginRight: 6 }} />
-              <Text style={styles.retireBtnText}>Marcar como no retirado</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
-    </View>
+    <RetiredDcpCard
+      item={item}
+      readOnly={readOnly}
+      openMenuForDcp={openMenuForDcp}
+      revertirDcp={revertirDcp}
+      COLORS={COLORS}
+      THEME={THEME}
+      formatDiscoLabel={formatDiscoLabel}
+      formatDate={formatDate}
+    />
   );
 
   /* ── loading ── */
@@ -1210,50 +1330,55 @@ const styles = StyleSheet.create({
     borderRadius: THEME.radius.lg,
     overflow: "hidden",
     flexDirection: "row",
-    ...THEME.shadow.soft,
+    ...Platform.select({
+      web: {
+        ...THEME.shadow.web,
+        transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
+      } as any,
+      default: THEME.shadow.soft,
+    }),
+  },
+  dcpCardHovered: {
+    ...Platform.select({
+      web: {
+        transform: [{ translateY: -2 }],
+        boxShadow: "0 12px 20px -8px rgba(0, 0, 0, 0.12), 0 4px 12px -2px rgba(0, 0, 0, 0.05)",
+      } as any,
+    }),
   },
   dcpCardRetired: {
-    opacity: 0.7,
+    opacity: 0.75,
   },
   dcpCardAccent: {
-    width: 5,
+    width: 4,
     backgroundColor: COLORS.primary,
   },
   dcpCardBody: {
     flex: 1,
-    padding: THEME.spacing.md,
-    paddingVertical: 14,
+    padding: THEME.spacing.lg,
   },
 
   cardHeaderRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
     justifyContent: "space-between",
     gap: 8,
+    marginBottom: THEME.spacing.sm,
   },
 
   dcpTitle: {
     flex: 1,
     color: COLORS.text,
-    fontSize: THEME.fontSize.lg,
+    fontSize: 16,
     fontWeight: "800",
-    marginBottom: 8,
-    justifyContent: "center",
-    alignItems: "center",
-    textAlign: "center",
-    paddingLeft: 30
+    lineHeight: 22,
   },
   dcpTitle2: {
     flex: 1,
     color: COLORS.text,
-    fontSize: THEME.fontSize.lg,
+    fontSize: 16,
     fontWeight: "800",
-    marginBottom: 8,
-    justifyContent: "center",
-    alignItems: "center",
-    textAlign: "center",
-    paddingLeft: 30
-
+    lineHeight: 22,
   },
 
   metaRow: {
@@ -1267,8 +1392,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
-    marginBottom: 6,
-    justifyContent: "center",
+    marginBottom: 8,
+    justifyContent: "flex-start",
   },
 
   metaChip: {
@@ -1286,9 +1411,9 @@ const styles = StyleSheet.create({
   },
 
   metaChipSmall: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
   },
   metaChipSmallText: {
     fontSize: 11,
@@ -1299,7 +1424,7 @@ const styles = StyleSheet.create({
   metaChipDate: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#D1FAE5",
+    backgroundColor: "rgba(22, 163, 74, 0.08)",
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 999,
@@ -1318,9 +1443,8 @@ const styles = StyleSheet.create({
 
   dcpMetaCenter: {
     color: COLORS.muted,
-    marginTop: 4,
-    fontSize: THEME.fontSize.sm,
-    textAlign: "center",
+    marginTop: 6,
+    fontSize: THEME.fontSize.sm - 1,
   },
 
   retireBtn: {
@@ -1328,28 +1452,41 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: COLORS.primary,
-    borderRadius: THEME.radius.md,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    marginTop: 10,
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginTop: 12,
+    alignSelf: "flex-start",
+    ...Platform.select({
+      web: {
+        cursor: "pointer",
+        transition: "opacity 0.2s ease",
+      } as any,
+    }),
   },
   retireBtnText: {
     color: "#fff",
     fontWeight: "700",
-    fontSize: 13,
+    fontSize: 12,
   },
 
   /* ── More button ── */
   moreBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    backgroundColor: COLORS.bg,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: COLORS.card,
     borderWidth: 1,
     borderColor: COLORS.border,
     alignItems: "center",
     justifyContent: "center",
     zIndex: 10,
+    ...Platform.select({
+      web: {
+        cursor: "pointer",
+        transition: "all 0.2s ease",
+      } as any,
+    }),
   },
   moreBtnText: {
     color: COLORS.text,
@@ -1363,8 +1500,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 14,
-    marginTop: 10,
+    paddingVertical: 16,
+    marginTop: 16,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
   },
@@ -1384,19 +1521,23 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.card,
     borderWidth: 1,
     borderColor: COLORS.border,
-    marginBottom: THEME.spacing.sm,
-    borderRadius: THEME.radius.md,
+    marginBottom: THEME.spacing.md,
+    borderRadius: 14,
     paddingHorizontal: THEME.spacing.md,
+    ...Platform.select({
+      web: {
+        transition: "border-color 0.2s ease",
+      } as any,
+    }),
   },
   historialSearchInput: {
     flex: 1,
-    paddingVertical: THEME.spacing.md,
+    paddingVertical: 12,
     color: COLORS.text,
-    fontSize: THEME.fontSize.md,
-    textAlign: "center",
+    fontSize: 15,
   },
   historialClearBtn: {
-    paddingVertical: THEME.spacing.sm,
+    paddingVertical: THEME.spacing.xs,
     paddingHorizontal: THEME.spacing.sm,
     borderRadius: THEME.radius.sm,
     borderWidth: 1,
@@ -1446,7 +1587,7 @@ const styles = StyleSheet.create({
   /* ── Menus & modals ── */
   menuBackdrop: {
     flex: 1,
-    backgroundColor: "transparent", // invisible so clicking outside just cancels
+    backgroundColor: "transparent",
   },
   menuCard: {
     width: 170,
@@ -1455,9 +1596,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     shadowColor: "#000",
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
     elevation: 5,
   },
   menuAction: {
@@ -1469,7 +1610,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   menuDeleteText: {
-    color: "#b91c1c",
+    color: "#dc2626",
     fontWeight: "700",
   },
   menuDivider: {
@@ -1489,15 +1630,16 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: 420,
     backgroundColor: COLORS.card,
-    borderRadius: THEME.radius.lg,
+    borderRadius: 16,
     padding: THEME.spacing.lg,
     borderWidth: 1,
     borderColor: COLORS.border,
+    ...THEME.shadow.web,
   },
 
   modalTitle: {
     fontSize: THEME.fontSize.lg,
-    fontWeight: "700",
+    fontWeight: "800",
     color: COLORS.text,
     textAlign: "center",
     marginBottom: THEME.spacing.sm,
@@ -1506,6 +1648,7 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     textAlign: "center",
     marginBottom: 12,
+    lineHeight: 20,
   },
 
   modalCardModern: {
@@ -1513,7 +1656,7 @@ const styles = StyleSheet.create({
     maxWidth: 520,
     backgroundColor: COLORS.card,
     borderRadius: 20,
-    padding: 22,
+    padding: 24,
     borderWidth: 1,
     borderColor: COLORS.border,
     shadowColor: "#000",
@@ -1548,7 +1691,7 @@ const styles = StyleSheet.create({
     minHeight: 48,
     borderWidth: 1,
     borderColor: COLORS.border,
-    borderRadius: 14,
+    borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
     backgroundColor: COLORS.bg,
@@ -1561,7 +1704,7 @@ const styles = StyleSheet.create({
     minHeight: 48,
     borderWidth: 1,
     borderColor: COLORS.border,
-    borderRadius: 14,
+    borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
     backgroundColor: COLORS.bg,
@@ -1629,9 +1772,9 @@ const styles = StyleSheet.create({
 
   modalActionsModern: {
     flexDirection: "row",
-    justifyContent: "center",
+    justifyContent: "flex-end",
     gap: 10,
-    marginTop: 10,
+    marginTop: 14,
   },
 
   /* ── Retire modal actions (column layout) ── */
@@ -1654,7 +1797,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   cancelBtnModern: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 18,
     paddingVertical: 12,
     borderRadius: 12,
     backgroundColor: COLORS.border,
@@ -1664,7 +1807,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   saveBtnModern: {
-    paddingHorizontal: 18,
+    paddingHorizontal: 20,
     paddingVertical: 12,
     borderRadius: 12,
     backgroundColor: COLORS.primary,
@@ -1674,10 +1817,10 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   deleteBtnModern: {
-    paddingHorizontal: 18,
+    paddingHorizontal: 20,
     paddingVertical: 12,
     borderRadius: 12,
-    backgroundColor: "#b91c1c",
+    backgroundColor: "#dc2626",
   },
   deleteBtnTextModern: {
     color: "#FFFFFF",

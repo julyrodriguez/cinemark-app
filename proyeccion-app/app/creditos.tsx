@@ -33,6 +33,7 @@ import {
   TouchableOpacity,
   TouchableWithoutFeedback,
   View,
+  Animated,
 } from "react-native";
 
 import { auth, db, CINES_COLLECTION } from "../lib/firebaseConfig";
@@ -84,6 +85,151 @@ function normalizeHHMMSS(input: string): string | null {
 
   return `${pad2(h)}:${pad2(m)}:${pad2(s)}`;
 }
+
+const CreditoCard = ({
+  item,
+  readOnly,
+  abrirMenuItem,
+  COLORS,
+  THEME,
+  EXTRA,
+}: {
+  item: Credito;
+  readOnly: boolean;
+  abrirMenuItem: (item: Credito, event?: any) => void;
+  COLORS: any;
+  THEME: any;
+  EXTRA: any;
+}) => {
+  const [isHovered, setIsHovered] = useState(false);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 350,
+      useNativeDriver: Platform.OS !== "web",
+    }).start();
+  }, []);
+
+  const line1 = item.horaCredito
+    ? [{ kind: "on" as const, label: "Prenden", time: item.horaCredito }]
+    : [];
+
+  const line2: Array<{ kind: "on" | "off"; label: string; time: string }> = [];
+  if (item.horaApaga1)
+    line2.push({ kind: "off", label: "Apagan", time: item.horaApaga1 });
+  if (item.horaPrende1)
+    line2.push({ kind: "on", label: "Prenden", time: item.horaPrende1 });
+
+  const line3: Array<{ kind: "on" | "off"; label: string; time: string }> = [];
+  if (item.horaApaga2)
+    line3.push({ kind: "off", label: "Apagan", time: item.horaApaga2 });
+  if (item.horaPrende2)
+    line3.push({ kind: "on", label: "Prenden", time: item.horaPrende2 });
+
+  const Chip = ({
+    kind,
+    label,
+    time,
+  }: {
+    kind: "on" | "off";
+    label: string;
+    time: string;
+  }) => (
+    <View
+      style={[
+        styles.credChip,
+        kind === "on" ? styles.credChipOn : styles.credChipOff,
+      ]}
+    >
+      <MaterialCommunityIcons
+        name={kind === "on" ? "lightbulb-on-outline" : "lightbulb-off-outline"}
+        size={14}
+        color={kind === "on" ? EXTRA.success : EXTRA.danger}
+        style={{ marginRight: 6 }}
+      />
+      <Text
+        style={[
+          styles.credChipText,
+          kind === "on" ? styles.credChipTextOn : styles.credChipTextOff,
+        ]}
+      >
+        {label} <Text style={styles.credTime}>{time}</Text>
+      </Text>
+    </View>
+  );
+
+  const Row = ({
+    title,
+    items,
+  }: {
+    title: string;
+    items: Array<{ kind: "on" | "off"; label: string; time: string }>;
+  }) => {
+    if (!items.length) return null;
+    return (
+      <View style={styles.credRow}>
+        <Text style={styles.credRowLabel} numberOfLines={1}>
+          {title}
+        </Text>
+        <View style={styles.credRowChips}>
+          {items.map((it, i) => (
+            <Chip key={`${title}-${it.label}-${it.time}-${i}`} {...it} />
+          ))}
+        </View>
+      </View>
+    );
+  };
+
+  return (
+    <Animated.View style={{ opacity: fadeAnim }}>
+      <View
+        {...({
+          onMouseEnter: Platform.OS === "web" ? () => setIsHovered(true) : undefined,
+          onMouseLeave: Platform.OS === "web" ? () => setIsHovered(false) : undefined,
+        } as any)}
+        style={[
+          styles.creditCard,
+          isHovered && styles.creditCardHovered,
+          { borderColor: isHovered ? COLORS.primary : COLORS.border }
+        ]}
+      >
+        <View style={styles.creditCardAccent} />
+        <View style={styles.creditCardBody}>
+          <View style={styles.cardHeaderRow}>
+            <Text style={styles.title} numberOfLines={2}>
+              {item.pelicula}
+            </Text>
+
+            {!readOnly && (
+              <Pressable
+                onPress={(e) => {
+                  e.stopPropagation();
+                  abrirMenuItem(item, e.nativeEvent);
+                }}
+                style={[
+                  styles.moreBtn,
+                  isHovered && { borderColor: COLORS.primary }
+                ]}
+              >
+                <MaterialCommunityIcons
+                  name="dots-vertical"
+                  size={18}
+                  color={COLORS.text}
+                />
+              </Pressable>
+            )}
+          </View>
+
+          <Row title="Final" items={line1} />
+          <Row title="Postcrédito 1" items={line2} />
+          <Row title="Postcrédito 2" items={line3} />
+        </View>
+      </View>
+    </Animated.View>
+  );
+};
 
 export default function CreditosScreen({ readOnly = false }: { readOnly?: boolean }) {
   const { user, cineId, loading: sessionLoading } = useAuthUser();
@@ -400,117 +546,16 @@ export default function CreditosScreen({ readOnly = false }: { readOnly?: boolea
     }
   };
 
-  const renderItem = ({ item }: { item: Credito }) => {
-    const line1 = item.horaCredito
-      ? [{ kind: "on" as const, label: "Prenden", time: item.horaCredito }]
-      : [];
-
-    const line2: Array<{ kind: "on" | "off"; label: string; time: string }> = [];
-    if (item.horaApaga1)
-      line2.push({ kind: "off", label: "Apagan", time: item.horaApaga1 });
-    if (item.horaPrende1)
-      line2.push({ kind: "on", label: "Prenden", time: item.horaPrende1 });
-
-    const line3: Array<{ kind: "on" | "off"; label: string; time: string }> = [];
-    if (item.horaApaga2)
-      line3.push({ kind: "off", label: "Apagan", time: item.horaApaga2 });
-    if (item.horaPrende2)
-      line3.push({ kind: "on", label: "Prenden", time: item.horaPrende2 });
-
-    const Chip = ({
-      kind,
-      label,
-      time,
-    }: {
-      kind: "on" | "off";
-      label: string;
-      time: string;
-    }) => (
-      <View
-        style={[
-          styles.credChip,
-          kind === "on" ? styles.credChipOn : styles.credChipOff,
-        ]}
-      >
-        <MaterialCommunityIcons
-          name={kind === "on" ? "lightbulb-on-outline" : "lightbulb-off-outline"}
-          size={14}
-          color={
-            kind === "on"
-              ? styles.credChipTextOn.color
-              : styles.credChipTextOff.color
-          }
-          style={{ marginRight: 6 }}
-        />
-
-        <Text
-          style={[
-            styles.credChipText,
-            kind === "on" ? styles.credChipTextOn : styles.credChipTextOff,
-          ]}
-        >
-          {label} <Text style={styles.credTime}>{time}</Text>
-        </Text>
-      </View>
-    );
-
-    const Row = ({
-      title,
-      items,
-    }: {
-      title: string;
-      items: Array<{ kind: "on" | "off"; label: string; time: string }>;
-    }) => {
-      if (!items.length) return null;
-      return (
-        <View style={styles.credRow}>
-          <Text style={styles.credRowLabel} numberOfLines={1}>
-            {title}
-          </Text>
-
-          <View style={styles.credRowChips}>
-            {items.map((it, i) => (
-              <Chip key={`${title}-${it.label}-${it.time}-${i}`} {...it} />
-            ))}
-          </View>
-        </View>
-      );
-    };
-
-    return (
-      <View style={styles.creditCard}>
-        <View style={styles.creditCardAccent} />
-
-        <View style={styles.creditCardBody}>
-          <View style={styles.cardHeaderRow}>
-            <Text style={styles.title} numberOfLines={2}>
-              {item.pelicula}
-            </Text>
-
-            {!readOnly && (
-              <Pressable
-                onPress={(e) => {
-                  e.stopPropagation();
-                  abrirMenuItem(item, e.nativeEvent);
-                }}
-                style={styles.moreBtn}
-              >
-                <MaterialCommunityIcons
-                  name="dots-vertical"
-                  size={18}
-                  color={COLORS.text}
-                />
-              </Pressable>
-            )}
-          </View>
-
-          <Row title="Final" items={line1} />
-          <Row title="Postcrédito 1" items={line2} />
-          <Row title="Postcrédito 2" items={line3} />
-        </View>
-      </View>
-    );
-  };
+  const renderItem = ({ item }: { item: Credito }) => (
+    <CreditoCard
+      item={item}
+      readOnly={readOnly}
+      abrirMenuItem={abrirMenuItem}
+      COLORS={COLORS}
+      THEME={THEME}
+      EXTRA={EXTRA}
+    />
+  );
 
   const showingSearch = search.trim().length >= 2;
   const data = showingSearch ? searchResults : items;
@@ -528,6 +573,7 @@ export default function CreditosScreen({ readOnly = false }: { readOnly?: boolea
     <View style={styles.container}>
       <View style={styles.topArea}>
         <View style={styles.searchWrap}>
+          <MaterialCommunityIcons name="magnify" size={20} color={COLORS.muted} style={{ marginRight: 8 }} />
           <TextInput
             value={search}
             onChangeText={onChangeSearch}
@@ -548,7 +594,7 @@ export default function CreditosScreen({ readOnly = false }: { readOnly?: boolea
               }}
               style={styles.clearBtn}
             >
-              <Text style={styles.clearBtnText}>×</Text>
+              <MaterialCommunityIcons name="close-circle" size={18} color={COLORS.muted} />
             </TouchableOpacity>
           ) : null}
         </View>
@@ -654,7 +700,7 @@ export default function CreditosScreen({ readOnly = false }: { readOnly?: boolea
         animationType="fade"
         onRequestClose={cerrarConfirmarBorrado}
       >
-        <View style={styles.modalWrap}>
+        <View style={styles.modalOverlay}>
           <View style={styles.confirmCard}>
             <Text style={styles.modalTitle}>Eliminar crédito</Text>
 
@@ -666,19 +712,19 @@ export default function CreditosScreen({ readOnly = false }: { readOnly?: boolea
 
             <View style={styles.modalActionsRow}>
               <TouchableOpacity
-                style={[styles.btn, styles.btnSecondary]}
+                style={styles.cancelBtnModern}
                 onPress={cerrarConfirmarBorrado}
               >
-                <Text style={[styles.btnText, { color: COLORS.text }]}>
+                <Text style={styles.cancelBtnTextModern}>
                   Cancelar
                 </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.btn, styles.btnDanger]}
+                style={styles.deleteBtnModern}
                 onPress={ejecutarBorrado}
               >
-                <Text style={[styles.btnText, { color: "#fff" }]}>Borrar</Text>
+                <Text style={styles.deleteBtnTextModern}>Borrar</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -693,9 +739,9 @@ export default function CreditosScreen({ readOnly = false }: { readOnly?: boolea
       >
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : undefined}
-          style={styles.modalWrap}
+          style={styles.modalOverlay}
         >
-          <View style={styles.modalCard}>
+          <View style={styles.modalCardModern}>
             <Text style={styles.modalTitle}>
               {editingId ? "Editar crédito" : "Nuevo crédito"}
             </Text>
@@ -793,19 +839,19 @@ export default function CreditosScreen({ readOnly = false }: { readOnly?: boolea
 
             <View style={styles.modalActionsRow}>
               <TouchableOpacity
-                style={[styles.btn, styles.btnSecondary]}
+                style={styles.cancelBtnModern}
                 onPress={() => setOpenModal(false)}
               >
-                <Text style={[styles.btnText, { color: COLORS.text }]}>
+                <Text style={styles.cancelBtnTextModern}>
                   Cancelar
                 </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.btn, styles.btnPrimary]}
+                style={styles.saveBtnModern}
                 onPress={saveItem}
               >
-                <Text style={[styles.btnText, { color: "#fff" }]}>
+                <Text style={styles.saveBtnTextModern}>
                   {editingId ? "Guardar" : "Crear"}
                 </Text>
               </TouchableOpacity>
@@ -822,7 +868,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "transparent",
     position: "relative",
-    minHeight:0,
+    minHeight: 0,
   },
 
   topArea: {
@@ -831,7 +877,7 @@ const styles = StyleSheet.create({
 
   list: {
     flex: 1,
-    minHeight:0,
+    minHeight: 0,
   },
 
   center: {
@@ -856,93 +902,111 @@ const styles = StyleSheet.create({
     borderRadius: THEME.radius.lg,
     overflow: "hidden",
     flexDirection: "row",
-    ...THEME.shadow.soft,
+    ...Platform.select({
+      web: {
+        ...THEME.shadow.web,
+        transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
+      } as any,
+      default: THEME.shadow.soft,
+    }),
+  },
+  creditCardHovered: {
+    ...Platform.select({
+      web: {
+        transform: [{ translateY: -2 }],
+        boxShadow: "0 12px 20px -8px rgba(0, 0, 0, 0.12), 0 4px 12px -2px rgba(0, 0, 0, 0.05)",
+      },
+    }),
   },
   creditCardAccent: {
-    width: 5,
+    width: 4,
     backgroundColor: COLORS.primary,
   },
   creditCardBody: {
     flex: 1,
-    padding: THEME.spacing.md,
+    padding: THEME.spacing.lg,
     justifyContent: "center",
   },
 
   cardHeaderRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
     justifyContent: "space-between",
     gap: 8,
+    marginBottom: THEME.spacing.md,
   },
 
   title: {
     flex: 1,
     color: COLORS.text,
-    fontSize: THEME.fontSize.md,
+    fontSize: 16,
     fontWeight: "800",
-    marginBottom: THEME.spacing.sm,
-    textAlign: "center",
+    lineHeight: 22,
+    textAlign: "left",
   },
 
   moreBtn: {
-    position: "absolute",
-    right: 0,
     width: 32,
     height: 32,
-    borderRadius: THEME.radius.sm,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: THEME.colors.bgMobile,
+    backgroundColor: COLORS.card,
     borderWidth: 1,
     borderColor: COLORS.border,
+    ...Platform.select({
+      web: {
+        cursor: "pointer",
+        transition: "all 0.2s ease",
+      },
+    }),
   },
 
   credRow: {
-    marginTop: 6,
-    alignItems: "center",
-    justifyContent: "center",
+    marginTop: 10,
+    alignItems: "flex-start",
   },
   credRowLabel: {
     color: COLORS.muted,
-    fontSize: 12,
-    fontWeight: "700",
+    fontSize: 11,
+    fontWeight: "800",
     textTransform: "uppercase",
-    letterSpacing: 0.6,
+    letterSpacing: 0.8,
     marginBottom: 6,
-    textAlign: "center",
   },
   credRowChips: {
     flexDirection: "row",
     flexWrap: "wrap",
-    justifyContent: "center",
     alignItems: "center",
+    gap: 8,
   },
 
   credChip: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 6,
+    paddingVertical: 5,
     paddingHorizontal: 10,
     borderRadius: 999,
     borderWidth: 1,
-    marginRight: 8,
-    marginBottom: 8,
   },
   credChipOn: {
-    backgroundColor: EXTRA.success + "22",
-    borderColor: EXTRA.success + "55",
+    backgroundColor: "rgba(22, 163, 74, 0.08)",
+    borderColor: "rgba(22, 163, 74, 0.15)",
   },
   credChipOff: {
-    backgroundColor: EXTRA.danger + "22",
-    borderColor: EXTRA.danger + "55",
+    backgroundColor: "rgba(220, 38, 38, 0.08)",
+    borderColor: "rgba(220, 38, 38, 0.15)",
   },
   credChipText: {
-    fontSize: THEME.fontSize.sm,
-    fontWeight: "800",
+    fontSize: 12,
+    fontWeight: "700",
   },
   credChipTextOn: { color: EXTRA.success },
   credChipTextOff: { color: EXTRA.danger },
-  credTime: { fontVariant: ["tabular-nums"] },
+  credTime: {
+    fontVariant: ["tabular-nums"],
+    fontWeight: "800",
+  },
 
   searchWrap: {
     flexDirection: "row",
@@ -951,22 +1015,19 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     marginBottom: THEME.spacing.sm,
-    borderRadius: THEME.radius.md,
+    borderRadius: 14,
     paddingHorizontal: THEME.spacing.md,
   },
   searchInput: {
     flex: 1,
-    paddingVertical: THEME.spacing.md,
+    paddingVertical: 12,
     color: COLORS.text,
-    fontSize: THEME.fontSize.md,
+    fontSize: 15,
   },
   clearBtn: {
-    paddingVertical: THEME.spacing.sm,
-    paddingHorizontal: THEME.spacing.sm,
-    borderRadius: THEME.radius.sm,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.card,
+    padding: 4,
+    alignItems: "center",
+    justifyContent: "center",
   },
   clearBtnText: {
     color: COLORS.text,
@@ -979,12 +1040,13 @@ const styles = StyleSheet.create({
   },
 
   footerLoadMore: {
-    paddingVertical: 14,
+    paddingVertical: 20,
     alignItems: "center",
     gap: 8,
   },
   footerHint: {
     color: COLORS.muted,
+    fontSize: 13,
   },
   loadMoreBtn: {
     backgroundColor: COLORS.primary,
@@ -999,44 +1061,45 @@ const styles = StyleSheet.create({
   },
 
   fabBR: {
-  position: "absolute",
-  right: THEME.spacing.lg,
-  bottom: 24,
-  width: 56,
-  height: 56,
-  borderRadius: 28,
-  backgroundColor: COLORS.primary,
-  alignItems: "center",
-  justifyContent: "center",
-  ...THEME.shadow.web,
-  zIndex: 50,
-  elevation: 10,
-},
+    position: "absolute",
+    right: THEME.spacing.lg,
+    bottom: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: COLORS.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    ...THEME.shadow.web,
+    zIndex: 50,
+    elevation: 10,
+  },
   menuBackdrop: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.4)",
-    alignItems: "flex-end",
-    justifyContent: "center",
-    paddingRight: THEME.spacing.lg,
+    backgroundColor: "transparent",
   },
   menuCard: {
-    width: 200,
+    width: 170,
     backgroundColor: COLORS.card,
-    borderRadius: THEME.radius.md,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: COLORS.border,
-    ...THEME.shadow.web,
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 5,
   },
   menuAction: {
-    paddingVertical: THEME.spacing.md,
-    paddingHorizontal: THEME.spacing.lg,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
   },
   menuActionText: {
     color: COLORS.text,
-    fontWeight: "600",
+    fontWeight: "700",
   },
   menuDeleteText: {
-    color: "#b91c1c",
+    color: "#dc2626",
     fontWeight: "700",
   },
   menuDivider: {
@@ -1044,81 +1107,34 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.border,
   },
 
-  modalWrap: {
+  modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.45)",
-    alignItems: "center",
     justifyContent: "center",
+    alignItems: "center",
     padding: THEME.spacing.lg,
   },
-  modalCard: {
-    width: "100%",
-    maxWidth: 520,
-    backgroundColor: COLORS.card,
-    borderRadius: THEME.radius.lg,
-    padding: THEME.spacing.lg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
+
   confirmCard: {
     width: "100%",
     maxWidth: 420,
     backgroundColor: COLORS.card,
-    borderRadius: THEME.radius.lg,
+    borderRadius: 16,
     padding: THEME.spacing.lg,
     borderWidth: 1,
     borderColor: COLORS.border,
+    ...THEME.shadow.web,
   },
+
   modalTitle: {
     fontSize: THEME.fontSize.lg,
     fontWeight: "800",
     color: COLORS.text,
+    textAlign: "center",
     marginBottom: THEME.spacing.sm,
   },
   confirmText: {
     color: COLORS.text,
-    lineHeight: 20,
-  },
-
-  inputLabel: {
-    color: COLORS.muted,
-    marginTop: THEME.spacing.sm,
-    marginBottom: THEME.spacing.xs,
-    fontSize: THEME.fontSize.sm,
-  },
-  input: {
-    backgroundColor: COLORS.card,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: THEME.radius.md,
-    paddingHorizontal: THEME.spacing.md,
-    paddingVertical: THEME.spacing.md,
-    color: COLORS.text,
-    fontSize: THEME.fontSize.md,
-  },
-
-  btn: {
-    flex: 1,
-    paddingVertical: THEME.spacing.md,
-    borderRadius: THEME.radius.md,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-  },
-  btnPrimary: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
-  },
-  btnSecondary: {
-    backgroundColor: COLORS.card,
-    borderColor: COLORS.border,
-  },
-  btnDanger: {
-    backgroundColor: "#b91c1c",
-    borderColor: "#b91c1c",
-  },
-  btnText: {
-    fontWeight: "700",
   },
 
   switchRow: {
@@ -1145,5 +1161,76 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     color: COLORS.muted,
+  },
+
+  /* ── Modal elements ── */
+  modalCardModern: {
+    width: "100%",
+    maxWidth: 520,
+    backgroundColor: COLORS.card,
+    borderRadius: 20,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    shadowColor: "#000",
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
+  },
+  inputLabel: {
+    marginBottom: 7,
+    fontSize: 13,
+    fontWeight: "700",
+    color: COLORS.text,
+    marginTop: 10,
+  },
+  input: {
+    minHeight: 48,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: COLORS.bg,
+    color: COLORS.text,
+    fontSize: 15,
+    marginBottom: 4,
+  },
+  cancelBtnModern: {
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: COLORS.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cancelBtnTextModern: {
+    color: COLORS.text,
+    fontWeight: "700",
+  },
+  saveBtnModern: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: COLORS.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  saveBtnTextModern: {
+    color: "#FFFFFF",
+    fontWeight: "800",
+  },
+  deleteBtnModern: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: "#dc2626",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  deleteBtnTextModern: {
+    color: "#FFFFFF",
+    fontWeight: "800",
   },
 });

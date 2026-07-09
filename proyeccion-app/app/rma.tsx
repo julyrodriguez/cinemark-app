@@ -199,7 +199,7 @@ export default function RmaTab({ readOnly = false }: { readOnly?: boolean }) {
                   onPress={(e) => openMenuForRma(item, e)}
                   style={styles.moreBtn}
                 >
-                  <Text style={styles.moreBtnText}>⋮</Text>
+                  <MaterialCommunityIcons name="dots-vertical" size={18} color={COLORS.text} />
                 </Pressable>
               )}
             </View>
@@ -389,17 +389,23 @@ const styles = StyleSheet.create({
 
   moreBtn: {
     position: "absolute",
-    top: 8,
-    right: 8,
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    backgroundColor: COLORS.bg,
+    top: 14,
+    right: 14,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: COLORS.card,
     borderWidth: 1,
     borderColor: COLORS.border,
     alignItems: "center",
     justifyContent: "center",
     zIndex: 10,
+    ...Platform.select({
+      web: {
+        cursor: "pointer",
+        transition: "all 0.2s ease",
+      },
+    }),
   },
   moreBtnText: {
     color: COLORS.text,
@@ -410,10 +416,7 @@ const styles = StyleSheet.create({
 
   menuBackdrop: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.10)",
-    alignItems: "flex-end",
-    justifyContent: "center",
-    paddingRight: 16,
+    backgroundColor: "transparent",
   },
   menuCard: {
     width: 170,
@@ -422,9 +425,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     shadowColor: "#000",
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
     elevation: 5,
   },
   menuAction: {
@@ -432,7 +435,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   menuDeleteText: {
-    color: "#b91c1c",
+    color: "#dc2626",
     fontWeight: "700",
   },
 
