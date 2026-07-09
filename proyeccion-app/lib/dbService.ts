@@ -14,6 +14,9 @@ import {
   where as firestoreWhere,
   limit as firestoreLimit,
   serverTimestamp as firestoreServerTimestamp,
+  startAt as firestoreStartAt,
+  endAt as firestoreEndAt,
+  startAfter as firestoreStartAfter,
   QueryConstraint
 } from "firebase/firestore";
 import { db as realFirestoreDb, auth } from "./firebaseConfig";
@@ -78,16 +81,174 @@ export function doc(database: any, ...pathSegments: string[]): DbRef {
   return new DbRef("document", pathSegments, firestoreRef);
 }
 
+// Helper para aplicar las restricciones de la consulta del lado del cliente
+function applyConstraints(data: any[], constraints: any[]): any[] {
+  if (!constraints || constraints.length === 0) return data;
+
+  let result = [...data];
+
+  // 1. Filtrar con 'where'
+  for (const c of constraints) {
+    if (c.type === "where") {
+      const { field, op, val } = c;
+      result = result.filter(item => {
+        const itemVal = item[field];
+        if (op === "==") return itemVal === val;
+        if (op === "!=") return itemVal !== val;
+        if (op === ">") return itemVal > val;
+        if (op === ">=") return itemVal >= val;
+        if (op === "<") return itemVal < val;
+        if (op === "<=") return itemVal <= val;
+        if (op === "array-contains") return Array.isArray(itemVal) && itemVal.includes(val);
+        return true;
+      });
+    }
+  }
+
+  // 2. Ordenar con 'orderBy'
+  const orderBys = constraints.filter(c => c.type === "orderBy");
+  if (orderBys.length > 0) {
+    result.sort((a, b) => {
+      for (const ob of orderBys) {
+        const { field, direction } = ob;
+        const valA = a[field];
+        const valB = b[field];
+
+        if (valA === valB) continue;
+        if (valA === undefined || valA === null) return direction === "asc" ? -1 : 1;
+        if (valB === undefined || valB === null) return direction === "asc" ? 1 : -1;
+
+        if (typeof valA === "string" && typeof valB === "string") {
+          const cmp = valA.localeCompare(valB);
+          if (cmp !== 0) return direction === "asc" ? cmp : -cmp;
+        } else {
+          if (valA < valB) return direction === "asc" ? -1 : 1;
+          if (valA > valB) return direction === "asc" ? 1 : -1;
+        }
+      }
+      return 0;
+    });
+  }
+
+  // 3. Filtrar con 'startAt', 'endAt' o 'startAfter'
+  const startAtConstraint = constraints.find(c => c.type === "startAt");
+  const endAtConstraint = constraints.find(c => c.type === "endAt");
+  const startAfterConstraint = constraints.find(c => c.type === "startAfter");
+
+  if (startAtConstraint || endAtConstraint || startAfterConstraint) {
+    const primaryOrderBy = orderBys[0];
+    if (primaryOrderBy) {
+      const field = primaryOrderBy.field;
+
+      if (startAtConstraint) {
+        const targetVal = startAtConstraint.values[0];
+        result = result.filter(item => item[field] >= targetVal);
+      }
+
+      if (endAtConstraint) {
+        const targetVal = endAtConstraint.values[0];
+        result = result.filter(item => item[field] <= targetVal);
+      }
+
+      if (startAfterConstraint) {
+        const targetDocOrVal = startAfterConstraint.values[0];
+        let targetVal: any;
+        if (targetDocOrVal && typeof targetDocOrVal === "object" && typeof targetDocOrVal.data === "function") {
+          targetVal = targetDocOrVal.data()[field];
+        } else if (targetDocOrVal && typeof targetDocOrVal === "object" && targetDocOrVal.id) {
+          targetVal = targetDocOrVal[field];
+        } else {
+          targetVal = targetDocOrVal;
+        }
+
+        if (targetVal !== undefined && targetVal !== null) {
+          result = result.filter(item => {
+            const itemVal = item[field];
+            if (primaryOrderBy.direction === "desc") {
+              return itemVal < targetVal;
+            } else {
+              return itemVal > targetVal;
+            }
+          });
+        }
+      }
+    }
+  }
+
+  // 4. Limitar con 'limit'
+  const limitConstraint = constraints.find(c => c.type === "limit");
+  if (limitConstraint) {
+    result = result.slice(0, limitConstraint.count);
+  }
+
+  return result;
+}
+
 // 3. Mock de query()
-export function query(dbRef: DbRef, ...queryConstraints: QueryConstraint[]): DbRef {
-  const firestoreRef = firestoreQuery(dbRef.firestoreRef, ...queryConstraints);
+export function query(dbRef: DbRef, ...queryConstraints: any[]): DbRef {
+  const realConstraints = queryConstraints.map(c => c._realConstraint || c);
+  const firestoreRef = firestoreQuery(dbRef.firestoreRef, ...realConstraints);
   return new DbRef("query", dbRef.path, firestoreRef, queryConstraints);
 }
 
-// Re-exportar constraints sin modificar
-export const orderBy = firestoreOrderBy;
-export const where = firestoreWhere;
-export const limit = firestoreLimit;
+// Envolver constraints para capturar sus valores y poder evaluarlas del lado del cliente
+export function where(field: string, op: any, val: any) {
+  const real = firestoreWhere(field, op, val);
+  return {
+    type: "where",
+    field,
+    op,
+    val,
+    _realConstraint: real
+  };
+}
+
+export function orderBy(field: string, direction: "asc" | "desc" = "asc") {
+  const real = firestoreOrderBy(field, direction);
+  return {
+    type: "orderBy",
+    field,
+    direction,
+    _realConstraint: real
+  };
+}
+
+export function limit(count: number) {
+  const real = firestoreLimit(count);
+  return {
+    type: "limit",
+    count,
+    _realConstraint: real
+  };
+}
+
+export function startAt(...values: any[]) {
+  const real = firestoreStartAt(...values);
+  return {
+    type: "startAt",
+    values,
+    _realConstraint: real
+  };
+}
+
+export function endAt(...values: any[]) {
+  const real = firestoreEndAt(...values);
+  return {
+    type: "endAt",
+    values,
+    _realConstraint: real
+  };
+}
+
+export function startAfter(...values: any[]) {
+  const real = firestoreStartAfter(...values);
+  return {
+    type: "startAfter",
+    values,
+    _realConstraint: real
+  };
+}
+
 export const serverTimestamp = firestoreServerTimestamp;
 
 // 4. Mock de getDocs() (Lectura de colecciones)
@@ -136,16 +297,19 @@ export async function getDocs(dbRef: DbRef) {
 
     const data = await res.json();
 
+    // Aplicar las restricciones de consulta (filtros, orden, límite, paginación) localmente
+    const filteredData = applyConstraints(data, dbRef.constraints || []);
+
     // Mapear el array JSON devuelto a la estructura de QuerySnapshot que espera Firestore
     return {
-      empty: data.length === 0,
-      size: data.length,
-      docs: data.map((docData: any) => ({
+      empty: filteredData.length === 0,
+      size: filteredData.length,
+      docs: filteredData.map((docData: any) => ({
         id: docData.id,
         exists: () => true,
         data: () => docData,
         get: (field: string) => docData[field]
-      }))
+      })) as any
     };
   } catch (err: any) {
     console.error("[DB Service] Error al conectar con la API local, activando Modo Respaldo:", err.message);
@@ -203,7 +367,7 @@ export async function getDoc(dbRef: DbRef) {
       exists: () => true,
       data: () => data,
       get: (field: string) => data[field]
-    };
+    } as any;
   } catch (err: any) {
     console.error("[DB Service] Error en getDoc al conectar con la API, usando Firestore:", err.message);
     fallbackModeActive = true;
@@ -446,12 +610,9 @@ export function httpsCallable(functionsInstance: any, functionName: string) {
   };
 }
 
-// Re-exportar tipos y funciones de consulta adicionales requeridos por las pantallas
+// Re-exportar tipos adicionales requeridos por las pantallas
 export {
   DocumentData,
   QueryDocumentSnapshot,
-  Timestamp,
-  startAt,
-  endAt,
-  startAfter
+  Timestamp
 } from "firebase/firestore";
