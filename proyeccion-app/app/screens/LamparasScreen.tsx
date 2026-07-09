@@ -250,6 +250,7 @@ const RoomProjectorCard = ({
       style={{
         opacity: fadeAnim,
         width: cardWidth,
+        flexDirection: "column",
       }}
     >
       <View
@@ -262,6 +263,8 @@ const RoomProjectorCard = ({
           activeLamp && s.roomCardActive,
           activeShow && s.roomCardInShow,
           isHovered && s.roomCardHovered,
+          activeLamp && { minHeight: 370 }, // Coherencia de altura cuando hay lámpara activa
+          { flex: 1 }, // Permite que todas las tarjetas de la misma fila se estiren por igual
         ]}
       >
         <View style={s.roomCardHeader}>
@@ -285,66 +288,80 @@ const RoomProjectorCard = ({
 
         {activeLamp ? (
           <View style={s.roomLampInfo}>
-            <Text style={s.nomenclatureText}>
-              #{roomNum} - {activeLamp.id}
-            </Text>
-            <View style={s.lampDetailsRow}>
-              {activeLamp.marca ? (
-                <View style={s.detailChip}>
-                  <Text style={s.detailChipText}>{activeLamp.marca}</Text>
-                </View>
-              ) : null}
-              {activeLamp.potencia ? (
-                <View style={[s.detailChip, { backgroundColor: COLORS.primarySoft }]}>
-                  <Text style={[s.detailChipText, { color: COLORS.primary }]}>
-                    {activeLamp.potencia}
-                  </Text>
-                </View>
-              ) : null}
-              {activeLamp.modelo ? (
-                <View style={[s.detailChip, { backgroundColor: COLORS.info + "15" }]}>
-                  <Text style={[s.detailChipText, { color: COLORS.info }]}>
-                    {activeLamp.modelo}
-                  </Text>
-                </View>
-              ) : null}
-            </View>
-            <Text style={s.dateLabel}>
-              Instalada: {formatFirebaseDate(activeLamp.installedAt)}
-            </Text>
-
-            {/* Horas Vinculadas del Control Semanal */}
-            <View style={s.roomHoursContainer}>
-              <View style={s.roomHoursBox}>
-                <Text style={s.roomHoursLabel}>Horas Usadas</Text>
-                <Text style={s.roomHoursVal}>{horasUsadas} h</Text>
-              </View>
-              <View style={s.roomHoursBox}>
-                <Text style={s.roomHoursLabel}>Horas Restantes</Text>
-                <Text style={s.roomHoursVal}>{horasRestantes} h</Text>
-              </View>
-            </View>
-
-            {/* Detalles del show activo */}
-            {activeShow && (
-              <View style={s.showtimeInfoContainer}>
-                <MaterialCommunityIcons name="play-circle" size={16} color="#6366F1" style={{ marginRight: 6 }} />
-                <View style={{ flex: 1 }}>
-                  <Text style={s.showtimeMovieText} numberOfLines={1}>
-                    {activeShow.pelicula}
-                  </Text>
-                  <Text style={s.showtimeTimeText}>
-                    En función hasta las {activeShow.fin}
-                  </Text>
-                </View>
-              </View>
-            )}
-
-            {activeLamp.notas ? (
-              <Text style={s.lampNotes} numberOfLines={2}>
-                💬 {activeLamp.notas}
+            <View>
+              <Text style={s.nomenclatureText}>
+                #{roomNum} - {activeLamp.id}
               </Text>
-            ) : null}
+              <View style={s.lampDetailsRow}>
+                {activeLamp.marca ? (
+                  <View style={s.detailChip}>
+                    <Text style={s.detailChipText}>{activeLamp.marca}</Text>
+                  </View>
+                ) : null}
+                {activeLamp.potencia ? (
+                  <View style={[s.detailChip, { backgroundColor: COLORS.primarySoft }]}>
+                    <Text style={[s.detailChipText, { color: COLORS.primary }]}>
+                      {activeLamp.potencia}
+                    </Text>
+                  </View>
+                ) : null}
+                {activeLamp.modelo ? (
+                  <View style={[s.detailChip, { backgroundColor: COLORS.info + "15" }]}>
+                    <Text style={[s.detailChipText, { color: COLORS.info }]}>
+                      {activeLamp.modelo}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+              <Text style={s.dateLabel}>
+                Instalada: {formatFirebaseDate(activeLamp.installedAt)}
+              </Text>
+
+              {/* Horas Vinculadas del Control Semanal */}
+              <View style={s.roomHoursContainer}>
+                <View style={s.roomHoursBox}>
+                  <Text style={s.roomHoursLabel}>Horas Usadas</Text>
+                  <Text style={s.roomHoursVal}>{horasUsadas} h</Text>
+                </View>
+                <View style={s.roomHoursBox}>
+                  <Text style={s.roomHoursLabel}>Horas Restantes</Text>
+                  <Text style={s.roomHoursVal}>{horasRestantes} h</Text>
+                </View>
+              </View>
+
+              {/* Detalles del show activo o placeholder para mantener la misma altura */}
+              {activeShow ? (
+                <View style={s.showtimeInfoContainer}>
+                  <MaterialCommunityIcons name="play-circle" size={16} color="#6366F1" style={{ marginRight: 6 }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.showtimeMovieText} numberOfLines={1}>
+                      {activeShow.pelicula}
+                    </Text>
+                    <Text style={s.showtimeTimeText}>
+                      En función hasta las {activeShow.fin}
+                    </Text>
+                  </View>
+                </View>
+              ) : (
+                <View style={[s.showtimeInfoContainer, { backgroundColor: COLORS.bg, borderColor: COLORS.border, opacity: 0.8 }]}>
+                  <MaterialCommunityIcons name="play-circle-outline" size={16} color={COLORS.muted} style={{ marginRight: 6 }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[s.showtimeMovieText, { color: COLORS.muted }]} numberOfLines={1}>
+                      Sin función activa
+                    </Text>
+                    <Text style={[s.showtimeTimeText, { color: COLORS.muted }]}>
+                      No hay reproducción en curso
+                    </Text>
+                  </View>
+                </View>
+              )}
+
+              {activeLamp.notas ? (
+                <Text style={s.lampNotes} numberOfLines={2}>
+                  💬 {activeLamp.notas}
+                </Text>
+              ) : null}
+            </View>
 
             <TouchableOpacity
               style={s.retireBtn}
