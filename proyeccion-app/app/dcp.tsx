@@ -486,56 +486,67 @@ export default function DcpScreen({ readOnly = false }: { readOnly?: boolean }) 
       setLoadingRetirados(true);
       const col = collection(db, CINES_COLLECTION, cineId, "dcp");
       const searchKey = term.trim().toUpperCase();
-      let q;
+      let currentLastRef = isLoadMore ? lastRetRef : null;
+      let accumulated: Dcp[] = [];
+      let docsFetched = 0;
+      let shouldKeepFetching = true;
+      let iterations = 0;
 
-      if (searchKey) {
-        // Single field query on "nombre" requires no composite index.
-        // We fetch up to 30 matching the prefix, then filter client-side for retired ones.
-        q = query(
-          col,
-          orderBy("nombre"),
-          startAt(searchKey),
-          endAt(searchKey + "\uf8ff"),
-          ...(isLoadMore && lastRetRef ? [startAfter(lastRetRef)] : []),
-          limit(30)
-        );
-      } else {
-        // By ordering "fechaSalida" descending, strings (dates) come before null.
-        // Active DCPs have fechaSalida = null, so they get naturally pushed to the end!
-        // This gives us ONLY the retired DCPs ordered by newest, using a single default index.
-        q = query(
-          col,
-          orderBy("fechaSalida", "desc"),
-          ...(isLoadMore && lastRetRef ? [startAfter(lastRetRef)] : []),
-          limit(HISTORIAL_PAGE)
-        );
+      while (shouldKeepFetching && iterations < 8) {
+        iterations++;
+        let q;
+
+        if (searchKey) {
+          q = query(
+            col,
+            orderBy("nombre"),
+            startAt(searchKey),
+            endAt(searchKey + "\uf8ff"),
+            ...(currentLastRef ? [startAfter(currentLastRef)] : []),
+            limit(30)
+          );
+        } else {
+          q = query(
+            col,
+            orderBy("fechaSalida", "desc"),
+            ...(currentLastRef ? [startAfter(currentLastRef)] : []),
+            limit(HISTORIAL_PAGE)
+          );
+        }
+
+        const snap = await getDocs(q);
+        if (snap.empty) {
+          shouldKeepFetching = false;
+          break;
+        }
+
+        docsFetched = snap.docs.length;
+        currentLastRef = snap.docs[snap.docs.length - 1];
+
+        const allFetched = snap.docs.map(d => ({ id: d.id, ...d.data() } as Dcp));
+        const retiredItems = allFetched.filter(x => x.retirado === true);
+        accumulated = [...accumulated, ...retiredItems];
+
+        const pageSize = searchKey ? 30 : HISTORIAL_PAGE;
+        if (accumulated.length >= HISTORIAL_PAGE || docsFetched < pageSize) {
+          shouldKeepFetching = false;
+        }
       }
-
-      const snap = await getDocs(q);
-
-      // Filter client-side just in case
-      const allFetched = snap.docs.map(d => ({ id: d.id, ...d.data() } as Dcp));
-      const items = allFetched.filter(x => x.retirado === true);
 
       if (isLoadMore) {
         setRetirados(prev => {
-          // simple deduplication just in case
           const map = new Map(prev.map(i => [i.id, i]));
-          items.forEach(i => map.set(i.id, i));
+          accumulated.forEach(i => map.set(i.id, i));
           return Array.from(map.values());
         });
       } else {
-        setRetirados(items);
+        setRetirados(accumulated);
       }
 
-      setLastRetRef(snap.docs[snap.docs.length - 1] ?? null);
+      setLastRetRef(currentLastRef);
 
-      // If we searched and filtered, hasMore is an approximation based on limit(30)
-      if (searchKey) {
-        setHasMoreRetirados(snap.docs.length === 30);
-      } else {
-        setHasMoreRetirados(snap.docs.length === HISTORIAL_PAGE);
-      }
+      const pageSize = searchKey ? 30 : HISTORIAL_PAGE;
+      setHasMoreRetirados(docsFetched === pageSize && accumulated.length > 0);
     } catch (e: any) {
       console.error("Historial error:", e);
       Alert.alert("Error", "No se pudo cargar el historial. Pedile a soporte que cree el índice de Firestore. Abrí la consola (F12) para tener el link.");

@@ -20,7 +20,6 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  FlatList,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
@@ -34,6 +33,8 @@ import {
   TouchableWithoutFeedback,
   View,
   Animated,
+  ScrollView,
+  useWindowDimensions,
 } from "react-native";
 
 import { auth, db, CINES_COLLECTION } from "../lib/firebaseConfig";
@@ -233,6 +234,9 @@ const CreditoCard = ({
 
 export default function CreditosScreen({ readOnly = false }: { readOnly?: boolean }) {
   const { user, cineId, loading: sessionLoading } = useAuthUser();
+  const { width: screenWidth } = useWindowDimensions();
+  const columns = screenWidth >= 1100 ? 3 : screenWidth >= 768 ? 2 : 1;
+  const itemWidth: any = `${100 / columns}%`;
   const [items, setItems] = useState<Credito[]>([]);
   const [loading, setLoading] = useState(true);
   const [hasMore, setHasMore] = useState(true);
@@ -608,31 +612,12 @@ export default function CreditosScreen({ readOnly = false }: { readOnly?: boolea
         </Text>
       </View>
 
-      <FlatList
-        data={data}
-        keyExtractor={(it) => it.id}
+      <ScrollView
         style={styles.list}
         contentContainerStyle={styles.listContent}
-        ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
-        renderItem={renderItem}
         keyboardShouldPersistTaps="handled"
-        onScrollBeginDrag={Keyboard.dismiss}
-        ListFooterComponent={
-          !showingSearch && hasMore ? (
-            <View style={styles.footerLoadMore}>
-              <TouchableOpacity
-                style={styles.loadMoreBtn}
-                onPress={loadMore}
-                activeOpacity={0.9}
-              >
-                <Text style={styles.loadMoreText}>Cargar más</Text>
-              </TouchableOpacity>
-
-              <Text style={styles.footerHint}>Ver créditos más antiguos</Text>
-            </View>
-          ) : null
-        }
-        ListEmptyComponent={() => (
+      >
+        {data.length === 0 ? (
           <View style={styles.emptyWrap}>
             <Text style={styles.emptyText}>
               {showingSearch
@@ -642,8 +627,30 @@ export default function CreditosScreen({ readOnly = false }: { readOnly?: boolea
                 : "No hay créditos cargados"}
             </Text>
           </View>
+        ) : (
+          <View style={styles.gridContainer}>
+            {data.map((item) => (
+              <View key={item.id} style={{ width: itemWidth, padding: 8 }}>
+                {renderItem({ item })}
+              </View>
+            ))}
+          </View>
         )}
-      />
+
+        {!showingSearch && hasMore ? (
+          <View style={styles.footerLoadMore}>
+            <TouchableOpacity
+              style={styles.loadMoreBtn}
+              onPress={loadMore}
+              activeOpacity={0.9}
+            >
+              <Text style={styles.loadMoreText}>Cargar más</Text>
+            </TouchableOpacity>
+
+            <Text style={styles.footerHint}>Ver créditos más antiguos</Text>
+          </View>
+        ) : null}
+      </ScrollView>
 
       {!readOnly && (
         <TouchableOpacity
@@ -895,6 +902,13 @@ const styles = StyleSheet.create({
     paddingBottom: 120,
   },
 
+  gridContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    paddingHorizontal: 8,
+    alignItems: "flex-start",
+  },
+
   creditCard: {
     backgroundColor: COLORS.card,
     borderWidth: 1,
@@ -915,7 +929,7 @@ const styles = StyleSheet.create({
       web: {
         transform: [{ translateY: -2 }],
         boxShadow: "0 12px 20px -8px rgba(0, 0, 0, 0.12), 0 4px 12px -2px rgba(0, 0, 0, 0.05)",
-      },
+      } as any,
     }),
   },
   creditCardAccent: {
