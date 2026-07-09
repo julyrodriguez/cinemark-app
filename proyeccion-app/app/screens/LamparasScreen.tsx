@@ -11,7 +11,7 @@ import {
   orderBy,
   limit,
 } from "@/lib/dbService";
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -81,6 +81,79 @@ const MODELOS_OPTIONS = [
   "DXL-40BAF/L"
 ];
 
+// Helper to convert time "HH:MM" to minutes from midnight
+function timeToMinutes(timeStr: string): number {
+  if (!timeStr) return 0;
+  const [h, m] = timeStr.split(":").map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
+// Helper to convert time "HH:MM" to minutes from cinema day start (6 AM)
+function timeToMinsFrom6AM(timeStr: string): number {
+  const mins = timeToMinutes(timeStr);
+  return mins < 360 ? mins + 1440 - 360 : mins - 360;
+}
+
+// Helper to get current time in minutes from cinema day start (6 AM)
+function getCurrentMinsFrom6AM(): number {
+  const now = new Date();
+  const mins = now.getHours() * 60 + now.getMinutes();
+  return mins < 360 ? mins + 1440 - 360 : mins - 360;
+}
+
+// Helper to get current weekday key matching database schema ("lunes", "martes", etc.)
+function getCurrentWeekdayKey(): string {
+  let now = dayjs();
+  if (now.hour() < 6) {
+    now = now.subtract(1, "day");
+  }
+  const dayNum = now.day(); // 0 = Sunday, 1 = Monday, etc.
+  const map: Record<number, string> = {
+    0: "domingo",
+    1: "lunes",
+    2: "martes",
+    3: "miercoles",
+    4: "jueves",
+    5: "viernes",
+    6: "sabado",
+  };
+  return map[dayNum];
+}
+
+function PulsingShowDot() {
+  const opacity = React.useRef(new Animated.Value(0.4)).current;
+
+  React.useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: Platform.OS !== "web",
+        }),
+        Animated.timing(opacity, {
+          toValue: 0.4,
+          duration: 1000,
+          useNativeDriver: Platform.OS !== "web",
+        }),
+      ])
+    ).start();
+  }, []);
+
+  return (
+    <Animated.View
+      style={{
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+        backgroundColor: "#6366F1", // indigo
+        marginRight: 5,
+        opacity,
+      }}
+    />
+  );
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 interface LamparaMovimiento {
@@ -133,6 +206,193 @@ function PulsingDot() {
   );
 }
 
+const RoomProjectorCard = ({
+  roomNum,
+  activeLamp,
+  horasUsadas,
+  horasRestantes,
+  activeShow,
+  readOnly,
+  COLORS,
+  THEME,
+  setRetireModal,
+  setRHorasUsadas,
+  setRHorasRestantes,
+  setRDescripcion,
+  setRTipoRetiro,
+  setRetireError,
+  backupLamps,
+  setInstallModal,
+  setSelectedBackupId,
+  formatFirebaseDate,
+}: any) => {
+  const { width } = useWindowDimensions();
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const [isHovered, setIsHovered] = useState(false);
+
+  const cardWidth = useMemo(() => {
+    if (width < 640) return "100%";
+    if (width < 1024) return "48%";
+    if (width < 1440) return "31.8%";
+    return "23.5%";
+  }, [width]);
+
+  useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 350,
+      useNativeDriver: Platform.OS !== "web",
+    }).start();
+  }, []);
+
+  return (
+    <Animated.View
+      style={{
+        opacity: fadeAnim,
+        width: cardWidth,
+      }}
+    >
+      <View
+        {...({
+          onMouseEnter: Platform.OS === "web" ? () => setIsHovered(true) : undefined,
+          onMouseLeave: Platform.OS === "web" ? () => setIsHovered(false) : undefined,
+        } as any)}
+        style={[
+          s.roomCard,
+          activeLamp && s.roomCardActive,
+          activeShow && s.roomCardInShow,
+          isHovered && s.roomCardHovered,
+        ]}
+      >
+        <View style={s.roomCardHeader}>
+          <Text style={s.roomTitle}>Sala {roomNum}</Text>
+          {activeShow ? (
+            <View style={s.inShowBadge}>
+              <PulsingShowDot />
+              <Text style={s.inShowBadgeText}>EN FUNCIÓN</Text>
+            </View>
+          ) : activeLamp ? (
+            <View style={s.activeBadge}>
+              <PulsingDot />
+              <Text style={s.activeBadgeText}>ACTIVA</Text>
+            </View>
+          ) : (
+            <View style={s.emptyBadge}>
+              <Text style={s.emptyBadgeText}>VACÍO</Text>
+            </View>
+          )}
+        </View>
+
+        {activeLamp ? (
+          <View style={s.roomLampInfo}>
+            <Text style={s.nomenclatureText}>
+              #{roomNum} - {activeLamp.id}
+            </Text>
+            <View style={s.lampDetailsRow}>
+              {activeLamp.marca ? (
+                <View style={s.detailChip}>
+                  <Text style={s.detailChipText}>{activeLamp.marca}</Text>
+                </View>
+              ) : null}
+              {activeLamp.potencia ? (
+                <View style={[s.detailChip, { backgroundColor: COLORS.primarySoft }]}>
+                  <Text style={[s.detailChipText, { color: COLORS.primary }]}>
+                    {activeLamp.potencia}
+                  </Text>
+                </View>
+              ) : null}
+              {activeLamp.modelo ? (
+                <View style={[s.detailChip, { backgroundColor: COLORS.info + "15" }]}>
+                  <Text style={[s.detailChipText, { color: COLORS.info }]}>
+                    {activeLamp.modelo}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+            <Text style={s.dateLabel}>
+              Instalada: {formatFirebaseDate(activeLamp.installedAt)}
+            </Text>
+
+            {/* Horas Vinculadas del Control Semanal */}
+            <View style={s.roomHoursContainer}>
+              <View style={s.roomHoursBox}>
+                <Text style={s.roomHoursLabel}>Horas Usadas</Text>
+                <Text style={s.roomHoursVal}>{horasUsadas} h</Text>
+              </View>
+              <View style={s.roomHoursBox}>
+                <Text style={s.roomHoursLabel}>Horas Restantes</Text>
+                <Text style={s.roomHoursVal}>{horasRestantes} h</Text>
+              </View>
+            </View>
+
+            {/* Detalles del show activo */}
+            {activeShow && (
+              <View style={s.showtimeInfoContainer}>
+                <MaterialCommunityIcons name="play-circle" size={16} color="#6366F1" style={{ marginRight: 6 }} />
+                <View style={{ flex: 1 }}>
+                  <Text style={s.showtimeMovieText} numberOfLines={1}>
+                    {activeShow.pelicula}
+                  </Text>
+                  <Text style={s.showtimeTimeText}>
+                    En función hasta las {activeShow.fin}
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            {activeLamp.notas ? (
+              <Text style={s.lampNotes} numberOfLines={2}>
+                💬 {activeLamp.notas}
+              </Text>
+            ) : null}
+
+            <TouchableOpacity
+              style={s.retireBtn}
+              onPress={() => {
+                setRetireModal({ sala: roomNum, lamparaId: activeLamp.id });
+                setRHorasUsadas(String(horasUsadas));
+                setRHorasRestantes(String(horasRestantes));
+                setRDescripcion("");
+                setRTipoRetiro("Fin de vida util");
+                setRetireError("");
+              }}
+            >
+              <MaterialCommunityIcons name="logout" size={14} color="#FFF" />
+              <Text style={s.retireBtnText}>Retirar Lámpara</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={s.roomEmptyInfo}>
+            <MaterialCommunityIcons
+              name="projector-off"
+              size={32}
+              color={COLORS.muted}
+              style={{ marginBottom: 6 }}
+            />
+            <Text style={s.emptyRoomText}>Sin lámpara activa</Text>
+            <TouchableOpacity
+              style={s.installBtn}
+              onPress={() => {
+                if (backupLamps.length === 0) {
+                  Alert.alert(
+                    "Sin Stock de Backup",
+                    "No hay lámparas disponibles en stock. Cargá una nueva lámpara en la pestaña 'Stock Backup' primero."
+                  );
+                  return;
+                }
+                setInstallModal({ sala: roomNum });
+                setSelectedBackupId(backupLamps[0].id);
+              }}
+            >
+              <Text style={s.installBtnText}>Instalar Lámpara</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+    </Animated.View>
+  );
+};
+
 export default function LamparasScreen({ readOnly = false }: { readOnly?: boolean }) {
   const { cineId, displayName } = useAuthUser();
   const { width, height } = useWindowDimensions();
@@ -152,6 +412,10 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
   const [loading, setLoading] = useState(true);
   const [latestControl, setLatestControl] = useState<any | null>(null);
   const [movimientos, setMovimientos] = useState<LamparaMovimiento[]>([]);
+
+  // Shows en vivo (Programación)
+  const [weeklyRows, setWeeklyRows] = useState<any[]>([]);
+  const [currentTimeMins, setCurrentTimeMins] = useState(getCurrentMinsFrom6AM());
 
   // Estados de Collapsed para Historial Final (por Año)
   const [collapsedYears, setCollapsedYears] = useState<Record<number, boolean>>({});
@@ -219,6 +483,37 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
       }
     })();
   }, [cineId]);
+
+  // ─── Suscripción en Tiempo Real a la Programación Semanal Actual ────────────
+  useEffect(() => {
+    if (!cineId) return;
+
+    const docRef = doc(db, CINES_COLLECTION, cineId, "programacion_semanal", "actual");
+    const unsub = onSnapshot(
+      docRef,
+      (snap) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          setWeeklyRows(data.weeklyRows || []);
+        } else {
+          setWeeklyRows([]);
+        }
+      },
+      (error) => {
+        console.error("Error subscribiéndose a la programación:", error);
+      }
+    );
+
+    return () => unsub();
+  }, [cineId]);
+
+  // Actualizar la hora actual cada 60 segundos
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTimeMins(getCurrentMinsFrom6AM());
+    }, 60000);
+    return () => clearInterval(timer);
+  }, []);
 
   // ─── Cargar último Control Semanal para vincular horas ──────────────────────
   useEffect(() => {
@@ -832,16 +1127,6 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
 
   return (
     <View style={s.root}>
-      {/* Header */}
-      <View style={s.headerRow}>
-        <View style={s.headerTextBlock}>
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", position: "relative" }}>
-            <Text style={{ position: "absolute", left: -28, fontSize: 22 }}>💡</Text>
-            <Text style={s.pageTitle}>Lámparas</Text>
-          </View>
-          <Text style={s.pageSubtitle}>Control de ciclo de vida de proyectores y stock</Text>
-        </View>
-      </View>
 
       {/* Segmented Control Bar */}
       {width < 480 ? (
@@ -965,113 +1250,70 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
                 const horasUsadas = controlLamp?.horasActuales ?? "0";
                 const horasRestantes = controlLamp?.horasRestantes ?? "0";
 
+                // Find active show
+                const currentDay = getCurrentWeekdayKey();
+                let activeShow: any = null;
+
+                const roomRows = weeklyRows.filter(row => Number(row.sala) === roomNum);
+                for (const row of roomRows) {
+                  const ranges = row.horariosPorDia?.[currentDay] ?? [];
+                  for (const range of ranges) {
+                    let inicio = "";
+                    let fin = "";
+                    const match = range.match(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/);
+                    if (match) {
+                      inicio = match[1];
+                      fin = match[2];
+                    } else {
+                      const timeMatch = range.match(/(\d{1,2}:\d{2})/);
+                      if (timeMatch) {
+                        inicio = timeMatch[1];
+                        const [h, m] = inicio.split(":").map(Number);
+                        const endMins = (h * 60 + m + 120) % 1440;
+                        const endH = Math.floor(endMins / 60);
+                        const endM = endMins % 60;
+                        fin = `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
+                      }
+                    }
+
+                    if (inicio && fin) {
+                      const startMins = timeToMinsFrom6AM(inicio);
+                      const endMins = timeToMinsFrom6AM(fin);
+                      if (currentTimeMins >= startMins && currentTimeMins < endMins) {
+                        activeShow = {
+                          pelicula: row.pelicula,
+                          inicio,
+                          fin,
+                        };
+                        break;
+                      }
+                    }
+                  }
+                  if (activeShow) break;
+                }
+
                 return (
-                  <View key={roomNum} style={[s.roomCard, activeLamp && s.roomCardActive, { width: cardWidth }]}>
-                    <View style={s.roomCardHeader}>
-                      <Text style={s.roomTitle}>Sala {roomNum}</Text>
-                      {activeLamp ? (
-                        <View style={s.activeBadge}>
-                          <PulsingDot />
-                          <Text style={s.activeBadgeText}>ACTIVA</Text>
-                        </View>
-                      ) : (
-                        <View style={s.emptyBadge}>
-                          <Text style={s.emptyBadgeText}>VACÍO</Text>
-                        </View>
-                      )}
-                    </View>
-
-                    {activeLamp ? (
-                      <View style={s.roomLampInfo}>
-                        <Text style={s.nomenclatureText}>
-                          #{roomNum} - {activeLamp.id}
-                        </Text>
-                        <View style={s.lampDetailsRow}>
-                          {activeLamp.marca ? (
-                            <View style={s.detailChip}>
-                              <Text style={s.detailChipText}>{activeLamp.marca}</Text>
-                            </View>
-                          ) : null}
-                          {activeLamp.potencia ? (
-                            <View style={[s.detailChip, { backgroundColor: COLORS.primarySoft }]}>
-                              <Text style={[s.detailChipText, { color: COLORS.primary }]}>
-                                {activeLamp.potencia}
-                              </Text>
-                            </View>
-                          ) : null}
-                          {activeLamp.modelo ? (
-                            <View style={[s.detailChip, { backgroundColor: COLORS.info + "15" }]}>
-                              <Text style={[s.detailChipText, { color: COLORS.info }]}>
-                                {activeLamp.modelo}
-                              </Text>
-                            </View>
-                          ) : null}
-                        </View>
-                        <Text style={s.dateLabel}>
-                          Instalada: {formatFirebaseDate(activeLamp.installedAt)}
-                        </Text>
-
-                        {/* Horas Vinculadas del Control Semanal */}
-                        <View style={s.roomHoursContainer}>
-                          <View style={s.roomHoursBox}>
-                            <Text style={s.roomHoursLabel}>Horas Usadas</Text>
-                            <Text style={s.roomHoursVal}>{horasUsadas} h</Text>
-                          </View>
-                          <View style={s.roomHoursBox}>
-                            <Text style={s.roomHoursLabel}>Horas Restantes</Text>
-                            <Text style={s.roomHoursVal}>{horasRestantes} h</Text>
-                          </View>
-                        </View>
-
-                        {activeLamp.notas ? (
-                          <Text style={s.lampNotes} numberOfLines={2}>
-                            💬 {activeLamp.notas}
-                          </Text>
-                        ) : null}
-
-                        <TouchableOpacity
-                          style={s.retireBtn}
-                          onPress={() => {
-                            setRetireModal({ sala: roomNum, lamparaId: activeLamp.id });
-                            setRHorasUsadas(String(horasUsadas));
-                            setRHorasRestantes(String(horasRestantes));
-                            setRDescripcion("");
-                            setRTipoRetiro("Fin de vida util");
-                            setRetireError("");
-                          }}
-                        >
-                          <MaterialCommunityIcons name="logout" size={14} color="#FFF" />
-                          <Text style={s.retireBtnText}>Retirar Lámpara</Text>
-                        </TouchableOpacity>
-                      </View>
-                    ) : (
-                      <View style={s.roomEmptyInfo}>
-                        <MaterialCommunityIcons
-                          name="projector-off"
-                          size={32}
-                          color={COLORS.muted}
-                          style={{ marginBottom: 6 }}
-                        />
-                        <Text style={s.emptyRoomText}>Sin lámpara activa</Text>
-                        <TouchableOpacity
-                          style={s.installBtn}
-                          onPress={() => {
-                            if (backupLamps.length === 0) {
-                              Alert.alert(
-                                "Sin Stock de Backup",
-                                "No hay lámparas disponibles en stock. Cargá una nueva lámpara en la pestaña 'Stock Backup' primero."
-                              );
-                              return;
-                            }
-                            setInstallModal({ sala: roomNum });
-                            setSelectedBackupId(backupLamps[0].id);
-                          }}
-                        >
-                          <Text style={s.installBtnText}>Instalar Lámpara</Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                  </View>
+                  <RoomProjectorCard
+                    key={roomNum}
+                    roomNum={roomNum}
+                    activeLamp={activeLamp}
+                    horasUsadas={horasUsadas}
+                    horasRestantes={horasRestantes}
+                    activeShow={activeShow}
+                    readOnly={readOnly}
+                    COLORS={COLORS}
+                    THEME={THEME}
+                    setRetireModal={setRetireModal}
+                    setRHorasUsadas={setRHorasUsadas}
+                    setRHorasRestantes={setRHorasRestantes}
+                    setRDescripcion={setRDescripcion}
+                    setRTipoRetiro={setRTipoRetiro}
+                    setRetireError={setRetireError}
+                    backupLamps={backupLamps}
+                    setInstallModal={setInstallModal}
+                    setSelectedBackupId={setSelectedBackupId}
+                    formatFirebaseDate={formatFirebaseDate}
+                  />
                 );
               })}
             </View>
@@ -2138,6 +2380,19 @@ const s = StyleSheet.create({
   roomCardActive: {
     borderColor: COLORS.primary + "30",
   },
+  roomCardInShow: {
+    borderColor: "#6366F1",
+    borderWidth: 1.5,
+    backgroundColor: "rgba(99, 102, 241, 0.02)",
+  },
+  roomCardHovered: {
+    ...Platform.select({
+      web: {
+        transform: [{ translateY: -3 }],
+        boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
+      } as any,
+    }),
+  },
   roomCardHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -2173,6 +2428,21 @@ const s = StyleSheet.create({
     fontWeight: "800",
     color: COLORS.muted,
   },
+  inShowBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(99, 102, 241, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(99, 102, 241, 0.15)",
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  inShowBadgeText: {
+    fontSize: 9,
+    fontWeight: "900",
+    color: "#6366F1",
+  },
   roomLampInfo: {
     flex: 1,
     justifyContent: "space-between",
@@ -2182,6 +2452,28 @@ const s = StyleSheet.create({
     fontWeight: "900",
     color: COLORS.primary,
     marginBottom: 6,
+  },
+  showtimeInfoContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(99, 102, 241, 0.06)",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginVertical: 10,
+    borderWidth: 1,
+    borderColor: "rgba(99, 102, 241, 0.12)",
+  },
+  showtimeMovieText: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: COLORS.text,
+    marginBottom: 2,
+  },
+  showtimeTimeText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: COLORS.muted,
   },
   lampDetailsRow: {
     flexDirection: "row",
