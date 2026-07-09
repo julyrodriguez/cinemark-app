@@ -2367,7 +2367,7 @@ const s = StyleSheet.create({
     gap: 14,
   },
   roomCard: {
-    width: Platform.OS === "web" ? "31.5%" : "100%",
+    width: "100%",
     backgroundColor: COLORS.card,
     borderRadius: 20,
     borderWidth: 1,
