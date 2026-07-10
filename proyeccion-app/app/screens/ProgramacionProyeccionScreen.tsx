@@ -2260,8 +2260,10 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                           const isPast = status === "PAST";
                           const isPlaying = status === "PLAYING";
 
-                          const hasSalesData = show.capacity !== undefined && show.capacity > 0 && show.soldSeats !== undefined;
-                          const occupancyRate = hasSalesData ? Math.min(1, Math.max(0, show.soldSeats / show.capacity)) : 0;
+                          const cap = show.capacity;
+                          const sold = show.soldSeats;
+                          const hasSalesData = cap !== undefined && cap > 0 && sold !== undefined;
+                          const occupancyRate = hasSalesData && sold !== undefined && cap !== undefined ? Math.min(1, Math.max(0, sold / cap)) : 0;
 
                           let fillBarColor = "#10B981"; // Low occupancy green (default)
                           if (occupancyRate >= 0.8) {
@@ -2324,7 +2326,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                                   {hasSalesData && (
                                     <View
                                       style={{
-                                        height: `${(occupancyRate * 100).toFixed(0)}%`,
+                                        height: `${(occupancyRate * 100).toFixed(0)}%` as any,
                                         width: "100%",
                                         backgroundColor: fillBarColor,
                                       }}
