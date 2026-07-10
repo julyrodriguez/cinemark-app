@@ -2260,6 +2260,22 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                           const isPast = status === "PAST";
                           const isPlaying = status === "PLAYING";
 
+                          const hasSalesData = show.capacity !== undefined && show.capacity > 0 && show.soldSeats !== undefined;
+                          const occupancyRate = hasSalesData ? Math.min(1, Math.max(0, show.soldSeats / show.capacity)) : 0;
+
+                          let fillBarColor = "#10B981"; // Low occupancy green (default)
+                          if (occupancyRate >= 0.8) {
+                            fillBarColor = "#EF4444"; // Red
+                          } else if (occupancyRate >= 0.5) {
+                            fillBarColor = "#F59E0B"; // Orange/Yellow
+                          }
+
+                          const adsBgColor = hasSalesData
+                            ? (is3D ? "rgba(255, 255, 255, 0.15)" : "rgba(0, 0, 0, 0.05)")
+                            : "transparent";
+
+                          const adsBorderColor = is3D ? "rgba(255, 255, 255, 0.2)" : "rgba(0, 0, 0, 0.1)";
+
                           return (
                             <TouchableOpacity
                               key={showIdx}
@@ -2292,17 +2308,29 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                               ]}
                               onPress={() => setSelectedShow(show)}
                             >
-                              {/* 12m Publicity prefix zone (painted yellow) */}
+                              {/* Barra de llenado de capacidad (antes publicidad) */}
                               {showAds && (
                                 <View
                                   style={[
                                     styles.adsPrefix,
                                     {
-                                      backgroundColor: "#EAB308", // Yellow representing ads/pre-show
-                                      borderRightColor: "rgba(0, 0, 0, 0.15)",
+                                      backgroundColor: adsBgColor,
+                                      borderRightColor: adsBorderColor,
+                                      justifyContent: "flex-end",
+                                      overflow: "hidden",
                                     },
                                   ]}
-                                />
+                                >
+                                  {hasSalesData && (
+                                    <View
+                                      style={{
+                                        height: `${(occupancyRate * 100).toFixed(0)}%`,
+                                        width: "100%",
+                                        backgroundColor: fillBarColor,
+                                      }}
+                                    />
+                                  )}
+                                </View>
                               )}
 
                               {/* Card Content */}
