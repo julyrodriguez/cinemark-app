@@ -1471,7 +1471,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 12,
     marginTop: 12,
-    alignSelf: "flex-start",
+    alignSelf: "center",
     ...Platform.select({
       web: {
         cursor: "pointer",
