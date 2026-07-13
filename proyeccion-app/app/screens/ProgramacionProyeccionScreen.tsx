@@ -2048,7 +2048,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
         );
       })()}
 
-      {/* Saved Programming Status & Adjust Showtimes Checkbox */}
+      {/* Saved Programming Status Banner */}
       {useApiData && (
         <View style={styles.adjustmentBar}>
           <View style={styles.adjustmentLeft}>
@@ -2064,22 +2064,6 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                 : "Sin programación guardada (usando datos directo de API)"}
             </Text>
           </View>
-          
-          {hasSavedProgramming && (
-            <TouchableOpacity
-              style={styles.adjustmentToggle}
-              onPress={() => setAdjustShowtimes(prev => !prev)}
-              activeOpacity={0.8}
-            >
-              <MaterialCommunityIcons
-                name={adjustShowtimes ? "checkbox-marked" : "checkbox-blank-outline"}
-                size={20}
-                color={adjustShowtimes ? COLORS.primary : COLORS.muted}
-                style={{ marginRight: 6 }}
-              />
-              <Text style={styles.adjustmentToggleText}>Ajustar horarios de salida</Text>
-            </TouchableOpacity>
-          )}
         </View>
       )}
 
@@ -2139,6 +2123,31 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                 backgroundColor: COLORS.card,
               }
             ]}>
+              {hasSavedProgramming && (
+                <View style={{ flexDirection: "row", alignItems: "center", marginRight: 8 }}>
+                  <TouchableOpacity
+                    onPress={() => setAdjustShowtimes(prev => !prev)}
+                    style={styles.headerAdjustToggle}
+                    activeOpacity={0.8}
+                  >
+                    <MaterialCommunityIcons
+                      name={adjustShowtimes ? "checkbox-marked" : "checkbox-blank-outline"}
+                      size={18}
+                      color={adjustShowtimes ? COLORS.primary : COLORS.muted}
+                      style={{ marginRight: 6 }}
+                    />
+                    <Text style={styles.headerAdjustToggleText}>Ajustar horarios de salida</Text>
+                  </TouchableOpacity>
+                  
+                  <View 
+                    style={{ marginLeft: 6, cursor: "help" } as any}
+                    {...{ title: "Se ajustan los horarios de salida reales con la programación guardada por el sector de servicios" }}
+                  >
+                    <MaterialCommunityIcons name="information" size={20} color="#3B82F6" />
+                  </View>
+                </View>
+              )}
+
               <TouchableOpacity
                 onPress={() => setViewMode(prev => prev === "grid" ? "list" : "grid")}
                 style={styles.toggleViewButton}
@@ -2783,6 +2792,21 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: COLORS.text,
     fontWeight: "600",
+  },
+  headerAdjustToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F1F5F9)" : "#F1F5F9",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  headerAdjustToggleText: {
+    fontSize: 12,
+    color: COLORS.text,
+    fontWeight: "bold",
   },
   centerContainer: {
     flex: 1,
