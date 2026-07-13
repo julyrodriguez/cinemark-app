@@ -14,7 +14,9 @@ import {
   TextInput,
   View,
   Animated,
+  TouchableOpacity,
 } from "react-native";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import {
   collection,
   doc,
@@ -126,6 +128,7 @@ export default function ProgramacionTab() {
   const [loading, setLoading] = useState(false);
   const [statusText, setStatusText] = useState("");
   const [showManual, setShowManual] = useState(false);
+  const [showPreview, setShowPreview] = useState(true);
 
   // Animación del banner parpadeante en Rojo
   const [blinkOpacity] = useState(new Animated.Value(1));
@@ -218,6 +221,27 @@ export default function ProgramacionTab() {
     }
     return !!weeklyUri && !loading;
   }, [useSavedWeekly, savedWeekly, weeklyUri, loading]);
+
+  // Extract preview shows for the selected day
+  const previewShows = useMemo(() => {
+    const rowsToUse = useSavedWeekly ? (savedWeekly?.weeklyRows || []) : (loadedWeeklyRows || []);
+    if (rowsToUse.length === 0) return [];
+
+    const list: { sala: number; pelicula: string; horarios: string[] }[] = [];
+    rowsToUse.forEach((row) => {
+      const ranges = row.horariosPorDia?.[selectedDay] ?? [];
+      if (ranges.length > 0) {
+        list.push({
+          sala: Number(row.sala),
+          pelicula: row.pelicula,
+          horarios: ranges,
+        });
+      }
+    });
+
+    // Sort by room number first
+    return list.sort((a, b) => a.sala - b.sala);
+  }, [useSavedWeekly, savedWeekly, loadedWeeklyRows, selectedDay]);
 
   async function pickWeeklyFile() {
     try {
@@ -711,6 +735,70 @@ export default function ProgramacionTab() {
             </Text>
           )}
         </Pressable>
+      )}
+
+      {/* Vista Previa de la Programación */}
+      {(useSavedWeekly ? !!savedWeekly : !!loadedWeeklyRows) && (
+        <View style={[s.card, { marginTop: 16 }]}>
+          <View style={s.rowBetween}>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <MaterialCommunityIcons name="eye-outline" size={20} color={COLORS.primary} style={{ marginRight: 8 }} />
+              <Text style={s.sectionLabel}>Vista Previa: {WEEKDAY_LABELS[selectedDay]}</Text>
+            </View>
+            <TouchableOpacity onPress={() => setShowPreview(!showPreview)}>
+              <Text style={{ color: COLORS.primary, fontWeight: "bold", fontSize: 13 }}>
+                {showPreview ? "Ocultar" : "Mostrar"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          
+          {showPreview && (
+            <View style={{ marginTop: 12 }}>
+              {previewShows.length === 0 ? (
+                <Text style={{ fontSize: 13, color: COLORS.muted, textAlign: "center", paddingVertical: 20 }}>
+                  Sin funciones programadas para este día en el reporte.
+                </Text>
+              ) : (
+                <ScrollView 
+                  style={{ maxHeight: 220, borderTopWidth: 1, borderTopColor: COLORS.border, marginTop: 4 }}
+                  nestedScrollEnabled
+                >
+                  {previewShows.map((show, idx) => (
+                    <View key={idx} style={{ 
+                      flexDirection: "row", 
+                      alignItems: "center", 
+                      paddingVertical: 10, 
+                      borderBottomWidth: 1, 
+                      borderBottomColor: COLORS.border 
+                    }}>
+                      <View style={{ 
+                        backgroundColor: COLORS.primarySoft, 
+                        paddingHorizontal: 8, 
+                        paddingVertical: 4, 
+                        borderRadius: 6, 
+                        marginRight: 12,
+                        minWidth: 64,
+                        alignItems: "center",
+                        borderWidth: 1,
+                        borderColor: COLORS.primary
+                      }}>
+                        <Text style={{ color: COLORS.primary, fontWeight: "800", fontSize: 11.5 }}>Sala {show.sala}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: COLORS.text, fontWeight: "800", fontSize: 13.5 }} numberOfLines={1}>
+                          {show.pelicula}
+                        </Text>
+                        <Text style={{ color: COLORS.textSoft, fontSize: 12, marginTop: 3, fontWeight: "500" }}>
+                          {show.horarios.join("   |   ")}
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
+                </ScrollView>
+              )}
+            </View>
+          )}
+        </View>
       )}
 
       {/* ACCIÓN PRINCIPAL */}
