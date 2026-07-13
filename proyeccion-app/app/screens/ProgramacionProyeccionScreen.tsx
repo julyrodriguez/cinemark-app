@@ -805,8 +805,8 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
       console.log("[shows] currentWeek:", currentWeek, "selectedWeekStart:", selectedWeekStart, "savedWeekly startDate:", savedWeekly?.startDate, "hasSavedProgramming:", hasSavedProgramming, "savedWeekly rows:", savedWeekly?.weeklyRows?.length ?? "null");
 
-      // Case A: If there's no saved weekly programming layout matching the selected week.
-      if (!hasSavedProgramming) {
+      // Case A: If there's no saved weekly programming layout matching the selected week or adjustShowtimes is false.
+      if (!hasSavedProgramming || !adjustShowtimes) {
         console.log("[shows] → CASO A (solo API, fin=+120min)");
         if (!apiData || !selectedWeekStart) return [];
 
