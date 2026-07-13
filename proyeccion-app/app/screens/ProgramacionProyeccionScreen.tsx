@@ -2048,24 +2048,6 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
         );
       })()}
 
-      {/* Saved Programming Status Banner */}
-      {useApiData && (
-        <View style={styles.adjustmentBar}>
-          <View style={styles.adjustmentLeft}>
-            <MaterialCommunityIcons
-              name={hasSavedProgramming ? "check-circle" : "alert-circle-outline"}
-              size={16}
-              color={hasSavedProgramming ? "#10B981" : "#F59E0B"}
-              style={{ marginRight: 6 }}
-            />
-            <Text style={styles.adjustmentStatusText}>
-              {hasSavedProgramming
-                ? "Programación guardada detectada para esta semana"
-                : "Sin programación guardada (usando datos directo de API)"}
-            </Text>
-          </View>
-        </View>
-      )}
 
       {/* Main Grid View */}
       <View style={styles.gridContainer}>
@@ -2108,45 +2090,77 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
             <View style={[
               styles.headerButtonsRow,
-              { paddingVertical: 6 },
+              { paddingVertical: 6, gap: 8 },
               !isMobile && {
                 position: "absolute",
                 right: 16,
               },
               isMobile && {
                 flexDirection: "row",
+                flexWrap: "wrap",
                 justifyContent: "center",
                 alignSelf: "stretch",
                 borderTopWidth: 1,
                 borderTopColor: COLORS.border,
                 paddingVertical: 10,
+                paddingHorizontal: 8,
                 backgroundColor: COLORS.card,
               }
             ]}>
-              {hasSavedProgramming && (
-                <View style={{ flexDirection: "row", alignItems: "center", marginRight: 8 }}>
-                  <TouchableOpacity
-                    onPress={() => setAdjustShowtimes(prev => !prev)}
-                    style={styles.headerAdjustToggle}
-                    activeOpacity={0.8}
-                  >
-                    <MaterialCommunityIcons
-                      name={adjustShowtimes ? "checkbox-marked" : "checkbox-blank-outline"}
-                      size={18}
-                      color={adjustShowtimes ? COLORS.primary : COLORS.muted}
-                      style={{ marginRight: 6 }}
-                    />
-                    <Text style={styles.headerAdjustToggleText}>Ajustar horarios de salida</Text>
-                  </TouchableOpacity>
-                  
-                  <View 
-                    style={{ marginLeft: 6, cursor: "help" } as any}
-                    {...{ title: "Se ajustan los horarios de salida reales con la programación guardada por el sector de servicios" }}
-                  >
-                    <MaterialCommunityIcons name="information" size={20} color="#3B82F6" />
-                  </View>
-                </View>
-              )}
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <TouchableOpacity
+                  onPress={() => {
+                    if (hasSavedProgramming) {
+                      setAdjustShowtimes(prev => !prev);
+                    } else {
+                      Alert.alert(
+                        "Información",
+                        "No se puede ajustar porque no hay una programación guardada para esta semana desde Servicios."
+                      );
+                    }
+                  }}
+                  style={[
+                    styles.headerAdjustToggle,
+                    !hasSavedProgramming && styles.headerAdjustToggleDisabled
+                  ]}
+                  activeOpacity={hasSavedProgramming ? 0.8 : 1}
+                >
+                  <MaterialCommunityIcons
+                    name={adjustShowtimes && hasSavedProgramming ? "checkbox-marked" : "checkbox-blank-outline"}
+                    size={18}
+                    color={adjustShowtimes && hasSavedProgramming ? COLORS.primary : COLORS.muted}
+                    style={{ marginRight: 6 }}
+                  />
+                  <Text style={[
+                    styles.headerAdjustToggleText,
+                    !hasSavedProgramming && styles.headerAdjustToggleTextDisabled
+                  ]}>
+                    Ajustar horarios de salida
+                  </Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  onPress={() => {
+                    Alert.alert(
+                      "Ajustar Horarios de Salida",
+                      hasSavedProgramming
+                        ? "Se ajustan los horarios de salida reales con la programación guardada por el sector de servicios."
+                        : "No se puede ajustar porque no hay una programación guardada para esta semana desde Servicios."
+                    );
+                  }}
+                  style={{ marginLeft: 6, cursor: "help" } as any}
+                  {...{ title: hasSavedProgramming
+                    ? "Se ajustan los horarios de salida reales con la programación guardada por el sector de servicios."
+                    : "No se puede ajustar porque no hay una programación guardada para esta semana desde Servicios."
+                  }}
+                >
+                  <MaterialCommunityIcons 
+                    name="information" 
+                    size={20} 
+                    color={hasSavedProgramming ? "#3B82F6" : "#94A3B8"} 
+                  />
+                </TouchableOpacity>
+              </View>
 
               <TouchableOpacity
                 onPress={() => setViewMode(prev => prev === "grid" ? "list" : "grid")}
@@ -2168,7 +2182,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                 <TouchableOpacity
                   onPress={handleManualSync}
                   disabled={syncing}
-                  style={[styles.apiSyncButton, { marginLeft: 8 }]}
+                  style={styles.apiSyncButton}
                 >
                   {syncing ? (
                     <ActivityIndicator size="small" color="#FFFFFF" style={{ marginRight: 6 }} />
@@ -2807,6 +2821,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.text,
     fontWeight: "bold",
+  },
+  headerAdjustToggleDisabled: {
+    backgroundColor: Platform.OS === "web" ? "var(--border, #E2E8F0)" : "#E2E8F0",
+    borderColor: Platform.OS === "web" ? "var(--border, #CBD5E1)" : "#CBD5E1",
+    opacity: 0.65,
+  },
+  headerAdjustToggleTextDisabled: {
+    color: COLORS.muted,
   },
   centerContainer: {
     flex: 1,
