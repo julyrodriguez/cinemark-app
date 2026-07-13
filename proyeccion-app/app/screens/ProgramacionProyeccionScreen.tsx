@@ -254,6 +254,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
   const [apiError, setApiError] = useState<string | null>(null);
   const [selectedWeekStart, setSelectedWeekStart] = useState<string>("");
   const [showStatsPanel, setShowStatsPanel] = useState(false);
+  const [adjustShowtimes, setAdjustShowtimes] = useState<boolean>(false);
 
   // Seat Map Integration
   const [seatMapData, setSeatMapData] = useState<any | null>(null);
@@ -795,12 +796,12 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
     }
     return list;
   }, [salasCount]);
+  const hasSavedProgramming = !!savedWeekly?.weeklyRows && savedWeekly.weeklyRows.length > 0 && savedWeekly.startDate === selectedWeekStart;
 
   // Build the list of shows for the selected day
   const shows = useMemo(() => {
     if (useApiData) {
       const currentWeek = getMovieWeekStartForNow();
-      const hasSavedProgramming = !!savedWeekly?.weeklyRows && savedWeekly.weeklyRows.length > 0 && savedWeekly.startDate === selectedWeekStart;
 
       console.log("[shows] currentWeek:", currentWeek, "selectedWeekStart:", selectedWeekStart, "savedWeekly startDate:", savedWeekly?.startDate, "hasSavedProgramming:", hasSavedProgramming, "savedWeekly rows:", savedWeekly?.weeklyRows?.length ?? "null");
 
@@ -1105,6 +1106,22 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
               show.dboxCapacity = dboxCapacity;
               show.dboxAvailable = dboxAvailable;
               show.dboxSold = dboxSold;
+
+              if (adjustShowtimes) {
+                const sDate = new Date(matchingSessions[0].sessionDateTime);
+                const sHours = String(sDate.getUTCHours()).padStart(2, "0");
+                const sMins = String(sDate.getUTCMinutes()).padStart(2, "0");
+                const realInicioStr = `${sHours}:${sMins}`;
+
+                const originalDuration = (timeToMinutes(show.fin) - timeToMinutes(show.inicio) + 1440) % 1440;
+                show.inicio = realInicioStr;
+                const newFinMins = (timeToMinutes(realInicioStr) + originalDuration) % 1440;
+                const endH = Math.floor(newFinMins / 60);
+                const endM = newFinMins % 60;
+                show.fin = `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
+                show.sortInicio = timeToMinutes(show.inicio);
+                show.sortFin = timeToMinutes(show.fin);
+              }
             } else {
               console.warn(`[Matching B] No match for Sala ${room} - Show: ${show.pelicula} (${show.inicio}). Available DB sessions in this room:`, 
                 sessionsInRoom.map(s => {
@@ -1121,7 +1138,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
     });
 
     return list;
-  }, [savedWeekly, selectedDay, useApiData, apiData, selectedWeekStart]);
+  }, [savedWeekly, selectedDay, useApiData, apiData, selectedWeekStart, adjustShowtimes]);
 
   // Compute daily and weekly statistics and operational alerts
   const stats = useMemo(() => {
@@ -2031,6 +2048,41 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
         );
       })()}
 
+      {/* Saved Programming Status & Adjust Showtimes Checkbox */}
+      {useApiData && (
+        <View style={styles.adjustmentBar}>
+          <View style={styles.adjustmentLeft}>
+            <MaterialCommunityIcons
+              name={hasSavedProgramming ? "check-circle" : "alert-circle-outline"}
+              size={16}
+              color={hasSavedProgramming ? "#10B981" : "#F59E0B"}
+              style={{ marginRight: 6 }}
+            />
+            <Text style={styles.adjustmentStatusText}>
+              {hasSavedProgramming
+                ? "Programación guardada detectada para esta semana"
+                : "Sin programación guardada (usando datos directo de API)"}
+            </Text>
+          </View>
+          
+          {hasSavedProgramming && (
+            <TouchableOpacity
+              style={styles.adjustmentToggle}
+              onPress={() => setAdjustShowtimes(prev => !prev)}
+              activeOpacity={0.8}
+            >
+              <MaterialCommunityIcons
+                name={adjustShowtimes ? "checkbox-marked" : "checkbox-blank-outline"}
+                size={20}
+                color={adjustShowtimes ? COLORS.primary : COLORS.muted}
+                style={{ marginRight: 6 }}
+              />
+              <Text style={styles.adjustmentToggleText}>Ajustar horarios de salida</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
       {/* Main Grid View */}
       <View style={styles.gridContainer}>
         <ScrollView ref={verticalScrollRef} style={styles.verticalScrollView} bounces={false}>
@@ -2695,6 +2747,42 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.bg,
+  },
+  adjustmentBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: Platform.OS === "web" ? "var(--card, #1E293B)" : "#1E293B",
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    flexWrap: "wrap",
+    gap: 12,
+  },
+  adjustmentLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  adjustmentStatusText: {
+    fontSize: 13,
+    color: COLORS.text,
+    fontWeight: "500",
+  },
+  adjustmentToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #334155)" : "#334155",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  adjustmentToggleText: {
+    fontSize: 13,
+    color: COLORS.text,
+    fontWeight: "600",
   },
   centerContainer: {
     flex: 1,
