@@ -2113,10 +2113,12 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                     if (hasSavedProgramming) {
                       setAdjustShowtimes(prev => !prev);
                     } else {
-                      Alert.alert(
-                        "Información",
-                        "No se puede ajustar porque no hay una programación guardada para esta semana desde Servicios."
-                      );
+                      const msg = "No se puede ajustar porque no hay una programación guardada para esta semana desde Servicios.";
+                      if (Platform.OS === "web") {
+                        alert(msg);
+                      } else {
+                        Alert.alert("Información", msg);
+                      }
                     }
                   }}
                   style={[
@@ -2139,27 +2141,30 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                   </Text>
                 </TouchableOpacity>
                 
-                <TouchableOpacity
+                <Text
                   onPress={() => {
-                    Alert.alert(
-                      "Ajustar Horarios de Salida",
-                      hasSavedProgramming
-                        ? "Se ajustan los horarios de salida reales con la programación guardada por el sector de servicios."
-                        : "No se puede ajustar porque no hay una programación guardada para esta semana desde Servicios."
-                    );
+                    const msg = hasSavedProgramming
+                      ? "Se ajustan los horarios de salida reales con la programación guardada por el sector de servicios."
+                      : "No se puede ajustar porque no hay una programación guardada para esta semana desde Servicios.";
+                    if (Platform.OS === "web") {
+                      alert(msg);
+                    } else {
+                      Alert.alert("Ajustar Horarios de Salida", msg);
+                    }
                   }}
-                  style={{ marginLeft: 6, cursor: "help" } as any}
-                  {...{ title: hasSavedProgramming
-                    ? "Se ajustan los horarios de salida reales con la programación guardada por el sector de servicios."
-                    : "No se puede ajustar porque no hay una programación guardada para esta semana desde Servicios."
-                  }}
+                  style={{ marginLeft: 6, cursor: "help", display: "inline-flex", alignItems: "center", justifyContent: "center" } as any}
+                  {...({
+                    title: hasSavedProgramming
+                      ? "Se ajustan los horarios de salida reales con la programación guardada por el sector de servicios."
+                      : "No se puede ajustar porque no hay una programación guardada para esta semana desde Servicios."
+                  } as any)}
                 >
                   <MaterialCommunityIcons 
                     name="information" 
                     size={20} 
                     color={hasSavedProgramming ? "#3B82F6" : "#94A3B8"} 
                   />
-                </TouchableOpacity>
+                </Text>
               </View>
 
               <TouchableOpacity
