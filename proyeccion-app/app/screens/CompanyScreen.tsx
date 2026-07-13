@@ -1589,11 +1589,12 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   gridSessionOccupancyText: {
-    fontSize: 8,
-    color: COLORS.textSoft,
+    fontSize: 11,
+    color: COLORS.text,
+    fontWeight: "600",
   },
   gridSessionPercentText: {
-    fontSize: 8,
+    fontSize: 12,
     fontWeight: "bold",
   },
 });
