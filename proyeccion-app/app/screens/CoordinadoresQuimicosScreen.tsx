@@ -324,7 +324,6 @@ export default function CoordinadoresQuimicosScreen() {
         {/* Header */}
         <View style={s.headerRow}>
           <View>
-            <Text style={s.pageTitle}>🧪 Químicos</Text>
             <Text style={s.pageSubtitle}>{quimicos.length} producto{quimicos.length !== 1 ? "s" : ""} registrado{quimicos.length !== 1 ? "s" : ""}</Text>
           </View>
           <TouchableOpacity style={s.addBtn} onPress={() => { setNNombre(""); setNDesc(""); setNError(""); setShowNuevo(true); }}>

@@ -1014,7 +1014,6 @@ export default function CoordinadoresLentesScreen() {
         {/* Header */}
         <View style={s.headerRow}>
           <View style={{ flex: 1, marginRight: 8 }}>
-            <Text style={s.pageTitle}>🕶️ Lentes 3D</Text>
             <Text style={s.pageSubtitle}>Inventario de lentes adultos y niños por estado</Text>
           </View>
           <View style={s.headerButtons}>

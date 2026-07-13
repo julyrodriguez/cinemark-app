@@ -323,7 +323,6 @@ export default function CoordinadoresProximamenteScreen() {
         {/* Header */}
         <View style={s.headerRow}>
           <View>
-            <Text style={s.pageTitle}>📦 Productos</Text>
             <Text style={s.pageSubtitle}>{productos.length} producto{productos.length !== 1 ? "s" : ""} registrado{productos.length !== 1 ? "s" : ""}</Text>
           </View>
           <TouchableOpacity style={s.addBtn} onPress={() => { setNNombre(""); setNDesc(""); setNError(""); setShowNuevo(true); }}>
