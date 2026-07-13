@@ -34,6 +34,7 @@ import { useAuthUser } from "../../lib/useAuthUser";
 import {
   generateProgramacionWorkbook,
   parseWeeklyProgrammingExcel,
+  buildDailyProgramming,
 } from "../../lib/programacion/excel";
 import { parseWeeklyProgrammingPDF } from "../../lib/programacion/pdf";
 import { WEEKDAY_LABELS, WeekdayKey, FloorConfig, WeeklyMovieRow } from "../../lib/programacion/types";
@@ -222,25 +223,10 @@ export default function ProgramacionTab() {
     return !!weeklyUri && !loading;
   }, [useSavedWeekly, savedWeekly, weeklyUri, loading]);
 
-  // Extract preview shows for the selected day
-  const previewShows = useMemo(() => {
+  // Extract daily programming data for preview (matches Excel generation exactly)
+  const previewData = useMemo(() => {
     const rowsToUse = useSavedWeekly ? (savedWeekly?.weeklyRows || []) : (loadedWeeklyRows || []);
-    if (rowsToUse.length === 0) return [];
-
-    const list: { sala: number; pelicula: string; horarios: string[] }[] = [];
-    rowsToUse.forEach((row) => {
-      const ranges = row.horariosPorDia?.[selectedDay] ?? [];
-      if (ranges.length > 0) {
-        list.push({
-          sala: Number(row.sala),
-          pelicula: row.pelicula,
-          horarios: ranges,
-        });
-      }
-    });
-
-    // Sort by room number first
-    return list.sort((a, b) => a.sala - b.sala);
+    return buildDailyProgramming(rowsToUse, selectedDay, WEEKDAY_LABELS[selectedDay]);
   }, [useSavedWeekly, savedWeekly, loadedWeeklyRows, selectedDay]);
 
   async function pickWeeklyFile() {
@@ -737,70 +723,6 @@ export default function ProgramacionTab() {
         </Pressable>
       )}
 
-      {/* Vista Previa de la Programación */}
-      {(useSavedWeekly ? !!savedWeekly : !!loadedWeeklyRows) && (
-        <View style={[s.card, { marginTop: 16 }]}>
-          <View style={s.rowBetween}>
-            <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <MaterialCommunityIcons name="eye-outline" size={20} color={COLORS.primary} style={{ marginRight: 8 }} />
-              <Text style={s.sectionLabel}>Vista Previa: {WEEKDAY_LABELS[selectedDay]}</Text>
-            </View>
-            <TouchableOpacity onPress={() => setShowPreview(!showPreview)}>
-              <Text style={{ color: COLORS.primary, fontWeight: "bold", fontSize: 13 }}>
-                {showPreview ? "Ocultar" : "Mostrar"}
-              </Text>
-            </TouchableOpacity>
-          </View>
-          
-          {showPreview && (
-            <View style={{ marginTop: 12 }}>
-              {previewShows.length === 0 ? (
-                <Text style={{ fontSize: 13, color: COLORS.muted, textAlign: "center", paddingVertical: 20 }}>
-                  Sin funciones programadas para este día en el reporte.
-                </Text>
-              ) : (
-                <ScrollView 
-                  style={{ maxHeight: 220, borderTopWidth: 1, borderTopColor: COLORS.border, marginTop: 4 }}
-                  nestedScrollEnabled
-                >
-                  {previewShows.map((show, idx) => (
-                    <View key={idx} style={{ 
-                      flexDirection: "row", 
-                      alignItems: "center", 
-                      paddingVertical: 10, 
-                      borderBottomWidth: 1, 
-                      borderBottomColor: COLORS.border 
-                    }}>
-                      <View style={{ 
-                        backgroundColor: COLORS.primarySoft, 
-                        paddingHorizontal: 8, 
-                        paddingVertical: 4, 
-                        borderRadius: 6, 
-                        marginRight: 12,
-                        minWidth: 64,
-                        alignItems: "center",
-                        borderWidth: 1,
-                        borderColor: COLORS.primary
-                      }}>
-                        <Text style={{ color: COLORS.primary, fontWeight: "800", fontSize: 11.5 }}>Sala {show.sala}</Text>
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ color: COLORS.text, fontWeight: "800", fontSize: 13.5 }} numberOfLines={1}>
-                          {show.pelicula}
-                        </Text>
-                        <Text style={{ color: COLORS.textSoft, fontSize: 12, marginTop: 3, fontWeight: "500" }}>
-                          {show.horarios.join("   |   ")}
-                        </Text>
-                      </View>
-                    </View>
-                  ))}
-                </ScrollView>
-              )}
-            </View>
-          )}
-        </View>
-      )}
-
       {/* ACCIÓN PRINCIPAL */}
       <View style={s.actionArea}>
         <Pressable
@@ -821,6 +743,97 @@ export default function ProgramacionTab() {
         </Pressable>
         {!!statusText && <Text style={s.statusInfo}>{statusText}</Text>}
       </View>
+
+      {/* Vista Previa de la Programación (Excel Style) */}
+      {(useSavedWeekly ? !!savedWeekly : !!loadedWeeklyRows) && (
+        <View style={[s.card, { marginTop: 16 }]}>
+          <View style={s.rowBetween}>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <MaterialCommunityIcons name="eye-outline" size={20} color={COLORS.primary} style={{ marginRight: 8 }} />
+              <Text style={s.sectionLabel}>Vista Previa: {WEEKDAY_LABELS[selectedDay]}</Text>
+            </View>
+            <TouchableOpacity onPress={() => setShowPreview(!showPreview)}>
+              <Text style={{ color: COLORS.primary, fontWeight: "bold", fontSize: 13 }}>
+                {showPreview ? "Ocultar" : "Mostrar"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          
+          {showPreview && (
+            <View style={{ marginTop: 12 }}>
+              {previewData.entrada.length === 0 && previewData.salida.length === 0 ? (
+                <Text style={{ fontSize: 13, color: COLORS.muted, textAlign: "center", paddingVertical: 20 }}>
+                  Sin funciones programadas para este día en el reporte.
+                </Text>
+              ) : (
+                <View style={s.previewColumnsContainer}>
+                  {/* COLUMNA ENTRADAS (INGRESOS) */}
+                  <View style={s.previewColumn}>
+                    <View style={[s.previewColumnHeader, { backgroundColor: COLORS.primarySoft, borderColor: COLORS.primary }]}>
+                      <Text style={[s.previewColumnHeaderText, { color: COLORS.primary }]}>ENTRADAS (INGRESOS)</Text>
+                    </View>
+                    <View style={s.previewTableHeaderRow}>
+                      <Text style={[s.previewTableHeaderText, { width: 50, textAlign: "center" }]}>INICIO</Text>
+                      <Text style={[s.previewTableHeaderText, { width: 50, textAlign: "center" }]}>SALA</Text>
+                      <Text style={[s.previewTableHeaderText, { flex: 1, paddingLeft: 8 }]}>PELÍCULA</Text>
+                      <Text style={[s.previewTableHeaderText, { width: 45, textAlign: "center" }]}>CALIF</Text>
+                    </View>
+                    <ScrollView style={{ maxHeight: 350 }} nestedScrollEnabled>
+                      {previewData.entrada.map((show, idx) => (
+                        <View key={`in-${idx}`} style={s.previewItemRow}>
+                          <View style={[s.previewCellTime, { width: 50, alignItems: "center" }]}>
+                            <Text style={s.previewTimeValText}>{show.inicio}</Text>
+                          </View>
+                          <View style={[s.previewCellSala, { width: 50, alignItems: "center" }]}>
+                            <Text style={s.previewSalaValText}>{show.sala}</Text>
+                          </View>
+                          <View style={{ flex: 1, paddingLeft: 8, justifyContent: "center" }}>
+                            <Text style={s.previewMovieValText} numberOfLines={1}>
+                              {show.pelicula}
+                            </Text>
+                          </View>
+                          <View style={[s.previewCellCalif, { width: 45, alignItems: "center" }]}>
+                            <Text style={s.previewCalifValText}>{show.calificacion || "-"}</Text>
+                          </View>
+                        </View>
+                      ))}
+                    </ScrollView>
+                  </View>
+
+                  {/* COLUMNA SALIDAS (EGRESOS) */}
+                  <View style={s.previewColumn}>
+                    <View style={[s.previewColumnHeader, { backgroundColor: COLORS.dangerSoft, borderColor: COLORS.danger }]}>
+                      <Text style={[s.previewColumnHeaderText, { color: COLORS.danger }]}>SALIDAS (EGRESOS)</Text>
+                    </View>
+                    <View style={s.previewTableHeaderRow}>
+                      <Text style={[s.previewTableHeaderText, { width: 50, textAlign: "center" }]}>SALA</Text>
+                      <Text style={[s.previewTableHeaderText, { width: 50, textAlign: "center" }]}>FIN</Text>
+                      <Text style={[s.previewTableHeaderText, { flex: 1, paddingLeft: 8 }]}>PELÍCULA</Text>
+                    </View>
+                    <ScrollView style={{ maxHeight: 350 }} nestedScrollEnabled>
+                      {previewData.salida.map((show, idx) => (
+                        <View key={`out-${idx}`} style={s.previewItemRow}>
+                          <View style={[s.previewCellSala, { width: 50, alignItems: "center" }]}>
+                            <Text style={s.previewSalaValText}>{show.sala}</Text>
+                          </View>
+                          <View style={[s.previewCellTime, { width: 50, alignItems: "center", backgroundColor: COLORS.dangerSoft, borderColor: COLORS.danger }]}>
+                            <Text style={[s.previewTimeValText, { color: COLORS.danger }]}>{show.fin}</Text>
+                          </View>
+                          <View style={{ flex: 1, paddingLeft: 8, justifyContent: "center" }}>
+                            <Text style={s.previewMovieValText} numberOfLines={1}>
+                              {show.pelicula}
+                            </Text>
+                          </View>
+                        </View>
+                      ))}
+                    </ScrollView>
+                  </View>
+                </View>
+              )}
+            </View>
+          )}
+        </View>
+      )}
 
 
 
@@ -1050,5 +1063,85 @@ const s = StyleSheet.create({
     color: "#EF4444",
     fontSize: 14,
     fontWeight: "900",
+  },
+  previewColumnsContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 16,
+    marginTop: 8,
+  },
+  previewColumn: {
+    flex: 1,
+    minWidth: 290,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    backgroundColor: COLORS.card,
+    overflow: "hidden",
+  },
+  previewColumnHeader: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    alignItems: "center",
+    borderBottomWidth: 1,
+    borderColor: COLORS.border,
+  },
+  previewColumnHeaderText: {
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 0.5,
+  },
+  previewTableHeaderRow: {
+    flexDirection: "row",
+    backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F1F5F9)" : "#F1F5F9",
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderColor: COLORS.border,
+  },
+  previewTableHeaderText: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: COLORS.muted,
+    textTransform: "uppercase",
+  },
+  previewItemRow: {
+    flexDirection: "row",
+    borderBottomWidth: 1,
+    borderColor: COLORS.border,
+    paddingVertical: 8,
+    alignItems: "center",
+  },
+  previewCellTime: {
+    backgroundColor: COLORS.primarySoft,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 0.5,
+    borderColor: COLORS.primary,
+  },
+  previewCellSala: {
+    justifyContent: "center",
+  },
+  previewCellCalif: {
+    justifyContent: "center",
+  },
+  previewTimeValText: {
+    fontSize: 11.5,
+    fontWeight: "800",
+    color: COLORS.primary,
+  },
+  previewSalaValText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: COLORS.text,
+  },
+  previewMovieValText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: COLORS.text,
+  },
+  previewCalifValText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: COLORS.muted,
   },
 });
