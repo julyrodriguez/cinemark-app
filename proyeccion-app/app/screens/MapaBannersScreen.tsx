@@ -33,6 +33,7 @@ interface BannerElement {
   width?: number; // percentage width
   height?: number; // percentage height
   locked?: boolean; // toggle to lock dragging
+  isCircle?: boolean; // toggle circle shape
 }
 
 interface FloorPlan {
@@ -442,6 +443,40 @@ export default function MapaBannersScreen() {
         return {
           ...f,
           elements: f.elements.map((el) => ({ ...el, locked: lock })),
+        };
+      }
+      return f;
+    });
+    setFloors(updatedFloors);
+    handleSaveChanges(updatedFloors);
+  };
+
+  const handleLockSelectedElements = (lock: boolean) => {
+    if (!activeFloor) return;
+    const updatedFloors = floors.map((f) => {
+      if (f.id === selectedFloorId) {
+        return {
+          ...f,
+          elements: f.elements.map((el) =>
+            selectedElementIds.includes(el.id) ? { ...el, locked: lock } : el
+          ),
+        };
+      }
+      return f;
+    });
+    setFloors(updatedFloors);
+    handleSaveChanges(updatedFloors);
+  };
+
+  const handleSetSelectedElementsShape = (makeCircle: boolean) => {
+    if (!activeFloor) return;
+    const updatedFloors = floors.map((f) => {
+      if (f.id === selectedFloorId) {
+        return {
+          ...f,
+          elements: f.elements.map((el) =>
+            selectedElementIds.includes(el.id) ? { ...el, isCircle: makeCircle } : el
+          ),
         };
       }
       return f;
@@ -1047,6 +1082,22 @@ export default function MapaBannersScreen() {
     setFloors(updated);
   };
 
+  const handleToggleElementShape = (id: string, makeCircle: boolean) => {
+    const updated = floors.map((f) => {
+      if (f.id === selectedFloorId) {
+        return {
+          ...f,
+          elements: f.elements.map((el) =>
+            el.id === id ? { ...el, isCircle: makeCircle } : el
+          ),
+        };
+      }
+      return f;
+    });
+    setFloors(updated);
+    handleSaveChanges(updated);
+  };
+
   // Print PDF Layout Generator
   const handlePrint = async () => {
     try {
@@ -1588,8 +1639,11 @@ export default function MapaBannersScreen() {
                       top: `${el.y - (el.height || 12) / 2}%`,
                       borderColor: isSelected ? COLORS.primary : meta.color,
                       backgroundColor: isSelected ? COLORS.primarySoft : COLORS.card,
+                      borderRadius: el.isCircle ? 9999 : 8,
+                      overflow: el.isCircle ? "hidden" : "visible",
                     },
                     hasPoster && s.elementMarkerWithPoster,
+                    hasPoster && el.isCircle && { borderRadius: 9999, overflow: "hidden" },
                   ]}
                   onPress={() => {
                     if (multiSelectMode) {
@@ -1686,7 +1740,7 @@ export default function MapaBannersScreen() {
                   style={[s.iconBtn, { flex: 1, backgroundColor: COLORS.primary }]}
                   onPress={() => handleAlignSelected("x")}
                 >
-                  <MaterialCommunityIcons name="align-horizontal-center" size={16} color="#fff" />
+                  <MaterialCommunityIcons name="align-vertical-center" size={16} color="#fff" />
                   <Text style={s.btnText}>Alinear en X</Text>
                 </Pressable>
 
@@ -1694,7 +1748,7 @@ export default function MapaBannersScreen() {
                   style={[s.iconBtn, { flex: 1, backgroundColor: COLORS.primary }]}
                   onPress={() => handleAlignSelected("y")}
                 >
-                  <MaterialCommunityIcons name="align-vertical-center" size={16} color="#fff" />
+                  <MaterialCommunityIcons name="align-horizontal-center" size={16} color="#fff" />
                   <Text style={s.btnText}>Alinear en Y</Text>
                 </Pressable>
               </View>
@@ -1758,7 +1812,7 @@ export default function MapaBannersScreen() {
                     style={[s.iconBtn, { flex: 1, backgroundColor: COLORS.primary }]}
                     onPress={() => handleDistributeSelected("x", distributeGap)}
                   >
-                    <MaterialCommunityIcons name="arrow-split-horizontal" size={16} color="#fff" />
+                    <MaterialCommunityIcons name="arrow-split-vertical" size={16} color="#fff" />
                     <Text style={s.btnText}>Separar en X</Text>
                   </Pressable>
 
@@ -1766,7 +1820,7 @@ export default function MapaBannersScreen() {
                     style={[s.iconBtn, { flex: 1, backgroundColor: COLORS.primary }]}
                     onPress={() => handleDistributeSelected("y", distributeGap)}
                   >
-                    <MaterialCommunityIcons name="arrow-split-vertical" size={16} color="#fff" />
+                    <MaterialCommunityIcons name="arrow-split-horizontal" size={16} color="#fff" />
                     <Text style={s.btnText}>Separar en Y</Text>
                   </Pressable>
                 </View>
@@ -1939,6 +1993,56 @@ export default function MapaBannersScreen() {
               </View>
             </View>
 
+            <View style={s.field}>
+              <Text style={s.sidebarSectionTitle}>Fijar / Soltar Selección</Text>
+              <Text style={{ fontSize: 11, color: COLORS.muted, fontStyle: "italic", marginBottom: 6 }}>
+                Fija o desbloquea el movimiento de los elementos seleccionados:
+              </Text>
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                <Pressable
+                  style={[s.iconBtn, { flex: 1, backgroundColor: COLORS.primary }]}
+                  onPress={() => handleLockSelectedElements(true)}
+                >
+                  <MaterialCommunityIcons name="lock" size={16} color="#fff" />
+                  <Text style={s.btnText}>Fijar Seleccionados</Text>
+                </Pressable>
+
+                <Pressable
+                  style={[s.iconBtn, { flex: 1, backgroundColor: "#64748b" }]}
+                  onPress={() => handleLockSelectedElements(false)}
+                >
+                  <MaterialCommunityIcons name="lock-open-outline" size={16} color="#fff" />
+                  <Text style={s.btnText}>Soltar Seleccionados</Text>
+                </Pressable>
+              </View>
+            </View>
+
+            <View style={s.divider} />
+
+            <View style={s.field}>
+              <Text style={s.sidebarSectionTitle}>Forma de la Selección</Text>
+              <Text style={{ fontSize: 11, color: COLORS.muted, fontStyle: "italic", marginBottom: 6 }}>
+                Cambia la forma de todos los elementos seleccionados:
+              </Text>
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                <Pressable
+                  style={[s.iconBtn, { flex: 1, backgroundColor: COLORS.primary }]}
+                  onPress={() => handleSetSelectedElementsShape(false)}
+                >
+                  <MaterialCommunityIcons name="square-outline" size={16} color="#fff" />
+                  <Text style={s.btnText}>Rectángulo</Text>
+                </Pressable>
+
+                <Pressable
+                  style={[s.iconBtn, { flex: 1, backgroundColor: COLORS.primary }]}
+                  onPress={() => handleSetSelectedElementsShape(true)}
+                >
+                  <MaterialCommunityIcons name="circle-outline" size={16} color="#fff" />
+                  <Text style={s.btnText}>Círculo</Text>
+                </Pressable>
+              </View>
+            </View>
+
             <View style={s.divider} />
 
             <Pressable
@@ -2048,6 +2152,47 @@ export default function MapaBannersScreen() {
                     </Pressable>
                   );
                 })}
+              </View>
+            </View>
+
+            <View style={s.field}>
+              <Text style={s.fieldLabel}>Forma del Elemento</Text>
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                <Pressable
+                  style={[
+                    s.typeSelectBtn,
+                    { flex: 1, height: 38 },
+                    !selectedElement.isCircle && { backgroundColor: COLORS.primarySoft, borderColor: COLORS.primary }
+                  ]}
+                  onPress={() => handleToggleElementShape(selectedElement.id, false)}
+                >
+                  <MaterialCommunityIcons
+                    name="square-outline"
+                    size={16}
+                    color={!selectedElement.isCircle ? COLORS.primary : COLORS.muted}
+                  />
+                  <Text style={[s.typeSelectText, !selectedElement.isCircle && { color: COLORS.primary, fontWeight: "800" }]}>
+                    Rectángulo
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  style={[
+                    s.typeSelectBtn,
+                    { flex: 1, height: 38 },
+                    selectedElement.isCircle && { backgroundColor: COLORS.primarySoft, borderColor: COLORS.primary }
+                  ]}
+                  onPress={() => handleToggleElementShape(selectedElement.id, true)}
+                >
+                  <MaterialCommunityIcons
+                    name="circle-outline"
+                    size={16}
+                    color={selectedElement.isCircle ? COLORS.primary : COLORS.muted}
+                  />
+                  <Text style={[s.typeSelectText, selectedElement.isCircle && { color: COLORS.primary, fontWeight: "800" }]}>
+                    Círculo
+                  </Text>
+                </Pressable>
               </View>
             </View>
 
