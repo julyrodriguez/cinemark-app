@@ -565,45 +565,92 @@ export default function MapaBannersScreen() {
       const color = meta.color || "#6b7280";
       const showZocalo = ["banner", "poster", "standee", "proximamente"].includes(el.type);
 
-      // Background rect
-      svgElements += `
-        <rect x="${x}" y="${y}" width="${width}" height="${height}" rx="8" ry="8" fill="#ffffff" stroke="${color}" stroke-width="2.5" />
-      `;
-
-      const posterUrl = base64Posters[el.id] || el.posterUrl;
-      if (posterUrl) {
+      if (el.isCircle) {
+        // Define clip path for circular clipping
         svgElements += `
-          <image href="${esc(posterUrl)}" x="${x + 2}" y="${y + 2}" width="${width - 4}" height="${height - (showZocalo ? 18 : 4)}" preserveAspectRatio="xMidYMid meet" crossorigin="anonymous" />
+          <clipPath id="clip-${el.id}">
+            <ellipse cx="${x + width / 2}" cy="${y + height / 2}" rx="${width / 2 - 1.25}" ry="${height / 2 - 1.25}" />
+          </clipPath>
         `;
-      } else {
-        const nameText = el.movieName || el.name || "";
-        const maxChars = Math.max(8, Math.floor((width - 12) / 6));
-        const lines = wrapTextIntoLines(nameText, maxChars);
-        const fontSize = Math.min(10, Math.max(7, Math.floor(width / 8)));
-        const lineHeight = fontSize + 2;
-        const totalHeight = lines.length * lineHeight;
-        const startY = y + (height - (showZocalo ? 17 : 6)) / 2 + 3 - (totalHeight / 2) + (fontSize / 2);
 
-        let tspanElements = "";
-        lines.forEach((line, idx) => {
-          tspanElements += `
-            <tspan x="${x + width / 2}" dy="${idx === 0 ? 0 : lineHeight}">${esc(line)}</tspan>
+        // Background shape (ellipse/circle)
+        svgElements += `
+          <ellipse cx="${x + width / 2}" cy="${y + height / 2}" rx="${width / 2}" ry="${height / 2}" fill="#ffffff" stroke="${color}" stroke-width="2.5" />
+        `;
+
+        const posterUrl = base64Posters[el.id] || el.posterUrl;
+        if (posterUrl) {
+          svgElements += `
+            <image href="${esc(posterUrl)}" x="${x + 2}" y="${y + 2}" width="${width - 4}" height="${height - 4}" preserveAspectRatio="xMidYMid slice" clip-path="url(#clip-${el.id})" crossorigin="anonymous" />
           `;
-        });
+        } else {
+          const nameText = el.movieName || el.name || "";
+          const maxChars = Math.max(8, Math.floor((width - 12) / 6));
+          const lines = wrapTextIntoLines(nameText, maxChars);
+          const fontSize = Math.min(10, Math.max(7, Math.floor(width / 8)));
+          const lineHeight = fontSize + 2;
+          const totalHeight = lines.length * lineHeight;
+          const startY = y + height / 2 + 3 - (totalHeight / 2) + (fontSize / 2);
 
+          let tspanElements = "";
+          lines.forEach((line, idx) => {
+            tspanElements += `
+              <tspan x="${x + width / 2}" dy="${idx === 0 ? 0 : lineHeight}">${esc(line)}</tspan>
+            `;
+          });
+
+          svgElements += `
+            <ellipse cx="${x + width / 2}" cy="${y + height / 2}" rx="${width / 2 - 3}" ry="${height / 2 - 3}" fill="${color}" opacity="0.15" />
+            <text x="${x + width / 2}" y="${startY}" font-family="Helvetica, Arial, sans-serif" font-size="${fontSize}" font-weight="bold" fill="#1e293b" text-anchor="middle" dominant-baseline="central" clip-path="url(#clip-${el.id})">${tspanElements}</text>
+          `;
+        }
+
+        if (showZocalo) {
+          svgElements += `
+            <path d="M ${x} ${y + height - 14} L ${x + width} ${y + height - 14} L ${x + width} ${y + height} L ${x} ${y + height} Z" fill="${color}" clip-path="url(#clip-${el.id})" />
+            <text x="${x + width / 2}" y="${y + height - 7}" font-family="Helvetica, Arial, sans-serif" font-size="7" font-weight="bold" fill="#ffffff" text-anchor="middle" dominant-baseline="middle" clip-path="url(#clip-${el.id})">${esc(meta.label.toUpperCase())}</text>
+          `;
+        }
+      } else {
+        // Background rect
         svgElements += `
-          <rect x="${x + 3}" y="${y + 3}" width="${width - 6}" height="${height - (showZocalo ? 17 : 6)}" rx="5" ry="5" fill="${color}" opacity="0.15" />
-          <text x="${x + width / 2}" y="${startY}" font-family="Helvetica, Arial, sans-serif" font-size="${fontSize}" font-weight="bold" fill="#1e293b" text-anchor="middle" dominant-baseline="central">${tspanElements}</text>
+          <rect x="${x}" y="${y}" width="${width}" height="${height}" rx="8" ry="8" fill="#ffffff" stroke="${color}" stroke-width="2.5" />
         `;
-      }
 
-      if (showZocalo) {
-        svgElements += `
-          <path d="M ${x + 1.25} ${y + height - 16} L ${x + width - 1.25} ${y + height - 16} L ${x + width - 1.25} ${y + height - 6} A 6 6 0 0 1 ${x + width - 7.25} ${y + height - 1.25} L ${x + 7.25} ${y + height - 1.25} A 6 6 0 0 1 ${x + 1.25} ${y + height - 7.25} Z" fill="${color}" />
-          <text x="${x + width / 2}" y="${y + height - 8}" font-family="Helvetica, Arial, sans-serif" font-size="8" font-weight="bold" fill="#ffffff" text-anchor="middle" dominant-baseline="middle">${esc(meta.label.toUpperCase())}</text>
-        `;
-      }
+        const posterUrl = base64Posters[el.id] || el.posterUrl;
+        if (posterUrl) {
+          svgElements += `
+            <image href="${esc(posterUrl)}" x="${x + 2}" y="${y + 2}" width="${width - 4}" height="${height - (showZocalo ? 18 : 4)}" preserveAspectRatio="xMidYMid meet" crossorigin="anonymous" />
+          `;
+        } else {
+          const nameText = el.movieName || el.name || "";
+          const maxChars = Math.max(8, Math.floor((width - 12) / 6));
+          const lines = wrapTextIntoLines(nameText, maxChars);
+          const fontSize = Math.min(10, Math.max(7, Math.floor(width / 8)));
+          const lineHeight = fontSize + 2;
+          const totalHeight = lines.length * lineHeight;
+          const startY = y + (height - (showZocalo ? 17 : 6)) / 2 + 3 - (totalHeight / 2) + (fontSize / 2);
 
+          let tspanElements = "";
+          lines.forEach((line, idx) => {
+            tspanElements += `
+              <tspan x="${x + width / 2}" dy="${idx === 0 ? 0 : lineHeight}">${esc(line)}</tspan>
+            `;
+          });
+
+          svgElements += `
+            <rect x="${x + 3}" y="${y + 3}" width="${width - 6}" height="${height - (showZocalo ? 17 : 6)}" rx="5" ry="5" fill="${color}" opacity="0.15" />
+            <text x="${x + width / 2}" y="${startY}" font-family="Helvetica, Arial, sans-serif" font-size="${fontSize}" font-weight="bold" fill="#1e293b" text-anchor="middle" dominant-baseline="central">${tspanElements}</text>
+          `;
+        }
+
+        if (showZocalo) {
+          svgElements += `
+            <path d="M ${x + 1.25} ${y + height - 16} L ${x + width - 1.25} ${y + height - 16} L ${x + width - 1.25} ${y + height - 6} A 6 6 0 0 1 ${x + width - 7.25} ${y + height - 1.25} L ${x + 7.25} ${y + height - 1.25} A 6 6 0 0 1 ${x + 1.25} ${y + height - 7.25} Z" fill="${color}" />
+            <text x="${x + width / 2}" y="${y + height - 8}" font-family="Helvetica, Arial, sans-serif" font-size="8" font-weight="bold" fill="#ffffff" text-anchor="middle" dominant-baseline="middle">${esc(meta.label.toUpperCase())}</text>
+          `;
+        }
+      }
     });
 
     const svgXml = `
@@ -1143,7 +1190,7 @@ export default function MapaBannersScreen() {
                 ? `<div class="print-marker-zocalo" style="background-color: ${color};">${esc(ELEMENT_TYPE_META[el.type]?.label || el.type)}</div>`
                 : "";
               return `
-              <div class="print-marker" style="left: ${left}%; top: ${top}%; width: ${width}%; height: ${height}%; border-color: ${color};">
+              <div class="print-marker" style="left: ${left}%; top: ${top}%; width: ${width}%; height: ${height}%; border-color: ${color}; ${el.isCircle ? 'border-radius: 50%; overflow: hidden;' : ''}">
                 ${posterContent}
                 ${zocaloHtml}
               </div>
