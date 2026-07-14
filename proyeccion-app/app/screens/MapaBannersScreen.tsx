@@ -2105,11 +2105,14 @@ export default function MapaBannersScreen() {
           </ScrollView>
         ) : selectedElement ? (
           <ScrollView contentContainerStyle={s.sidebarContent}>
-            <View style={s.sidebarHeader}>
-              <Text style={s.sidebarTitle}>Editar Elemento</Text>
-              <View style={s.sidebarActionsHeader}>
+            <View style={{ gap: 8, marginBottom: 8 }}>
+              <View style={s.sidebarHeader}>
+                <Text style={s.sidebarTitle}>Editar Elemento</Text>
+              </View>
+              
+              <View style={[s.sidebarActionsHeader, { width: "100%", justifyContent: "flex-start" }]}>
                 <Pressable
-                  style={[s.lockToggleBtn, selectedElement.locked && s.lockToggleBtnActive]}
+                  style={[s.lockToggleBtn, selectedElement.locked && s.lockToggleBtnActive, { flex: 1, justifyContent: "center" }]}
                   onPress={() => {
                     const updated = floors.map((f) => {
                       if (f.id === selectedFloorId) {
@@ -2137,14 +2140,17 @@ export default function MapaBannersScreen() {
                 </Pressable>
 
                 <Pressable
-                  style={s.replicateBtn}
+                  style={[s.replicateBtn, { flex: 1, justifyContent: "center" }]}
                   onPress={() => handleDuplicateElement(selectedElement)}
                 >
                   <MaterialCommunityIcons name="content-copy" size={14} color={COLORS.primary} />
                   <Text style={s.replicateBtnText}>Replicar</Text>
                 </Pressable>
 
-                <Pressable style={s.deleteBtn} onPress={() => handleDeleteElement(selectedElement.id)}>
+                <Pressable 
+                  style={[s.deleteBtn, { width: 36, height: 32, alignItems: "center", justifyContent: "center", borderRadius: 8 }]} 
+                  onPress={() => handleDeleteElement(selectedElement.id)}
+                >
                   <MaterialCommunityIcons name="delete-outline" size={20} color={COLORS.danger} />
                 </Pressable>
               </View>
