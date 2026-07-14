@@ -2631,92 +2631,158 @@ export default function MapaBannersScreen() {
 
   return (
     <View style={s.container}>
-      {/* HEADER CONTROLS */}
-      <View style={[s.topBar, isMobile && { flexDirection: "column", alignItems: "stretch", gap: 10 }]}>
-        <View style={s.floorsTabsScroll}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.floorsTabs}>
-            {floors.map((floor) => {
-              const isSelected = floor.id === selectedFloorId;
-              return (
-                <View key={floor.id} style={[s.floorTabWrap, isSelected && s.floorTabActive]}>
-                  {isSelected ? (
-                    <TextInput
-                      style={[s.floorTabText, s.floorTabInput]}
-                      value={floor.name}
-                      onChangeText={(val) => handleRenameFloor(floor.id, val)}
-                      placeholder="Nombre del Piso"
-                    />
-                  ) : (
-                    <Pressable onPress={() => { setSelectedFloorId(floor.id); setSelectedElementId(null); setSelectedElementIds([]); }}>
-                      <Text style={[s.floorTabText, s.floorTabInactiveText]}>{floor.name}</Text>
-                    </Pressable>
-                  )}
-                  {isSelected && (
-                    <Pressable style={s.floorDeleteBtn} onPress={() => handleDeleteFloor(floor.id)}>
-                      <MaterialCommunityIcons name="close-circle" size={16} color={COLORS.danger} />
-                    </Pressable>
-                  )}
-                </View>
-              );
-            })}
-            <Pressable style={s.addFloorBtn} onPress={handleAddFloor}>
-              <MaterialCommunityIcons name="plus" size={16} color={COLORS.primary} />
-              <Text style={s.addFloorText}>Piso</Text>
-            </Pressable>
-          </ScrollView>
-        </View>
+      {!isMobile ? (
+        <>
+          {/* HEADER CONTROLS (fixed on desktop) */}
+          <View style={s.topBar}>
+            <View style={s.floorsTabsScroll}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.floorsTabs}>
+                {floors.map((floor) => {
+                  const isSelected = floor.id === selectedFloorId;
+                  return (
+                    <View key={floor.id} style={[s.floorTabWrap, isSelected && s.floorTabActive]}>
+                      {isSelected ? (
+                        <TextInput
+                          style={[s.floorTabText, s.floorTabInput]}
+                          value={floor.name}
+                          onChangeText={(val) => handleRenameFloor(floor.id, val)}
+                          placeholder="Nombre del Piso"
+                        />
+                      ) : (
+                        <Pressable onPress={() => { setSelectedFloorId(floor.id); setSelectedElementId(null); setSelectedElementIds([]); }}>
+                          <Text style={[s.floorTabText, s.floorTabInactiveText]}>{floor.name}</Text>
+                        </Pressable>
+                      )}
+                      {isSelected && (
+                        <Pressable style={s.floorDeleteBtn} onPress={() => handleDeleteFloor(floor.id)}>
+                          <MaterialCommunityIcons name="close-circle" size={16} color={COLORS.danger} />
+                        </Pressable>
+                      )}
+                    </View>
+                  );
+                })}
+                <Pressable style={s.addFloorBtn} onPress={handleAddFloor}>
+                  <MaterialCommunityIcons name="plus" size={16} color={COLORS.primary} />
+                  <Text style={s.addFloorText}>Piso</Text>
+                </Pressable>
+              </ScrollView>
+            </View>
 
-        <View style={s.actionsRow}>
-          <Pressable style={[s.iconBtn, { backgroundColor: "#0284c7" }]} onPress={handleExportPNG}>
-            <MaterialCommunityIcons name="image-outline" size={18} color="#fff" />
-            <Text style={s.btnText}>Exportar PNG</Text>
-          </Pressable>
+            <View style={s.actionsRow}>
+              <Pressable style={[s.iconBtn, { backgroundColor: "#0284c7" }]} onPress={handleExportPNG}>
+                <MaterialCommunityIcons name="image-outline" size={18} color="#fff" />
+                <Text style={s.btnText}>Exportar PNG</Text>
+              </Pressable>
 
-          <Pressable style={[s.iconBtn, printing && s.btnDisabled]} onPress={handlePrint} disabled={printing}>
-            {printing ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <>
-                <MaterialCommunityIcons name="printer" size={18} color="#fff" />
-                <Text style={s.btnText}>Imprimir / PDF</Text>
-              </>
-            )}
-          </Pressable>
+              <Pressable style={[s.iconBtn, printing && s.btnDisabled]} onPress={handlePrint} disabled={printing}>
+                {printing ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <>
+                    <MaterialCommunityIcons name="printer" size={18} color="#fff" />
+                    <Text style={s.btnText}>Imprimir / PDF</Text>
+                  </>
+                )}
+              </Pressable>
 
-          <Pressable style={[s.iconBtn, s.saveBtn, saving && s.btnDisabled]} onPress={() => handleSaveChanges()} disabled={saving}>
-            {saving ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <>
-                <MaterialCommunityIcons name="content-save-outline" size={18} color="#fff" />
-                <Text style={s.btnText}>Guardar</Text>
-              </>
-            )}
-          </Pressable>
-        </View>
-      </View>
+              <Pressable style={[s.iconBtn, s.saveBtn, saving && s.btnDisabled]} onPress={() => handleSaveChanges()} disabled={saving}>
+                {saving ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <>
+                    <MaterialCommunityIcons name="content-save-outline" size={18} color="#fff" />
+                    <Text style={s.btnText}>Guardar</Text>
+                  </>
+                )}
+              </Pressable>
+            </View>
+          </View>
 
-      {isMobile && (
-        <View style={[s.mobileWarningBanner, { backgroundColor: COLORS.primarySoft, borderColor: COLORS.primary }]}>
-          <MaterialCommunityIcons name="gesture-swipe" size={16} color={COLORS.primary} />
-          <Text style={[s.mobileWarningText, { color: COLORS.primary }]}>
-            ¡Arrastrá el fondo con un dedo para navegar por el plano! Tocá un elemento para cambiar su póster.
-          </Text>
-        </View>
-      )}
-
-      {isMobile ? (
+          <View style={s.mainWorkspace}>
+            {workspaceContent}
+          </View>
+        </>
+      ) : (
         <ScrollView
           style={[s.mainWorkspace, { flexDirection: "column" }]}
           contentContainerStyle={{ paddingBottom: 40 }}
           scrollEnabled={!isDraggingOrPanning}
         >
+          {/* HEADER CONTROLS (inside ScrollView on mobile, so it scrolls away) */}
+          <View style={[s.topBar, { flexDirection: "column", alignItems: "stretch", gap: 10, borderBottomWidth: 0 }]}>
+            <View style={s.floorsTabsScroll}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.floorsTabs}>
+                {floors.map((floor) => {
+                  const isSelected = floor.id === selectedFloorId;
+                  return (
+                    <View key={floor.id} style={[s.floorTabWrap, isSelected && s.floorTabActive]}>
+                      {isSelected ? (
+                        <TextInput
+                          style={[s.floorTabText, s.floorTabInput]}
+                          value={floor.name}
+                          onChangeText={(val) => handleRenameFloor(floor.id, val)}
+                          placeholder="Nombre del Piso"
+                        />
+                      ) : (
+                        <Pressable onPress={() => { setSelectedFloorId(floor.id); setSelectedElementId(null); setSelectedElementIds([]); }}>
+                          <Text style={[s.floorTabText, s.floorTabInactiveText]}>{floor.name}</Text>
+                        </Pressable>
+                      )}
+                      {isSelected && (
+                        <Pressable style={s.floorDeleteBtn} onPress={() => handleDeleteFloor(floor.id)}>
+                          <MaterialCommunityIcons name="close-circle" size={16} color={COLORS.danger} />
+                        </Pressable>
+                      )}
+                    </View>
+                  );
+                })}
+                <Pressable style={s.addFloorBtn} onPress={handleAddFloor}>
+                  <MaterialCommunityIcons name="plus" size={16} color={COLORS.primary} />
+                  <Text style={s.addFloorText}>Piso</Text>
+                </Pressable>
+              </ScrollView>
+            </View>
+
+            <View style={s.actionsRow}>
+              <Pressable style={[s.iconBtn, { backgroundColor: "#0284c7" }]} onPress={handleExportPNG}>
+                <MaterialCommunityIcons name="image-outline" size={18} color="#fff" />
+                <Text style={s.btnText}>Exportar PNG</Text>
+              </Pressable>
+
+              <Pressable style={[s.iconBtn, printing && s.btnDisabled]} onPress={handlePrint} disabled={printing}>
+                {printing ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <>
+                    <MaterialCommunityIcons name="printer" size={18} color="#fff" />
+                    <Text style={s.btnText}>Imprimir / PDF</Text>
+                  </>
+                )}
+              </Pressable>
+
+              <Pressable style={[s.iconBtn, s.saveBtn, saving && s.btnDisabled]} onPress={() => handleSaveChanges()} disabled={saving}>
+                {saving ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <>
+                    <MaterialCommunityIcons name="content-save-outline" size={18} color="#fff" />
+                    <Text style={s.btnText}>Guardar</Text>
+                  </>
+                )}
+              </Pressable>
+            </View>
+          </View>
+
+          {/* WARNING BANNER (inside ScrollView on mobile, so it scrolls away) */}
+          <View style={[s.mobileWarningBanner, { backgroundColor: COLORS.primarySoft, borderColor: COLORS.primary, marginHorizontal: 16, marginTop: 10, borderRadius: 8 }]}>
+            <MaterialCommunityIcons name="gesture-swipe" size={16} color={COLORS.primary} />
+            <Text style={[s.mobileWarningText, { color: COLORS.primary }]}>
+              ¡Arrastrá el fondo con un dedo para navegar por el plano! Tocá un elemento para cambiar su póster.
+            </Text>
+          </View>
+
           {workspaceContent}
         </ScrollView>
-      ) : (
-        <View style={s.mainWorkspace}>
-          {workspaceContent}
-        </View>
       )}
     </View>
   );
