@@ -488,7 +488,7 @@ export default function MapaBannersScreen() {
   const handleExportPNG = async () => {
     if (!activeFloor) return;
 
-    const exportScale = 3.0; // 3x upscale for high-resolution crisp image export
+    const exportScale = 6.0; // 6x upscale for ultra-high-resolution crisp image export
     const floorWidth = activeFloor.width || 1000;
     const floorHeight = activeFloor.height || 562;
 
