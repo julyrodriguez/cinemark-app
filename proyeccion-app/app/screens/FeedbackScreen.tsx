@@ -24,6 +24,7 @@ import {
 } from "@/lib/dbService";
 import { useAuthUser } from "../../lib/useAuthUser";
 import { COLORS, THEME } from "../../lib/theme";
+import { db } from "../../lib/firebaseConfig";
 
 // Tipos de datos
 interface FeedbackEntry {
@@ -79,8 +80,8 @@ export default function FeedbackScreen() {
   // Suscribirse a los reportes de todos los cines en tiempo real
   useEffect(() => {
     setLoadingEntries(true);
-    // Usamos la colección stats/feedback/entries para saltear el backend local
-    const qCol = collection(null, "stats", "feedback", "entries");
+    // Usamos la colección cines/global/feedback para que pase por el backend local y se replique
+    const qCol = collection(db, "cines", "global", "feedback");
     const q = query(qCol, orderBy("fechaISO", "desc"));
 
     const unsub = onSnapshot(
@@ -125,7 +126,7 @@ export default function FeedbackScreen() {
 
     setSubmitting(true);
     try {
-      const qCol = collection(null, "stats", "feedback", "entries");
+      const qCol = collection(db, "cines", "global", "feedback");
       await addDoc(qCol, {
         tipo,
         categoria,
@@ -155,7 +156,7 @@ export default function FeedbackScreen() {
   const handleUpdateStatus = async (item: FeedbackEntry, nextStatus: FeedbackEntry["status"]) => {
     if (!isAbastoUser) return;
     try {
-      const docRef = doc(collection(null, "stats", "feedback", "entries"), item.id);
+      const docRef = doc(collection(db, "cines", "global", "feedback"), item.id);
       await updateDoc(docRef, {
         status: nextStatus,
       });
