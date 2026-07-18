@@ -259,6 +259,7 @@ export default function Home() {
       
       // Mostrar pestaña Compañía para todos los usuarios (cines, oficinas, administradores)
       tabs.push("COMPAÑÍA");
+      tabs.push("FEEDBACK");
       
       return tabs;
     },
