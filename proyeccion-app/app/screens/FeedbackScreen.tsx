@@ -232,7 +232,7 @@ export default function FeedbackScreen() {
             </Text>
 
             {/* Selector de tipo */}
-            <View style={s.row}>
+            <View style={s.selectorRow}>
               <TouchableOpacity
                 style={[s.typeBtn, tipo === "sugerencia" && { backgroundColor: COLORS.primary, borderColor: "transparent" }]}
                 onPress={() => setTipo("sugerencia")}
@@ -295,7 +295,7 @@ export default function FeedbackScreen() {
             {tipo === "bug" ? (
               <View style={s.fieldGroup}>
                 <Text style={s.label}>Severidad del problema</Text>
-                <View style={s.row}>
+                <View style={s.selectorRow}>
                   {(["leve", "moderada", "critica"] as const).map((p) => (
                     <TouchableOpacity
                       key={p}
@@ -308,7 +308,13 @@ export default function FeedbackScreen() {
                       ]}
                       onPress={() => setPrioridad(p)}
                     >
-                      <Text style={[s.optText, prioridad === p && { color: "#FFF", fontWeight: "bold" }]}>
+                      <Text style={[
+                        s.optText,
+                        prioridad === p && {
+                          color: p === "critica" ? COLORS.danger : p === "moderada" ? "#D97706" : COLORS.success,
+                          fontWeight: "bold"
+                        }
+                      ]}>
                         {p === "critica" ? "Crítica 🚨" : p === "moderada" ? "Moderada ⚠️" : "Leve ✅"}
                       </Text>
                     </TouchableOpacity>
@@ -318,7 +324,7 @@ export default function FeedbackScreen() {
             ) : (
               <View style={s.fieldGroup}>
                 <Text style={s.label}>Impacto estimado</Text>
-                <View style={s.row}>
+                <View style={s.selectorRow}>
                   {(["ahorra_tiempo", "evita_errores", "estetica"] as const).map((i) => (
                     <TouchableOpacity
                       key={i}
@@ -513,8 +519,16 @@ const s = StyleSheet.create({
   cardTitle: { fontSize: 18, fontWeight: "900", color: COLORS.text },
   cardSubtitle: { fontSize: 13, color: COLORS.muted, lineHeight: 18 },
   row: { flexDirection: "row", gap: 10 },
+  selectorRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    width: "100%",
+  },
   typeBtn: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 1,
+    minWidth: 140,
     backgroundColor: COLORS.bg,
     flexDirection: "row",
     alignItems: "center",
@@ -563,7 +577,9 @@ const s = StyleSheet.create({
 
   // Selector Option Buttons
   optBtn: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 1,
+    minWidth: 100,
     backgroundColor: COLORS.bg,
     paddingVertical: 10,
     borderRadius: 10,
