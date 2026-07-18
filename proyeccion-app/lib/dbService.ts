@@ -73,7 +73,16 @@ export function doc(database: any, ...pathSegments: string[]): DbRef {
   // Manejar caso donde se pasa una referencia de colección como primer argumento
   if (database instanceof DbRef) {
     const parentRef = database;
-    const segments = [...parentRef.path, ...pathSegments];
+    let segments = [...parentRef.path, ...pathSegments];
+    
+    // Si no se pasaron segmentos adicionales (ej: doc(collectionRef)),
+    // el SDK de Firestore genera un ID automático de documento.
+    if (pathSegments.length === 0) {
+      const firestoreRef = firestoreDoc(parentRef.firestoreRef);
+      segments.push(firestoreRef.id);
+      return new DbRef("document", segments, firestoreRef);
+    }
+    
     const firestoreRef = firestoreDoc(realFirestoreDb, segments[0], ...segments.slice(1));
     return new DbRef("document", segments, firestoreRef);
   }
@@ -410,6 +419,25 @@ function checkWritePermissions() {
   }
 }
 
+// Helper para serializar datos y reemplazar serverTimestamp con un ISO string para la API HTTP
+function serializeData(val: any): any {
+  if (val === null || val === undefined) return val;
+  if (typeof val === "object") {
+    if (val._methodName === "serverTimestamp" || (val.constructor && val.constructor.name === "FieldValue")) {
+      return new Date().toISOString();
+    }
+    if (Array.isArray(val)) {
+      return val.map(serializeData);
+    }
+    const result: any = {};
+    for (const key of Object.keys(val)) {
+      result[key] = serializeData(val[key]);
+    }
+    return result;
+  }
+  return val;
+}
+
 // 6. Mock de addDoc() (Crear documento con ID auto-generado)
 export async function addDoc(dbRef: DbRef, data: any) {
   checkWritePermissions();
@@ -437,7 +465,7 @@ export async function addDoc(dbRef: DbRef, data: any) {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${token}`
       },
-      body: JSON.stringify(data)
+      body: JSON.stringify(serializeData(data))
     });
 
     if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
@@ -480,7 +508,7 @@ export async function setDoc(dbRef: DbRef, data: any, options?: any) {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${token}`
       },
-      body: JSON.stringify(data)
+      body: JSON.stringify(serializeData(data))
     });
 
     if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
@@ -518,7 +546,7 @@ export async function updateDoc(dbRef: DbRef, data: any) {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${token}`
       },
-      body: JSON.stringify(data)
+      body: JSON.stringify(serializeData(data))
     });
 
     if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);

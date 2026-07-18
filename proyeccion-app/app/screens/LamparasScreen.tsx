@@ -610,6 +610,7 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
             sala: data.sala !== undefined ? data.sala : null,
             marca: data.marca ?? "",
             potencia: data.potencia ?? "",
+            modelo: data.modelo ?? "",
             notas: data.notas ?? "",
             createdAt: data.createdAt,
             installedAt: data.installedAt,
@@ -851,6 +852,7 @@ export default function LamparasScreen({ readOnly = false }: { readOnly?: boolea
 
   const handleRetire = async () => {
     if (readOnly) return;
+    if (savingRetire) return;
     setRetireError("");
     const horasUsadasNum = parseInt(rHorasUsadas.trim(), 10);
     const horasRestantesNum = parseInt(rHorasRestantes.trim(), 10);
