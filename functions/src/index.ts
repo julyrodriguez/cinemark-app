@@ -2,6 +2,7 @@ import { createHash } from "crypto";
 import * as admin from "firebase-admin";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
+import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { defineSecret } from "firebase-functions/params";
 import * as nodemailer from "nodemailer";
 
@@ -2063,5 +2064,77 @@ export const searchMoviePoster = onCall({ cors: true }, async (request) => {
     }
   }
 });
+
+export const onFeedbackCreated = onDocumentCreated({
+  document: "stats/feedback/entries/{docId}",
+  secrets: [GMAIL_PASSWORD]
+}, async (event) => {
+  const snapshot = event.data;
+  if (!snapshot) return;
+  const data = snapshot.data();
+
+  const gmailPassword = GMAIL_PASSWORD.value();
+
+  const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: GMAIL_USER,
+      pass: gmailPassword,
+    },
+  });
+
+  const subject = `${data.tipo === "bug" ? "🐛 Bug" : "💡 Sugerencia"} [${data.cineId.toUpperCase()}]: ${data.titulo}`;
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);">
+      <div style="background: ${data.tipo === 'bug' ? '#EF4444' : '#6366F1'}; padding: 20px; color: white;">
+        <h2 style="margin: 0; font-size: 20px;">
+          ${data.tipo === 'bug' ? '🐛 Reporte de Falla (Bug)' : '💡 Propuesta de Mejora'}
+        </h2>
+      </div>
+      <div style="padding: 24px; background: #ffffff; color: #1e293b;">
+        <h3 style="margin-top: 0; font-size: 18px; color: #0f172a;">${data.titulo}</h3>
+        <p style="font-size: 15px; line-height: 1.6; color: #334155; white-space: pre-wrap;">${data.descripcion}</p>
+        
+        <table style="width: 100%; border-collapse: collapse; margin-top: 24px; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden;">
+          <tr style="background: #f8fafc;">
+            <td style="padding: 12px; font-weight: bold; border-bottom: 1px solid #e2e8f0; color: #475569; width: 150px;">Categoría</td>
+            <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; text-transform: capitalize;">${data.categoria}</td>
+          </tr>
+          <tr>
+            <td style="padding: 12px; font-weight: bold; border-bottom: 1px solid #e2e8f0; color: #475569;">Cine / Complejo</td>
+            <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; text-transform: uppercase;">${data.cineId}</td>
+          </tr>
+          <tr style="background: #f8fafc;">
+            <td style="padding: 12px; font-weight: bold; border-bottom: 1px solid #e2e8f0; color: #475569;">Usuario</td>
+            <td style="padding: 12px; border-bottom: 1px solid #e2e8f0;">${data.userName}</td>
+          </tr>
+          ${data.tipo === 'bug' ? `
+          <tr>
+            <td style="padding: 12px; font-weight: bold; color: #EF4444; border-bottom: 1px solid #e2e8f0;">Prioridad</td>
+            <td style="padding: 12px; font-weight: bold; color: #EF4444; text-transform: capitalize; border-bottom: 1px solid #e2e8f0;">${data.prioridad}</td>
+          </tr>
+          ` : ''}
+          <tr style="background: #f8fafc;">
+            <td style="padding: 12px; font-weight: bold; color: #475569;">Fecha de Reporte</td>
+            <td style="padding: 12px;">${new Date().toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })}</td>
+          </tr>
+        </table>
+        
+        <p style="margin-top: 24px; font-size: 12px; color: #64748B; border-top: 1px solid #e2e8f0; padding-top: 16px;">
+          Este correo fue generado automáticamente por el sistema de feedback de Cinemark Proyección.
+        </p>
+      </div>
+    </div>
+  `;
+
+  await transporter.sendMail({
+    from: `"Feedback Proyección" <${GMAIL_USER}>`,
+    to: "rodriguez.jariel01@gmail.com",
+    subject,
+    html,
+  });
+});
+
 
 

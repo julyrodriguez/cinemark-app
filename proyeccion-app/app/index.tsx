@@ -48,9 +48,10 @@ import ProgramacionProyeccionScreen from "./screens/ProgramacionProyeccionScreen
 import ControlSalasScreen from "./screens/ControlSalasScreen";
 import MapaBannersScreen from "./screens/MapaBannersScreen";
 import CompanyScreen from "./screens/CompanyScreen";
+import FeedbackScreen from "./screens/FeedbackScreen";
 
 type MainTab = "PROGRAMACIÓN" | "CALENDARIO" | "EVENTOS" | "PROYECCIÓN" | "SERVICIOS" | "COORDINADORES" | "COMPAÑÍA";
-type ProyeccionTab = "RMA" | "MANTENIMIENTOS" | "CREDITOS" | "DCP" | "TRAILERS_SEMANALES" | "CHEQUEO_COPIAS" | "CONTROL_SEMANAL" | "LAMPARAS" | "CIERRE_MES";
+type ProyeccionTab = "RMA" | "MANTENIMIENTOS" | "CREDITOS" | "DCP" | "TRAILERS_SEMANALES" | "CHEQUEO_COPIAS" | "CONTROL_SEMANAL" | "LAMPARAS" | "CIERRE_MES" | "FEEDBACK";
 type MarketingSubTab = "MKT" | "PROGRAMACION" | "CONTROL_SALAS" | "MAPA_BANNERS";
 type CoordinadoresSubTab = "QUIMICOS" | "LENTES_3D" | "PROXIMAMENTE";
 
@@ -75,6 +76,7 @@ const SUB_TABS = {
     { key: "CHEQUEO_COPIAS", label: "Chequeo de Copias", icon: "movie-check-outline" },
     { key: "CONTROL_SEMANAL", label: "Control Semanal", icon: "clipboard-check-outline" },
     { key: "CIERRE_MES", label: "Cierre de Mes", icon: "calendar-check" },
+    { key: "FEEDBACK", label: "Sugerencias & Bugs", icon: "message-draw" },
   ],
   SERVICIOS: [
     { key: "PROGRAMACION", label: "Programaciones", icon: "clipboard-text-outline" },
@@ -805,6 +807,7 @@ export default function Home() {
             {proyeccionTab === "CONTROL_SEMANAL" && <ControlSemanalScreen readOnly={!isProjectionUnlocked} />}
             {proyeccionTab === "LAMPARAS" && <LamparasScreen readOnly={!isProjectionUnlocked} />}
             {proyeccionTab === "CIERRE_MES" && <CierreMesScreen readOnly={!isProjectionUnlocked} />}
+            {proyeccionTab === "FEEDBACK" && <FeedbackScreen />}
           </View>
         </View>
       );
