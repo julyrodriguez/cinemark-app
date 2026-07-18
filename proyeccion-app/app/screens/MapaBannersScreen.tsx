@@ -65,6 +65,7 @@ interface TmdbResult {
   title: string;
   release_date?: string;
   poster_path?: string | null;
+  isCustom?: boolean;
 }
 
 export default function MapaBannersScreen() {
@@ -1061,8 +1062,9 @@ export default function MapaBannersScreen() {
             const data = d.data();
             return {
               id: d.id,
-              title: `🎨 [Personalizado] ${data.title}`,
+              title: data.title,
               poster_path: data.imageUrl,
+              isCustom: true,
             } as any;
           })
           .filter((p: any) => p.title.toLowerCase().includes(term));
@@ -2640,7 +2642,7 @@ export default function MapaBannersScreen() {
                     )}
                     <View style={s.searchResultTextContainer}>
                       <Text style={s.searchResultName} numberOfLines={1}>
-                        {movie.title}
+                        {movie.isCustom ? `🎨 [Personalizado] ${movie.title}` : movie.title}
                       </Text>
                       {!!movie.release_date && (
                         <Text style={s.searchResultMeta}>Año: {movie.release_date.split("-")[0]}</Text>
