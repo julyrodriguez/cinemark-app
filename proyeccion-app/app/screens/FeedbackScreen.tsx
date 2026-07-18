@@ -17,6 +17,7 @@ import {
   doc,
   addDoc,
   updateDoc,
+  getDocs,
   onSnapshot,
   query,
   orderBy,
@@ -77,46 +78,44 @@ export default function FeedbackScreen() {
     return cineId?.toLowerCase() === "abasto" || isAdmin;
   }, [cineId, isAdmin]);
 
-  // Suscribirse a los reportes de todos los cines en tiempo real
-  useEffect(() => {
+  // Cargar reportes de todos los cines desde MongoDB (vía el backend local)
+  const loadEntries = async () => {
     setLoadingEntries(true);
-    // Usamos la colección cines/global/feedback para que pase por el backend local y se replique
-    const qCol = collection(db, "cines", "global", "feedback");
-    const q = query(qCol, orderBy("fechaISO", "desc"));
+    try {
+      const qCol = collection(db, "cines", "global", "feedback");
+      const snap = await getDocs(qCol);
+      const rows: FeedbackEntry[] = snap.docs.map((d: any) => {
+        const data = d.data();
+        return {
+          id: d.id,
+          tipo: data.tipo ?? "sugerencia",
+          categoria: data.categoria ?? "otro",
+          titulo: data.titulo ?? "",
+          descripcion: data.descripcion ?? "",
+          prioridad: data.prioridad,
+          impacto: data.impacto,
+          cineId: data.cineId ?? "desconocido",
+          userName: data.userName ?? "Operador",
+          fechaCreacion: data.fechaCreacion,
+          fechaISO: data.fechaISO ?? "",
+          status: data.status ?? "pendiente",
+          comentarioAdmin: data.comentarioAdmin ?? "",
+          votos: data.votos ?? [],
+        };
+      });
+      // Ordenar por fecha de creación desc
+      rows.sort((a, b) => b.fechaISO.localeCompare(a.fechaISO));
+      setEntries(rows);
+    } catch (err: any) {
+      console.error("Error al cargar feedback de MongoDB:", err);
+    } finally {
+      setLoadingEntries(false);
+    }
+  };
 
-    const unsub = onSnapshot(
-      q,
-      (snap: any) => {
-        const rows: FeedbackEntry[] = snap.docs.map((d: any) => {
-          const data = d.data();
-          return {
-            id: d.id,
-            tipo: data.tipo ?? "sugerencia",
-            categoria: data.categoria ?? "otro",
-            titulo: data.titulo ?? "",
-            descripcion: data.descripcion ?? "",
-            prioridad: data.prioridad,
-            impacto: data.impacto,
-            cineId: data.cineId ?? "desconocido",
-            userName: data.userName ?? "Operador",
-            fechaCreacion: data.fechaCreacion,
-            fechaISO: data.fechaISO ?? "",
-            status: data.status ?? "pendiente",
-            comentarioAdmin: data.comentarioAdmin ?? "",
-            votos: data.votos ?? [],
-          };
-        });
-        setEntries(rows);
-        setLoadingEntries(false);
-      },
-      (err: any) => {
-        console.error("Error al cargar feedback:", err);
-        setLoadingEntries(false);
-      }
-    );
-
-    return () => unsub();
-  }, []);
+  useEffect(() => {
+    loadEntries();
+  }, [activeTab]);
 
   const handleSubmit = async () => {
     if (!titulo.trim() || !descripcion.trim()) {
@@ -146,6 +145,7 @@ export default function FeedbackScreen() {
       setTitulo("");
       setDescripcion("");
       setActiveTab("LISTA");
+      loadEntries();
     } catch (e: any) {
       Alert.alert("Error", "No se pudo registrar tu feedback: " + e.message);
     } finally {
@@ -161,6 +161,7 @@ export default function FeedbackScreen() {
         status: nextStatus,
       });
       Alert.alert("Éxito", `El estado ha sido cambiado a: ${nextStatus === "completado" ? "Completado" : nextStatus}`);
+      loadEntries();
     } catch (e: any) {
       Alert.alert("Error", "No se pudo actualizar el estado: " + e.message);
     }
