@@ -14,7 +14,7 @@ import {
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Print from "expo-print";
-import { doc, getDoc, setDoc, onSnapshot } from "@/lib/dbService";
+import { doc, getDoc, setDoc, onSnapshot, collection, getDocs } from "@/lib/dbService";
 import { httpsCallable } from "@/lib/dbService";
 
 import { db, functions, CINES_COLLECTION } from "../../lib/firebaseConfig";
@@ -61,7 +61,7 @@ const ELEMENT_TYPE_META = {
 
 // TMDB API Search Helper
 interface TmdbResult {
-  id: number;
+  id: number | string;
   title: string;
   release_date?: string;
   poster_path?: string | null;
@@ -500,6 +500,7 @@ export default function MapaBannersScreen() {
         .replaceAll('"', "&quot;");
 
     const getBase64FromUrl = async (url: string): Promise<string> => {
+      if (url.startsWith("data:")) return url;
       try {
         const response = await fetch(url);
         const blob = await response.blob();
@@ -1049,16 +1050,45 @@ export default function MapaBannersScreen() {
       setSearchingPoster(true);
       setSearchResults([]);
 
-      const searchPosterFunc = httpsCallable<{ query: string }, { results: TmdbResult[] }>(
-        functions,
-        "searchMoviePoster"
-      );
-      const response = await searchPosterFunc({ query: searchQuery });
-      const results = response.data.results || [];
+      // 1. Consultar pósters personalizados de MongoDB local
+      let localResults: TmdbResult[] = [];
+      try {
+        const colRef = collection(db, "cines", "global", "custom_posters");
+        const snap = await getDocs(colRef);
+        const term = searchQuery.toLowerCase().trim();
+        localResults = snap.docs
+          .map((d: any) => {
+            const data = d.data();
+            return {
+              id: d.id,
+              title: `🎨 [Personalizado] ${data.title}`,
+              poster_path: data.imageUrl,
+            } as any;
+          })
+          .filter((p: any) => p.title.toLowerCase().includes(term));
+      } catch (err) {
+        console.error("Error querying local custom posters:", err);
+      }
 
-      setSearchResults(results);
-      if (results.length === 0) {
-        Alert.alert("Sin resultados", "No encontramos películas que coincidan con la búsqueda.");
+      // 2. Consultar películas de TMDB externa
+      let tmdbResults: TmdbResult[] = [];
+      try {
+        const searchPosterFunc = httpsCallable<{ query: string }, { results: TmdbResult[] }>(
+          functions,
+          "searchMoviePoster"
+        );
+        const response = await searchPosterFunc({ query: searchQuery });
+        tmdbResults = response.data.results || [];
+      } catch (err) {
+        console.error("Error searching TMDB posters:", err);
+      }
+
+      // 3. Combinar resultados locales y remotos
+      const combined = [...localResults, ...tmdbResults];
+      setSearchResults(combined);
+
+      if (combined.length === 0) {
+        Alert.alert("Sin resultados", "No encontramos películas o pósters custom que coincidan.");
       }
     } catch (e) {
       console.error("Error searching poster:", e);
@@ -1073,13 +1103,15 @@ export default function MapaBannersScreen() {
     if (!selectedElementId || !activeFloor) return;
 
     const originalUrl = posterPath
-      ? posterPath.startsWith("http")
+      ? posterPath.startsWith("http") || posterPath.startsWith("data:")
         ? posterPath
         : `https://image.tmdb.org/t/p/w500${posterPath}`
       : "";
 
     const posterUrl = originalUrl
-      ? `https://apivacas.jariel.com.ar/api/cinemark/poster?url=${encodeURIComponent(originalUrl)}`
+      ? originalUrl.startsWith("data:")
+        ? originalUrl
+        : `https://apivacas.jariel.com.ar/api/cinemark/poster?url=${encodeURIComponent(originalUrl)}`
       : "";
 
     const updatedFloors = floors.map((f) => {
@@ -2591,11 +2623,13 @@ export default function MapaBannersScreen() {
                     {movie.poster_path ? (
                       <Image
                         source={{
-                          uri: `https://apivacas.jariel.com.ar/api/cinemark/poster?url=${encodeURIComponent(
-                            movie.poster_path.startsWith("http")
-                              ? movie.poster_path
-                              : `https://image.tmdb.org/t/p/w92${movie.poster_path}`
-                          )}`,
+                          uri: movie.poster_path.startsWith("data:")
+                            ? movie.poster_path
+                            : `https://apivacas.jariel.com.ar/api/cinemark/poster?url=${encodeURIComponent(
+                                movie.poster_path.startsWith("http")
+                                  ? movie.poster_path
+                                  : `https://image.tmdb.org/t/p/w92${movie.poster_path}`
+                              )}`,
                         }}
                         style={s.searchResultThumb as any}
                       />

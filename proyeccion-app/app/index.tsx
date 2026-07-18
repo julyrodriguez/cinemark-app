@@ -49,10 +49,11 @@ import ControlSalasScreen from "./screens/ControlSalasScreen";
 import MapaBannersScreen from "./screens/MapaBannersScreen";
 import CompanyScreen from "./screens/CompanyScreen";
 import FeedbackScreen from "./screens/FeedbackScreen";
+import CustomPostersScreen from "./screens/CustomPostersScreen";
 
 type MainTab = "PROGRAMACIÓN" | "CALENDARIO" | "EVENTOS" | "PROYECCIÓN" | "SERVICIOS" | "COORDINADORES" | "COMPAÑÍA" | "FEEDBACK";
 type ProyeccionTab = "RMA" | "MANTENIMIENTOS" | "CREDITOS" | "DCP" | "TRAILERS_SEMANALES" | "CHEQUEO_COPIAS" | "CONTROL_SEMANAL" | "LAMPARAS" | "CIERRE_MES";
-type MarketingSubTab = "MKT" | "PROGRAMACION" | "CONTROL_SALAS" | "MAPA_BANNERS";
+type MarketingSubTab = "MKT" | "PROGRAMACION" | "CONTROL_SALAS" | "MAPA_BANNERS" | "CUSTOM_POSTERS";
 type CoordinadoresSubTab = "QUIMICOS" | "LENTES_3D" | "PROXIMAMENTE";
 
 const MAIN_TAB_META = {
@@ -83,6 +84,7 @@ const SUB_TABS = {
     { key: "MKT", label: "Marketing", icon: "bullhorn-outline" },
     { key: "CONTROL_SALAS", label: "Control de Salas", icon: "sofa-single-outline" },
     { key: "MAPA_BANNERS", label: "Banners y Marquesinas", icon: "map-marker-outline" },
+    { key: "CUSTOM_POSTERS", label: "Pósters Custom", icon: "image-plus" },
   ],
   COORDINADORES: [
     { key: "QUIMICOS", label: "Químicos", icon: "flask-outline" },
@@ -821,6 +823,7 @@ export default function Home() {
             {marketingTab === "PROGRAMACION" && <ProgramacionTab />}
             {marketingTab === "CONTROL_SALAS" && <ControlSalasScreen />}
             {marketingTab === "MAPA_BANNERS" && <MapaBannersScreen />}
+            {marketingTab === "CUSTOM_POSTERS" && <CustomPostersScreen />}
           </View>
         </View>
       );
