@@ -50,8 +50,8 @@ import MapaBannersScreen from "./screens/MapaBannersScreen";
 import CompanyScreen from "./screens/CompanyScreen";
 import FeedbackScreen from "./screens/FeedbackScreen";
 
-type MainTab = "PROGRAMACIÓN" | "CALENDARIO" | "EVENTOS" | "PROYECCIÓN" | "SERVICIOS" | "COORDINADORES" | "COMPAÑÍA";
-type ProyeccionTab = "RMA" | "MANTENIMIENTOS" | "CREDITOS" | "DCP" | "TRAILERS_SEMANALES" | "CHEQUEO_COPIAS" | "CONTROL_SEMANAL" | "LAMPARAS" | "CIERRE_MES" | "FEEDBACK";
+type MainTab = "PROGRAMACIÓN" | "CALENDARIO" | "EVENTOS" | "PROYECCIÓN" | "SERVICIOS" | "COORDINADORES" | "COMPAÑÍA" | "FEEDBACK";
+type ProyeccionTab = "RMA" | "MANTENIMIENTOS" | "CREDITOS" | "DCP" | "TRAILERS_SEMANALES" | "CHEQUEO_COPIAS" | "CONTROL_SEMANAL" | "LAMPARAS" | "CIERRE_MES";
 type MarketingSubTab = "MKT" | "PROGRAMACION" | "CONTROL_SALAS" | "MAPA_BANNERS";
 type CoordinadoresSubTab = "QUIMICOS" | "LENTES_3D" | "PROXIMAMENTE";
 
@@ -63,6 +63,7 @@ const MAIN_TAB_META = {
   SERVICIOS: { label: "Servicios", icon: "briefcase-outline" },
   COORDINADORES: { label: "Coordinadores", icon: "account-group-outline" },
   COMPAÑÍA: { label: "Compañía", icon: "office-building" },
+  FEEDBACK: { label: "Sugerencias & Bugs", icon: "message-draw" },
 } as const;
 
 const SUB_TABS = {
@@ -76,7 +77,6 @@ const SUB_TABS = {
     { key: "CHEQUEO_COPIAS", label: "Chequeo de Copias", icon: "movie-check-outline" },
     { key: "CONTROL_SEMANAL", label: "Control Semanal", icon: "clipboard-check-outline" },
     { key: "CIERRE_MES", label: "Cierre de Mes", icon: "calendar-check" },
-    { key: "FEEDBACK", label: "Sugerencias & Bugs", icon: "message-draw" },
   ],
   SERVICIOS: [
     { key: "PROGRAMACION", label: "Programaciones", icon: "clipboard-text-outline" },
@@ -807,7 +807,6 @@ export default function Home() {
             {proyeccionTab === "CONTROL_SEMANAL" && <ControlSemanalScreen readOnly={!isProjectionUnlocked} />}
             {proyeccionTab === "LAMPARAS" && <LamparasScreen readOnly={!isProjectionUnlocked} />}
             {proyeccionTab === "CIERRE_MES" && <CierreMesScreen readOnly={!isProjectionUnlocked} />}
-            {proyeccionTab === "FEEDBACK" && <FeedbackScreen />}
           </View>
         </View>
       );
@@ -843,6 +842,16 @@ export default function Home() {
         <View style={styles.screenWrap}>
           <View style={styles.subContent}>
             <CompanyScreen />
+          </View>
+        </View>
+      );
+    }
+
+    if (mainTab === "FEEDBACK") {
+      return (
+        <View style={styles.screenWrap}>
+          <View style={styles.subContent}>
+            <FeedbackScreen />
           </View>
         </View>
       );

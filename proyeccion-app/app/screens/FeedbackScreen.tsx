@@ -233,18 +233,30 @@ export default function FeedbackScreen() {
             {/* Selector de tipo */}
             <View style={s.row}>
               <TouchableOpacity
-                style={[s.typeBtn, tipo === "sugerencia" && { backgroundColor: COLORS.primary }]}
+                style={[s.typeBtn, tipo === "sugerencia" && { backgroundColor: COLORS.primary, borderColor: "transparent" }]}
                 onPress={() => setTipo("sugerencia")}
               >
-                <MaterialCommunityIcons name="lightbulb-on" size={18} color="#FFF" />
-                <Text style={s.typeBtnText}>💡 Sugerencia</Text>
+                <MaterialCommunityIcons
+                  name="lightbulb-on"
+                  size={18}
+                  color={tipo === "sugerencia" ? "#FFF" : COLORS.muted}
+                />
+                <Text style={[s.typeBtnText, tipo === "sugerencia" ? { color: "#FFF" } : { color: COLORS.muted }]}>
+                  Sugerencia
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[s.typeBtn, tipo === "bug" && { backgroundColor: COLORS.danger }]}
+                style={[s.typeBtn, tipo === "bug" && { backgroundColor: COLORS.danger, borderColor: "transparent" }]}
                 onPress={() => setTipo("bug")}
               >
-                <MaterialCommunityIcons name="bug" size={18} color="#FFF" />
-                <Text style={s.typeBtnText}>🐛 Reportar Bug</Text>
+                <MaterialCommunityIcons
+                  name="bug"
+                  size={18}
+                  color={tipo === "bug" ? "#FFF" : COLORS.muted}
+                />
+                <Text style={[s.typeBtnText, tipo === "bug" ? { color: "#FFF" } : { color: COLORS.muted }]}>
+                  Reportar Bug
+                </Text>
               </TouchableOpacity>
             </View>
 
@@ -502,21 +514,23 @@ const s = StyleSheet.create({
   row: { flexDirection: "row", gap: 10 },
   typeBtn: {
     flex: 1,
-    backgroundColor: "#0F172A",
+    backgroundColor: COLORS.bg,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 12,
     borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
     gap: 8,
   },
-  typeBtnText: { color: "#FFF", fontWeight: "bold", fontSize: 14 },
+  typeBtnText: { color: COLORS.muted, fontWeight: "bold", fontSize: 14 },
   
   fieldGroup: { gap: 6 },
   label: { color: COLORS.muted, fontSize: 13, fontWeight: "700" },
   input: {
-    backgroundColor: "#0F172A",
-    color: "#FFF",
+    backgroundColor: COLORS.bg,
+    color: COLORS.text,
     paddingHorizontal: 14,
     paddingVertical: 12,
     borderRadius: 10,
@@ -532,7 +546,7 @@ const s = StyleSheet.create({
   // Chips de categoria
   catContainer: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 4 },
   catChip: {
-    backgroundColor: "#0F172A",
+    backgroundColor: COLORS.bg,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
@@ -541,27 +555,27 @@ const s = StyleSheet.create({
   },
   catChipActive: {
     borderColor: COLORS.primary + "80",
-    backgroundColor: COLORS.primary + "15",
+    backgroundColor: COLORS.primarySoft,
   },
   catChipText: { color: COLORS.muted, fontSize: 12, fontWeight: "600" },
-  catChipTextActive: { color: "#FFF" },
+  catChipTextActive: { color: COLORS.primary },
 
   // Selector Option Buttons
   optBtn: {
     flex: 1,
-    backgroundColor: "#0F172A",
+    backgroundColor: COLORS.bg,
     paddingVertical: 10,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "transparent",
+    borderColor: COLORS.border,
     alignItems: "center",
   },
   optBtnActive: {
     borderColor: COLORS.primary + "80",
-    backgroundColor: COLORS.primary + "15",
+    backgroundColor: COLORS.primarySoft,
   },
   optText: { color: COLORS.muted, fontSize: 12, fontWeight: "700" },
-  optTextActive: { color: "#FFF" },
+  optTextActive: { color: COLORS.primary },
 
   // Submit button
   submitBtn: {
@@ -587,7 +601,7 @@ const s = StyleSheet.create({
   statusBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
   statusBadgeText: { fontSize: 10, fontWeight: "800" },
   entryTitle: { fontSize: 16, fontWeight: "900", color: COLORS.text },
-  entryDesc: { fontSize: 13, color: "#94A3B8", lineHeight: 18 },
+  entryDesc: { fontSize: 13, color: COLORS.text, opacity: 0.8, lineHeight: 18 },
   entryMetadata: {
     flexDirection: "row",
     flexWrap: "wrap",
