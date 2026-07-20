@@ -90,6 +90,21 @@ export function doc(database: any, ...pathSegments: string[]): DbRef {
   return new DbRef("document", pathSegments, firestoreRef);
 }
 
+// Helper para convertir cualquier tipo de fecha (Date, Timestamp, ISO string, objeto seconds) a un valor numérico comparable (ms)
+function toComparableValue(val: any): any {
+  if (val === null || val === undefined) return val;
+  if (val instanceof Date) return val.getTime();
+  if (typeof val?.toDate === "function") return val.toDate().getTime();
+  if (typeof val?.toMillis === "function") return val.toMillis();
+  if (typeof val?.seconds === "number") return val.seconds * 1000 + (val.nanoseconds || 0) / 1000000;
+  if (typeof val?._seconds === "number") return val._seconds * 1000 + (val._nanoseconds || 0) / 1000000;
+  if (typeof val === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(val)) {
+    const ms = Date.parse(val);
+    if (!isNaN(ms)) return ms;
+  }
+  return val;
+}
+
 // Helper para aplicar las restricciones de la consulta del lado del cliente
 function applyConstraints(data: any[], constraints: any[]): any[] {
   if (!constraints || constraints.length === 0) return data;
@@ -100,15 +115,16 @@ function applyConstraints(data: any[], constraints: any[]): any[] {
   for (const c of constraints) {
     if (c.type === "where") {
       const { field, op, val } = c;
+      const targetVal = toComparableValue(val);
       result = result.filter(item => {
-        const itemVal = item[field];
-        if (op === "==") return itemVal === val;
-        if (op === "!=") return itemVal !== val;
-        if (op === ">") return itemVal > val;
-        if (op === ">=") return itemVal >= val;
-        if (op === "<") return itemVal < val;
-        if (op === "<=") return itemVal <= val;
-        if (op === "array-contains") return Array.isArray(itemVal) && itemVal.includes(val);
+        const itemVal = toComparableValue(item[field]);
+        if (op === "==") return itemVal === targetVal;
+        if (op === "!=") return itemVal !== targetVal;
+        if (op === ">") return itemVal > targetVal;
+        if (op === ">=") return itemVal >= targetVal;
+        if (op === "<") return itemVal < targetVal;
+        if (op === "<=") return itemVal <= targetVal;
+        if (op === "array-contains") return Array.isArray(itemVal) && itemVal.includes(targetVal);
         return true;
       });
     }
@@ -120,8 +136,8 @@ function applyConstraints(data: any[], constraints: any[]): any[] {
     result.sort((a, b) => {
       for (const ob of orderBys) {
         const { field, direction } = ob;
-        const valA = a[field];
-        const valB = b[field];
+        const valA = toComparableValue(a[field]);
+        const valB = toComparableValue(b[field]);
 
         if (valA === valB) continue;
         if (valA === undefined || valA === null) return direction === "asc" ? -1 : 1;
@@ -150,29 +166,30 @@ function applyConstraints(data: any[], constraints: any[]): any[] {
       const field = primaryOrderBy.field;
 
       if (startAtConstraint) {
-        const targetVal = startAtConstraint.values[0];
-        result = result.filter(item => item[field] >= targetVal);
+        const targetVal = toComparableValue(startAtConstraint.values[0]);
+        result = result.filter(item => toComparableValue(item[field]) >= targetVal);
       }
 
       if (endAtConstraint) {
-        const targetVal = endAtConstraint.values[0];
-        result = result.filter(item => item[field] <= targetVal);
+        const targetVal = toComparableValue(endAtConstraint.values[0]);
+        result = result.filter(item => toComparableValue(item[field]) <= targetVal);
       }
 
       if (startAfterConstraint) {
         const targetDocOrVal = startAfterConstraint.values[0];
-        let targetVal: any;
+        let rawVal: any;
         if (targetDocOrVal && typeof targetDocOrVal === "object" && typeof targetDocOrVal.data === "function") {
-          targetVal = targetDocOrVal.data()[field];
+          rawVal = targetDocOrVal.data()[field];
         } else if (targetDocOrVal && typeof targetDocOrVal === "object" && targetDocOrVal.id) {
-          targetVal = targetDocOrVal[field];
+          rawVal = targetDocOrVal[field];
         } else {
-          targetVal = targetDocOrVal;
+          rawVal = targetDocOrVal;
         }
+        const targetVal = toComparableValue(rawVal);
 
         if (targetVal !== undefined && targetVal !== null) {
           result = result.filter(item => {
-            const itemVal = item[field];
+            const itemVal = toComparableValue(item[field]);
             if (primaryOrderBy.direction === "desc") {
               return itemVal < targetVal;
             } else {
@@ -419,12 +436,27 @@ function checkWritePermissions() {
   }
 }
 
-// Helper para serializar datos y reemplazar serverTimestamp con un ISO string para la API HTTP
+// Helper para serializar datos y reemplazar serverTimestamp y fechas con ISO strings para la API HTTP
 function serializeData(val: any): any {
   if (val === null || val === undefined) return val;
+  if (val instanceof Date) {
+    return val.toISOString();
+  }
   if (typeof val === "object") {
     if (val._methodName === "serverTimestamp" || (val.constructor && val.constructor.name === "FieldValue")) {
       return new Date().toISOString();
+    }
+    if (typeof val.toDate === "function") {
+      return val.toDate().toISOString();
+    }
+    if (typeof val.toMillis === "function") {
+      return new Date(val.toMillis()).toISOString();
+    }
+    if (typeof val.seconds === "number") {
+      return new Date(val.seconds * 1000 + (val.nanoseconds || 0) / 1000000).toISOString();
+    }
+    if (typeof val._seconds === "number") {
+      return new Date(val._seconds * 1000 + (val._nanoseconds || 0) / 1000000).toISOString();
     }
     if (Array.isArray(val)) {
       return val.map(serializeData);

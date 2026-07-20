@@ -12,7 +12,7 @@ import {
 } from "@/lib/dbService";
 import { CINES_COLLECTION, db } from "./firebaseConfig";
 import { Evento } from "./types";
-import { sanitizeCineId } from "@/shared/utils";
+import { sanitizeCineId, toDate } from "@/shared/utils";
 
 function getEventosCol(cineId: string) {
   const safeId = sanitizeCineId(cineId);
@@ -25,9 +25,7 @@ function getEventosCol(cineId: string) {
 export function mapSnapToEvento(s: any): Evento {
   const data = s.data();
 
-  const diaHora = data.diaHora?.toDate
-    ? data.diaHora.toDate()
-    : new Date(data.diaHora);
+  const diaHora = toDate(data.diaHora);
 
   return {
     id: s.id,

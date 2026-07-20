@@ -77,7 +77,17 @@ export function todayAt(hour: number, minute: number = 0): Date {
  * Convierte un valor de Firestore Timestamp a Date
  */
 export function toDate(value: any): Date {
-  return value?.toDate ? value.toDate() : new Date(value);
+  if (!value) return new Date(NaN);
+  if (value instanceof Date) return value;
+  if (typeof value?.toDate === "function") return value.toDate();
+  if (typeof value === "number") return new Date(value);
+  if (typeof value?.seconds === "number") {
+    return new Date(value.seconds * 1000 + (value.nanoseconds || 0) / 1000000);
+  }
+  if (typeof value?._seconds === "number") {
+    return new Date(value._seconds * 1000 + (value._nanoseconds || 0) / 1000000);
+  }
+  return new Date(value);
 }
 
 /**
