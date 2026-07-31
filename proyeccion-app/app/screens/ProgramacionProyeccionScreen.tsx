@@ -462,6 +462,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                             }
 
                             const seatKey = `${seat.row}-${seat.number}`;
+                            const stableKey = `${seat.row}-${seat.colIndex}`;
                             const apiSeat = occupiedMap.get(seatKey);
                             const isSold = apiSeat ? apiSeat.seatStatus !== 0 : false;
                             
@@ -489,7 +490,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
                             return (
                               <View 
-                                key={seatKey} 
+                                key={stableKey} 
                                 style={[
                                   styles.seatBase, 
                                   seatStyle,

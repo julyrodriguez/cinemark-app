@@ -529,7 +529,8 @@ export default function ControlSalasScreen() {
   const handleSeatPress = (row: string, num: number, isDbox?: boolean, colIndex?: number, type?: "seat" | "empty") => {
     if (isLayoutEditorMode) {
       // If we are in layout configuration mode, clicking paints/modifies the seat layout!
-      handleGridSeatClickInEditorMode(row, colIndex || num, num, type || "seat");
+      const finalCol = colIndex !== undefined ? colIndex : num;
+      handleGridSeatClickInEditorMode(row, finalCol, num, type || "seat");
       return;
     }
 
@@ -1164,8 +1165,9 @@ export default function ControlSalasScreen() {
     const layout = isLayoutEditorMode ? getDraftLayout() : activeLayout;
 
     const renderSeat = (seat: SeatInfo, index: number) => {
+      const stableKey = `${seat.row}-${seat.colIndex}`;
       if (seat.type === "empty" && !isLayoutEditorMode) {
-        return <View key={`empty-${seat.row}-${index}`} style={styles.seatEmpty} />;
+        return <View key={`empty-${stableKey}`} style={styles.seatEmpty} />;
       }
 
       const seatKey = `${seat.row}-${seat.number}`;
@@ -1178,7 +1180,7 @@ export default function ControlSalasScreen() {
 
       return (
         <TouchableOpacity
-          key={seatKey}
+          key={stableKey}
           style={[
             styles.seat,
             isDbox && styles.seatDbox,
