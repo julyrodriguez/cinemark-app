@@ -307,7 +307,7 @@ export default function OficinasEventosScreen() {
           <View style={s.eventoInfo}>
             <Text style={s.eventoPelicula}>{item.pelicula}</Text>
             <Text style={s.eventoDetalle}>
-              Sala {item.sala} • {fecha} {hora}
+              {String(item.sala || "").includes(",") ? "Salas" : "Sala"} {item.sala} • {fecha} {hora}
             </Text>
             <View style={s.eventoBadges}>
               {item.dcp && <View style={s.badge}><Text style={s.badgeText}>DCP</Text></View>}

@@ -93,7 +93,12 @@ export default function EventosScreen() {
   }, [cineId]);
 
   const SALAS = useMemo(() => buildSalasFromCount(salasCount), [salasCount]);
-  const isSalaValida = (s: string) => SALAS.includes(s);
+  const isSalaValida = (s: string) => {
+    if (!s) return false;
+    const parts = s.split(',').map(x => x.trim()).filter(Boolean);
+    if (parts.length === 0) return false;
+    return parts.every(part => SALAS.includes(part));
+  };
 
   const abrirConfirmarBorrado = (item: Evento) => {
     setDeleteItem(item);
@@ -258,6 +263,7 @@ export default function EventosScreen() {
   const [createVisible, setCreateVisible] = useState(false);
   const [cPelicula, setCPelicula] = useState("");
   const [cSala, setCSala] = useState("");
+  const [cIsMultiSelect, setCIsMultiSelect] = useState(false);
   const [cFechaHora, setCFechaHora] = useState<Date>(todayAt(11));
   const [cKdm, setCKdm] = useState(false);
   const [cDcp, setCDcp] = useState(false);
@@ -271,6 +277,7 @@ export default function EventosScreen() {
     const base = todayAt(11);
     setCPelicula("");
     setCSala("");
+    setCIsMultiSelect(false);
     setCFechaHora(base);
     setCFechaWeb(formatDateInput(base));
     setCHoraWeb(formatTimeInput(base));
@@ -384,6 +391,7 @@ export default function EventosScreen() {
   const [editVisible, setEditVisible] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [editSala, setEditSala] = useState("");
+  const [editIsMultiSelect, setEditIsMultiSelect] = useState(false);
   const [editKdm, setEditKdm] = useState(false);
   const [editDcp, setEditDcp] = useState(false);
   const [editDesayuno, setEditDesayuno] = useState(false);
@@ -398,7 +406,9 @@ export default function EventosScreen() {
       item.diaHora instanceof Date ? item.diaHora : toDate(item.diaHora);
 
     setEditId(item.id);
-    setEditSala(String(item.sala ?? ""));
+    const roomStr = String(item.sala ?? "");
+    setEditSala(roomStr);
+    setEditIsMultiSelect(roomStr.includes(","));
     setEditKdm(!!item.kdm);
     setEditDcp(!!item.dcp);
     setEditDesayuno(!!item.desayuno);
@@ -580,8 +590,34 @@ export default function EventosScreen() {
                     <Text style={styles.moreBtnText}>⋮</Text>
                   </Pressable>
 
-                  <Text style={styles.salaLabel}>SALA</Text>
-                  <Text style={styles.salaNumber}>{item.sala}</Text>
+                  {(() => {
+                    const salasArr = String(item.sala || "")
+                      .split(",")
+                      .map((s) => s.trim())
+                      .filter(Boolean);
+                    
+                    if (salasArr.length > 1) {
+                      return (
+                        <>
+                          <Text style={styles.salaLabel}>SALAS</Text>
+                          <View style={styles.salasMultiContainer}>
+                            {salasArr.map((sala, idx) => (
+                              <View key={idx} style={styles.salaBadgeCompact}>
+                                <Text style={styles.salaBadgeCompactText}>{sala}</Text>
+                              </View>
+                            ))}
+                          </View>
+                        </>
+                      );
+                    } else {
+                      return (
+                        <>
+                          <Text style={styles.salaLabel}>SALA</Text>
+                          <Text style={styles.salaNumber}>{item.sala || "—"}</Text>
+                        </>
+                      );
+                    }
+                  })()}
                 </View>
               </View>
             </View>
@@ -708,15 +744,60 @@ export default function EventosScreen() {
               style={styles.input}
             />
 
-            <Text style={styles.label}>Sala (1–{salasCount} o AC)</Text>
+            <View style={styles.labelRow}>
+              <Text style={styles.labelNoMargin}>Sala (1–{salasCount} o AC)</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  const newMode = !cIsMultiSelect;
+                  setCIsMultiSelect(newMode);
+                  if (!newMode) {
+                    const rooms = cSala.split(',').map(x => x.trim()).filter(Boolean);
+                    setCSala(rooms[0] || "");
+                  }
+                }}
+                style={styles.labelBtn}
+              >
+                <Text style={styles.labelBtnText}>
+                  {cIsMultiSelect ? "Seleccionar una sola sala" : "Seleccionar varias salas"}
+                </Text>
+              </TouchableOpacity>
+            </View>
             <View style={styles.salasWrap}>
               {SALAS.map((s) => {
-                const selected = s === cSala;
+                const selected = cIsMultiSelect
+                  ? cSala.split(',').map(x => x.trim()).includes(s)
+                  : s === cSala;
+                
+                const handlePress = () => {
+                  if (cIsMultiSelect) {
+                    const currentRooms = cSala.split(',').map(x => x.trim()).filter(Boolean);
+                    let newRooms;
+                    if (currentRooms.includes(s)) {
+                      newRooms = currentRooms.filter(x => x !== s);
+                    } else {
+                      newRooms = [...currentRooms, s];
+                    }
+                    newRooms.sort((a, b) => {
+                      if (a === "AC") return 1;
+                      if (b === "AC") return -1;
+                      const numA = parseInt(a, 10);
+                      const numB = parseInt(b, 10);
+                      if (isNaN(numA) && isNaN(numB)) return a.localeCompare(b);
+                      if (isNaN(numA)) return 1;
+                      if (isNaN(numB)) return -1;
+                      return numA - numB;
+                    });
+                    setCSala(newRooms.join(", "));
+                  } else {
+                    setCSala(s);
+                  }
+                };
+
                 return (
                   <TouchableOpacity
                     key={s}
                     style={[styles.salaChip, selected && styles.salaChipSelected]}
-                    onPress={() => setCSala(s)}
+                    onPress={handlePress}
                   >
                     <Text
                       style={[
@@ -853,15 +934,60 @@ export default function EventosScreen() {
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Editar evento</Text>
 
-            <Text style={styles.label}>Sala (1–{salasCount} o AC)</Text>
+            <View style={styles.labelRow}>
+              <Text style={styles.labelNoMargin}>Sala (1–{salasCount} o AC)</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  const newMode = !editIsMultiSelect;
+                  setEditIsMultiSelect(newMode);
+                  if (!newMode) {
+                    const rooms = editSala.split(',').map(x => x.trim()).filter(Boolean);
+                    setEditSala(rooms[0] || "");
+                  }
+                }}
+                style={styles.labelBtn}
+              >
+                <Text style={styles.labelBtnText}>
+                  {editIsMultiSelect ? "Seleccionar una sola sala" : "Seleccionar varias salas"}
+                </Text>
+              </TouchableOpacity>
+            </View>
             <View style={styles.salasWrap}>
               {SALAS.map((s) => {
-                const selected = s === editSala;
+                const selected = editIsMultiSelect
+                  ? editSala.split(',').map(x => x.trim()).includes(s)
+                  : s === editSala;
+
+                const handlePress = () => {
+                  if (editIsMultiSelect) {
+                    const currentRooms = editSala.split(',').map(x => x.trim()).filter(Boolean);
+                    let newRooms;
+                    if (currentRooms.includes(s)) {
+                      newRooms = currentRooms.filter(x => x !== s);
+                    } else {
+                      newRooms = [...currentRooms, s];
+                    }
+                    newRooms.sort((a, b) => {
+                      if (a === "AC") return 1;
+                      if (b === "AC") return -1;
+                      const numA = parseInt(a, 10);
+                      const numB = parseInt(b, 10);
+                      if (isNaN(numA) && isNaN(numB)) return a.localeCompare(b);
+                      if (isNaN(numA)) return 1;
+                      if (isNaN(numB)) return -1;
+                      return numA - numB;
+                    });
+                    setEditSala(newRooms.join(", "));
+                  } else {
+                    setEditSala(s);
+                  }
+                };
+
                 return (
                   <TouchableOpacity
                     key={s}
                     style={[styles.salaChip, selected && styles.salaChipSelected]}
-                    onPress={() => setEditSala(s)}
+                    onPress={handlePress}
                   >
                     <Text
                       style={[
@@ -1394,5 +1520,55 @@ const styles = StyleSheet.create({
   webDateRow: {
     flexDirection: "row",
     gap: 12,
+  },
+  labelRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 18,
+    marginBottom: 6,
+  },
+  labelNoMargin: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: COLORS.text,
+  },
+  labelBtn: {
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    backgroundColor: COLORS.bgMobile,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  labelBtnText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: COLORS.primary,
+  },
+  salasMultiContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 4,
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 4,
+    maxWidth: 80,
+  },
+  salaBadgeCompact: {
+    backgroundColor: COLORS.primarySoft,
+    borderColor: COLORS.primary,
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    minWidth: 26,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  salaBadgeCompactText: {
+    color: COLORS.primary,
+    fontSize: 12,
+    fontWeight: "800",
   },
 });

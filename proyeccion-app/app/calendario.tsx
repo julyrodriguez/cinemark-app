@@ -271,7 +271,7 @@ export default function CalendarTab({ readOnly = false }: { readOnly?: boolean }
             date: dateStr,
             type: "EVENTO",
             title: data.pelicula || "Evento",
-            description: `Sala ${data.sala || ""}`,
+            description: `${String(data.sala || "").includes(",") ? "Salas" : "Sala"} ${data.sala || ""}`,
             createdBy: "system",
             createdName: "Sistema",
             createdAt: data.diaHora || null,

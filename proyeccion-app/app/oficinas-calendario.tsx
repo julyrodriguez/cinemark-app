@@ -352,7 +352,9 @@ export default function OficinasCalendarioScreen() {
           </View>
 
           <View style={s.salaPill}>
-            <Text style={s.salaPillText}>Sala {evento.sala}</Text>
+            <Text style={s.salaPillText}>
+              {String(evento.sala || "").includes(",") ? "Salas" : "Sala"} {evento.sala}
+            </Text>
           </View>
         </View>
 
