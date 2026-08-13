@@ -341,6 +341,7 @@ export default function DcpScreen({ readOnly = false }: { readOnly?: boolean }) 
   /* ── form state ── */
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [formNombre, setFormNombre] = useState("");
   const [formNumeroDisco, setFormNumeroDisco] = useState("");
   const [formEsSatelite, setFormEsSatelite] = useState(false);
@@ -576,6 +577,7 @@ export default function DcpScreen({ readOnly = false }: { readOnly?: boolean }) 
     setFormCas(true);
     setShowUbicacionDropdown(false);
     setShowNombresDropdown(false);
+    setSaving(false);
     setShowForm(true);
   };
 
@@ -598,6 +600,7 @@ export default function DcpScreen({ readOnly = false }: { readOnly?: boolean }) 
 
     setShowUbicacionDropdown(false);
     setShowNombresDropdown(false);
+    setSaving(false);
     setShowForm(true);
   };
 
@@ -623,6 +626,7 @@ export default function DcpScreen({ readOnly = false }: { readOnly?: boolean }) 
       return;
     }
 
+    setSaving(true);
     try {
       const cargadoPor = formCargadoPor.trim();
 
@@ -656,6 +660,8 @@ export default function DcpScreen({ readOnly = false }: { readOnly?: boolean }) 
     } catch (e) {
       console.error(e);
       Alert.alert("DCP", "No se pudo guardar la información del DCP.");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -1285,11 +1291,23 @@ export default function DcpScreen({ readOnly = false }: { readOnly?: boolean }) 
 
             {/* Actions */}
             <View style={styles.modalActionsModern}>
-              <TouchableOpacity style={styles.cancelBtnModern} onPress={() => setShowForm(false)}>
+              <TouchableOpacity
+                style={[styles.cancelBtnModern, saving && styles.cancelBtnDisabled]}
+                onPress={() => setShowForm(false)}
+                disabled={saving}
+              >
                 <Text style={styles.cancelBtnTextModern}>Cancelar</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.saveBtnModern} onPress={addDcp}>
-                <Text style={styles.saveBtnTextModern}>Guardar</Text>
+              <TouchableOpacity
+                style={[styles.saveBtnModern, saving && styles.saveBtnDisabled]}
+                onPress={addDcp}
+                disabled={saving}
+              >
+                {saving ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.saveBtnTextModern}>Guardar</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -1820,6 +1838,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: COLORS.border,
   },
+  cancelBtnDisabled: {
+    opacity: 0.5,
+  },
   cancelBtnTextModern: {
     color: COLORS.text,
     fontWeight: "700",
@@ -1829,6 +1850,13 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 12,
     backgroundColor: COLORS.primary,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: 100,
+  },
+  saveBtnDisabled: {
+    opacity: 0.7,
   },
   saveBtnTextModern: {
     color: "#FFFFFF",
