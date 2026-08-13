@@ -272,6 +272,7 @@ export default function EventosScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [createError, setCreateError] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const abrirCrear = () => {
     const base = todayAt(11);
@@ -286,12 +287,14 @@ export default function EventosScreen() {
     setCDesayuno(false);
     setCCombo(false);
     setCreateError("");
+    setSaving(false);
     setCreateVisible(true);
   };
 
   const cerrarCrear = () => {
     setCreateVisible(false);
     setCreateError("");
+    setSaving(false);
   };
 
   const onChangeFechaWeb = (text: string) => {
@@ -349,6 +352,7 @@ export default function EventosScreen() {
       return;
     }
 
+    setSaving(true);
     try {
       await crearEvento(
         {
@@ -367,6 +371,8 @@ export default function EventosScreen() {
       await loadFirstPage();
     } catch (e: any) {
       setCreateError(e?.message ?? "No se pudo crear el evento.");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -417,6 +423,7 @@ export default function EventosScreen() {
     setEditFechaWeb(formatDateInput(fecha));
     setEditHoraWeb(formatTimeInput(fecha));
     setEditError("");
+    setSaving(false);
     setEditVisible(true);
   };
 
@@ -424,6 +431,7 @@ export default function EventosScreen() {
     setEditVisible(false);
     setEditId(null);
     setEditError("");
+    setSaving(false);
   };
 
   const onChangeEditFechaWeb = (text: string) => {
@@ -491,6 +499,7 @@ export default function EventosScreen() {
       }
     }
 
+    setSaving(true);
     try {
       await updateDoc(doc(db, CINES_COLLECTION, cineId, "eventos", editId), {
         sala: editSala,
@@ -506,6 +515,8 @@ export default function EventosScreen() {
       await loadFirstPage();
     } catch (e: any) {
       setEditError(e?.message ?? "No se pudo actualizar.");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -907,17 +918,23 @@ export default function EventosScreen() {
 
             <View style={styles.modalActionsRow}>
               <TouchableOpacity
-                style={[styles.btnGhost, { flex: 1 }]}
+                style={[styles.btnGhost, saving && styles.btnGhostDisabled, { flex: 1 }]}
                 onPress={cerrarCrear}
+                disabled={saving}
               >
                 <Text style={styles.btnGhostText}>Cancelar</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.btnPrimary, { flex: 1 }]}
+                style={[styles.btnPrimary, saving && styles.btnDisabled, { flex: 1, minWidth: 100 }]}
                 onPress={guardarNuevoEvento}
+                disabled={saving}
               >
-                <Text style={styles.btnPrimaryText}>Crear</Text>
+                {saving ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.btnPrimaryText}>Crear</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -1097,17 +1114,23 @@ export default function EventosScreen() {
 
             <View style={styles.modalActionsRow}>
               <TouchableOpacity
-                style={[styles.btnGhost, { flex: 1 }]}
+                style={[styles.btnGhost, saving && styles.btnGhostDisabled, { flex: 1 }]}
                 onPress={cerrarEdicion}
+                disabled={saving}
               >
                 <Text style={styles.btnGhostText}>Cancelar</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.btnPrimary, { flex: 1 }]}
+                style={[styles.btnPrimary, saving && styles.btnDisabled, { flex: 1, minWidth: 100 }]}
                 onPress={guardarEdicion}
+                disabled={saving}
               >
-                <Text style={styles.btnPrimaryText}>Guardar</Text>
+                {saving ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.btnPrimaryText}>Guardar</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -1392,6 +1415,12 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 16,
     alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "center",
+  },
+
+  btnGhostDisabled: {
+    opacity: 0.5,
   },
 
   btnGhostText: {
@@ -1404,6 +1433,12 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "center",
+  },
+
+  btnDisabled: {
+    opacity: 0.7,
   },
 
   btnPrimaryText: {
