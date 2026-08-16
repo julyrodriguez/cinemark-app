@@ -143,9 +143,11 @@ export default function ControlSemanalScreen({ readOnly = false }: { readOnly?: 
 
   // Configuración de autollenado de horas de lámpara
   const [autollenado, setAutollenado] = useState<boolean>(true);
+  const [vidaUtil4000, setVidaUtil4000] = useState<string>("1000");
   const [vidaUtil3000, setVidaUtil3000] = useState<string>("3000");
   const [vidaUtil2200, setVidaUtil2200] = useState<string>("2500");
   const [vidaUtil2000, setVidaUtil2000] = useState<string>("2500");
+  const [vidaUtil1200, setVidaUtil1200] = useState<string>("3000");
   const [showConfigModal, setShowConfigModal] = useState<boolean>(false);
   const [savingConfig, setSavingConfig] = useState<boolean>(false);
 
@@ -164,9 +166,11 @@ export default function ControlSemanalScreen({ readOnly = false }: { readOnly?: 
   // Helper para obtener vida útil predeterminada de la lámpara
   const getVidaUtil = (potenciaStr: string) => {
     const p = String(potenciaStr || "").toLowerCase();
+    if (p.includes("4000")) return parseInt(vidaUtil4000, 10) || 1000;
     if (p.includes("3000")) return parseInt(vidaUtil3000, 10) || 3000;
     if (p.includes("2200")) return parseInt(vidaUtil2200, 10) || 2500;
     if (p.includes("2000")) return parseInt(vidaUtil2000, 10) || 2500;
+    if (p.includes("1200")) return parseInt(vidaUtil1200, 10) || 3000;
     return 3000; // default fallback
   };
 
@@ -218,14 +222,18 @@ export default function ControlSemanalScreen({ readOnly = false }: { readOnly?: 
     (async () => {
       try {
         const localAuto = await AsyncStorage.getItem("cs_config_auto");
+        const local4000 = await AsyncStorage.getItem("cs_config_4000");
         const local3000 = await AsyncStorage.getItem("cs_config_3000");
         const local2200 = await AsyncStorage.getItem("cs_config_2200");
         const local2000 = await AsyncStorage.getItem("cs_config_2000");
+        const local1200 = await AsyncStorage.getItem("cs_config_1200");
 
         if (localAuto !== null) setAutollenado(localAuto === "true");
+        if (local4000 !== null) setVidaUtil4000(local4000);
         if (local3000 !== null) setVidaUtil3000(local3000);
         if (local2200 !== null) setVidaUtil2200(local2200);
         if (local2000 !== null) setVidaUtil2000(local2000);
+        if (local1200 !== null) setVidaUtil1200(local1200);
 
         // Intentar leer de Firestore (config compartida)
         const docRef = doc(db, CINES_COLLECTION, cineId, "config", "controles_semanales");
@@ -233,9 +241,11 @@ export default function ControlSemanalScreen({ readOnly = false }: { readOnly?: 
         if (snap.exists()) {
           const data = snap.data();
           if (data.autollenado !== undefined) setAutollenado(!!data.autollenado);
+          if (data.vidaUtil4000 !== undefined) setVidaUtil4000(String(data.vidaUtil4000));
           if (data.vidaUtil3000 !== undefined) setVidaUtil3000(String(data.vidaUtil3000));
           if (data.vidaUtil2200 !== undefined) setVidaUtil2200(String(data.vidaUtil2200));
           if (data.vidaUtil2000 !== undefined) setVidaUtil2000(String(data.vidaUtil2000));
+          if (data.vidaUtil1200 !== undefined) setVidaUtil1200(String(data.vidaUtil1200));
         }
       } catch (e) {
         console.error("Error al cargar config de lámparas:", e);
@@ -247,26 +257,38 @@ export default function ControlSemanalScreen({ readOnly = false }: { readOnly?: 
     if (!cineId) return;
     setSavingConfig(true);
     try {
+      const v4000 = parseInt(vidaUtil4000, 10);
       const v3000 = parseInt(vidaUtil3000, 10);
       const v2200 = parseInt(vidaUtil2200, 10);
       const v2000 = parseInt(vidaUtil2000, 10);
+      const v1200 = parseInt(vidaUtil1200, 10);
 
-      if (isNaN(v3000) || v3000 <= 0 || isNaN(v2200) || v2200 <= 0 || isNaN(v2000) || v2000 <= 0) {
+      if (
+        isNaN(v4000) || v4000 <= 0 ||
+        isNaN(v3000) || v3000 <= 0 ||
+        isNaN(v2200) || v2200 <= 0 ||
+        isNaN(v2000) || v2000 <= 0 ||
+        isNaN(v1200) || v1200 <= 0
+      ) {
         Alert.alert("Configuración", "Los valores de vida útil deben ser números enteros positivos.");
         setSavingConfig(false);
         return;
       }
 
       await AsyncStorage.setItem("cs_config_auto", String(autollenado));
+      await AsyncStorage.setItem("cs_config_4000", String(v4000));
       await AsyncStorage.setItem("cs_config_3000", String(v3000));
       await AsyncStorage.setItem("cs_config_2200", String(v2200));
       await AsyncStorage.setItem("cs_config_2000", String(v2000));
+      await AsyncStorage.setItem("cs_config_1200", String(v1200));
 
       await setDoc(doc(db, CINES_COLLECTION, cineId, "config", "controles_semanales"), {
         autollenado,
+        vidaUtil4000: v4000,
         vidaUtil3000: v3000,
         vidaUtil2200: v2200,
         vidaUtil2000: v2000,
+        vidaUtil1200: v1200,
         updatedAt: serverTimestamp(),
       });
 
@@ -1614,45 +1636,67 @@ export default function ControlSemanalScreen({ readOnly = false }: { readOnly?: 
       {/* ── Modal Configuración Horas Lámparas ── */}
       <Modal visible={showConfigModal} transparent animationType="fade" onRequestClose={() => setShowConfigModal(false)}>
         <View style={s.backdrop}>
-          <View style={s.modalCard}>
+          <View style={[s.modalCard, { maxHeight: "90%" }]}>
             <Text style={s.modalTitle}>Configuración de Lámparas</Text>
             <Text style={s.modalSubtitle}>Establecer vida útil de lámparas para autollenado</Text>
 
-            {/* Checkbox de Autollenado */}
-            <TouchableOpacity style={[s.checkboxRow, { marginBottom: 15, marginTop: 5 }]} onPress={() => setAutollenado(!autollenado)}>
-              <MaterialCommunityIcons name={autollenado ? "checkbox-marked" : "checkbox-blank-outline"} size={22} color="#1F497D" />
-              <Text style={s.checkboxRowText}>Aplicar autollenado automático</Text>
-            </TouchableOpacity>
+            <ScrollView showsVerticalScrollIndicator={false} style={{ marginVertical: 6 }} contentContainerStyle={{ gap: 12 }}>
+              {/* Checkbox de Autollenado */}
+              <TouchableOpacity style={[s.checkboxRow, { marginBottom: 5, marginTop: 5 }]} onPress={() => setAutollenado(!autollenado)}>
+                <MaterialCommunityIcons name={autollenado ? "checkbox-marked" : "checkbox-blank-outline"} size={22} color="#1F497D" />
+                <Text style={s.checkboxRowText}>Aplicar autollenado automático</Text>
+              </TouchableOpacity>
 
-            <Text style={s.label}>Vida útil para 3000W (en horas)</Text>
-            <TextInput
-              value={vidaUtil3000}
-              onChangeText={setVidaUtil3000}
-              placeholder="3000"
-              placeholderTextColor={COLORS.muted}
-              style={s.input}
-              keyboardType="numeric"
-            />
+              <Text style={s.label}>Vida útil para 4000W (en horas)</Text>
+              <TextInput
+                value={vidaUtil4000}
+                onChangeText={setVidaUtil4000}
+                placeholder="1000"
+                placeholderTextColor={COLORS.muted}
+                style={s.input}
+                keyboardType="numeric"
+              />
 
-            <Text style={s.label}>Vida útil para 2200W (en horas)</Text>
-            <TextInput
-              value={vidaUtil2200}
-              onChangeText={setVidaUtil2200}
-              placeholder="2500"
-              placeholderTextColor={COLORS.muted}
-              style={s.input}
-              keyboardType="numeric"
-            />
+              <Text style={s.label}>Vida útil para 3000W (en horas)</Text>
+              <TextInput
+                value={vidaUtil3000}
+                onChangeText={setVidaUtil3000}
+                placeholder="3000"
+                placeholderTextColor={COLORS.muted}
+                style={s.input}
+                keyboardType="numeric"
+              />
 
-            <Text style={s.label}>Vida útil para 2000W (en horas)</Text>
-            <TextInput
-              value={vidaUtil2000}
-              onChangeText={setVidaUtil2000}
-              placeholder="2500"
-              placeholderTextColor={COLORS.muted}
-              style={s.input}
-              keyboardType="numeric"
-            />
+              <Text style={s.label}>Vida útil para 2200W (en horas)</Text>
+              <TextInput
+                value={vidaUtil2200}
+                onChangeText={setVidaUtil2200}
+                placeholder="2500"
+                placeholderTextColor={COLORS.muted}
+                style={s.input}
+                keyboardType="numeric"
+              />
+
+              <Text style={s.label}>Vida útil para 2000W (en horas)</Text>
+              <TextInput
+                value={vidaUtil2000}
+                onChangeText={setVidaUtil2000}
+                placeholder="2500"
+                placeholderTextColor={COLORS.muted}
+                style={s.input}
+                keyboardType="numeric"
+              />
+
+              <Text style={s.label}>Vida útil para 1200W (en horas)</Text>
+              <TextInput
+                value={vidaUtil1200}
+                onChangeText={setVidaUtil1200}
+                placeholder="3000"
+                placeholderTextColor={COLORS.muted}
+                style={s.input}
+                keyboardType="numeric"
+              />
+            </ScrollView>
 
             <View style={s.modalActions}>
               <TouchableOpacity style={s.btnGhost} onPress={() => setShowConfigModal(false)}>
