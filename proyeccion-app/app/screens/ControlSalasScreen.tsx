@@ -572,33 +572,13 @@ export default function ControlSalasScreen() {
   };
 
   const handleDeleteGeneralItem = async (itemToDelete: string) => {
-    console.log("handleDeleteGeneralItem called with:", itemToDelete);
-    if (!cineId) {
-      console.log("handleDeleteGeneralItem: cineId is missing");
-      return;
-    }
+    if (!cineId) return;
     const salaKey = String(selectedSala);
     const currentList = generalIssuesList.filter((item) => item !== itemToDelete);
 
     const newGeneralIssues = { ...report?.generalIssues };
-    if (currentList.length > 0) {
-      newGeneralIssues[salaKey] = currentList;
-    } else {
-      delete newGeneralIssues[salaKey];
-    }
-
-    console.log("Current generalIssues list:", generalIssuesList);
-    console.log("Filtered list (currentList):", currentList);
-    console.log("Final newGeneralIssues payload:", newGeneralIssues);
-
-    if (Platform.OS === "web") {
-      window.alert(`Borrando: ${itemToDelete}\nSala: ${salaKey}\nQuedan: ${currentList.length} items`);
-    } else {
-      Alert.alert(
-        "Depuración Borrado",
-        `Sala: ${salaKey}\nBorrando: ${itemToDelete}\nLista resultante: ${JSON.stringify(currentList)}\nPayload final: ${JSON.stringify(newGeneralIssues)}`
-      );
-    }
+    // Always assign currentList (even if it's an empty array []) to ensure the REST API receives the update
+    newGeneralIssues[salaKey] = currentList;
 
     setSaving(true);
     try {
@@ -610,19 +590,9 @@ export default function ControlSalasScreen() {
         generalIssues: newGeneralIssues,
       };
       await setDoc(docRef, payload);
-      console.log("Firestore setDoc completed successfully!");
-      if (Platform.OS === "web") {
-        window.alert("Éxito: Actualizado en la base de datos.");
-      } else {
-        Alert.alert("Éxito", "Actualizado en la base de datos.");
-      }
     } catch (e: any) {
       console.error("Error deleting general issue:", e);
-      if (Platform.OS === "web") {
-        window.alert("Error al borrar: " + e.message);
-      } else {
-        Alert.alert("Error", "No se pudo borrar: " + e.message);
-      }
+      Alert.alert("Error", "No se pudo borrar la observación.");
     } finally {
       setSaving(false);
     }
