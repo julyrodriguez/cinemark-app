@@ -871,7 +871,7 @@ export default function ProgramacionTab() {
             <ActivityIndicator color={COLORS.primary} size="small" />
           ) : (
             <>
-              <Text style={s.secondaryButtonText}>DESCARGAR SEMANA COMPLETA (WEEKLY)</Text>
+              <Text style={s.secondaryButtonText}>DESCARGAR SEMANA COMPLETA</Text>
               <Text style={{ color: COLORS.muted, fontSize: 10, fontWeight: "600" }}>
                 JUEVES A MIÉRCOLES
               </Text>
