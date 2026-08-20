@@ -45,6 +45,49 @@ type ScreenMovies = {
   movies: MatchedMovie[];
 };
 
+// Get start of movie week (Thursday) for a given date in yyyy-mm-dd
+function getMovieWeekStart(date: Date): string {
+  const localDate = new Date(date.getTime() - (3 * 60 * 60 * 1000));
+  if (localDate.getUTCHours() < 6) {
+    localDate.setTime(localDate.getTime() - 24 * 60 * 60 * 1000);
+  }
+  const dayNum = localDate.getUTCDay();
+  const daysToSubtract = dayNum <= 3 ? dayNum + 3 : dayNum - 4;
+  const thurDate = new Date(localDate.getTime() - daysToSubtract * 24 * 60 * 60 * 1000);
+  const yyyy = thurDate.getUTCFullYear();
+  const mm = String(thurDate.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(thurDate.getUTCDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+// Get start of movie week (Thursday) for the current date
+function getMovieWeekStartForNow(): string {
+  const localDate = new Date(Date.now() - (3 * 60 * 60 * 1000));
+  if (localDate.getUTCHours() < 6) {
+    localDate.setTime(localDate.getTime() - 24 * 60 * 60 * 1000);
+  }
+  const dayNum = localDate.getUTCDay();
+  const daysToSubtract = dayNum <= 3 ? dayNum + 3 : dayNum - 4;
+  const thurDate = new Date(localDate.getTime() - daysToSubtract * 24 * 60 * 60 * 1000);
+  const yyyy = thurDate.getUTCFullYear();
+  const mm = String(thurDate.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(thurDate.getUTCDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+// Format week start date to range label, e.g., "Semana del 25/6 a 01/7"
+function formatWeekRange(weekStart: string): string {
+  if (!weekStart) return "";
+  const [y, m, d] = weekStart.split("-").map(Number);
+  const start = new Date(Date.UTC(y, m - 1, d));
+  const end = new Date(start.getTime() + 6 * 24 * 60 * 60 * 1000);
+  const startD = start.getUTCDate();
+  const startM = start.getUTCMonth() + 1;
+  const endD = end.getUTCDate();
+  const endM = end.getUTCMonth() + 1;
+  return `Semana del ${startD}/${startM} al ${endD}/${endM}`;
+}
+
 export default function TrailersSemanalesScreen({ readOnly = false }: { readOnly?: boolean }) {
   const { cineId } = useAuthUser();
 
@@ -55,19 +98,41 @@ export default function TrailersSemanalesScreen({ readOnly = false }: { readOnly
   const [trlsData, setTrlsData] = useState<TrlMovie[] | null>(null);
 
   const [sourceMode, setSourceMode] = useState<"pdf" | "programacion">("pdf");
+  const [dbSubSource, setDbSubSource] = useState<"servicios" | "api">("servicios");
+  const [selectedWeekStart, setSelectedWeekStart] = useState<string>(() => getMovieWeekStartForNow());
   const [dbWeekly, setDbWeekly] = useState<{
     startDate: string;
     weeklyRows: any[];
+    isApiSource: boolean;
+    isFallbackActual?: boolean;
   } | null>(null);
   const [loadingDbWeekly, setLoadingDbWeekly] = useState(false);
   const [pdfPeriod, setPdfPeriod] = useState<string | null>(null);
 
+  // Generate weeks list dynamically (4 past weeks + current + 5 future weeks for pre-sales)
+  const availableWeeks = useMemo(() => {
+    const list: string[] = [];
+    const currentThur = getMovieWeekStartForNow();
+    const [y, m, d] = currentThur.split('-').map(Number);
+    const thurDate = new Date(Date.UTC(y, m - 1, d));
+
+    for (let i = -4; i < 6; i++) {
+      const nextThur = new Date(thurDate.getTime() + i * 7 * 24 * 60 * 60 * 1000);
+      const yyyy = nextThur.getUTCFullYear();
+      const mm = String(nextThur.getUTCMonth() + 1).padStart(2, '0');
+      const dd = String(nextThur.getUTCDate()).padStart(2, '0');
+      list.push(`${yyyy}-${mm}-${dd}`);
+    }
+    return list;
+  }, []);
+
   const dbPeriod = useMemo(() => {
-    if (!dbWeekly || !dbWeekly.startDate) return null;
-    const start = dayjs(dbWeekly.startDate);
+    const dateStr = dbWeekly?.startDate || selectedWeekStart;
+    if (!dateStr) return null;
+    const start = dayjs(dateStr);
     const end = start.add(6, "day");
     return `${start.format("DD/MM/YYYY")} al ${end.format("DD/MM/YYYY")}`;
-  }, [dbWeekly]);
+  }, [dbWeekly, selectedWeekStart]);
 
   const activePeriod = useMemo(() => {
     if (sourceMode === "pdf") {
@@ -81,21 +146,67 @@ export default function TrailersSemanalesScreen({ readOnly = false }: { readOnly
     if (!cineId) return;
     try {
       setLoadingDbWeekly(true);
-      const docRef = doc(db, CINES_COLLECTION, cineId, "programacion_semanal", "actual");
-      const snap = await getDoc(docRef);
-      if (snap.exists()) {
-        const data = snap.data();
-        setDbWeekly({
-          startDate: data.startDate || "",
-          weeklyRows: data.weeklyRows || [],
-        });
-        if (showFeedback) {
-          Alert.alert("Éxito", "Programación de la semana cargada correctamente.");
+      if (dbSubSource === "api") {
+        // Load from Cinemark API (showtimes collection)
+        const docRef = doc(db, CINES_COLLECTION, cineId, "showtimes", selectedWeekStart);
+        const snap = await getDoc(docRef);
+        if (snap.exists()) {
+          const data = snap.data();
+          setDbWeekly({
+            startDate: selectedWeekStart,
+            weeklyRows: data.sessions || [],
+            isApiSource: true,
+            isFallbackActual: false,
+          });
+          if (showFeedback) {
+            Alert.alert("Éxito", "Programación (API Cinemark) cargada correctamente.");
+          }
+        } else {
+          setDbWeekly(null);
+          if (showFeedback) {
+            Alert.alert("Sin datos", `No hay showtimes guardados para la semana ${selectedWeekStart}.`);
+          }
         }
       } else {
-        setDbWeekly(null);
-        if (showFeedback) {
-          Alert.alert("Sin datos", "No hay una programación guardada en la base de datos.");
+        // Load from Servicios Programación (programacion_semanal collection)
+        // 1. Try date-specific document first
+        const docRef = doc(db, CINES_COLLECTION, cineId, "programacion_semanal", selectedWeekStart);
+        const snap = await getDoc(docRef);
+        if (snap.exists()) {
+          const data = snap.data();
+          setDbWeekly({
+            startDate: data.startDate || selectedWeekStart,
+            weeklyRows: data.weeklyRows || [],
+            isApiSource: false,
+            isFallbackActual: false,
+          });
+          if (showFeedback) {
+            Alert.alert("Éxito", "Programación de la semana cargada correctamente.");
+          }
+        } else {
+          // 2. Fallback to "actual" document
+          const actualRef = doc(db, CINES_COLLECTION, cineId, "programacion_semanal", "actual");
+          const actualSnap = await getDoc(actualRef);
+          if (actualSnap.exists()) {
+            const data = actualSnap.data();
+            setDbWeekly({
+              startDate: data.startDate || "",
+              weeklyRows: data.weeklyRows || [],
+              isApiSource: false,
+              isFallbackActual: true,
+            });
+            if (showFeedback) {
+              Alert.alert(
+                "Aviso", 
+                "No hay programación guardada para esta semana en particular. Se cargó la última programación guardada ('actual') como fallback."
+              );
+            }
+          } else {
+            setDbWeekly(null);
+            if (showFeedback) {
+              Alert.alert("Sin datos", "No hay una programación guardada en la base de datos.");
+            }
+          }
         }
       }
     } catch (e: any) {
@@ -110,7 +221,7 @@ export default function TrailersSemanalesScreen({ readOnly = false }: { readOnly
 
   useEffect(() => {
     loadDbWeekly(false);
-  }, [cineId]);
+  }, [cineId, selectedWeekStart, dbSubSource]);
 
   const [loadingPdf, setLoadingPdf] = useState(false);
   const [loadingTrls, setLoadingTrls] = useState(false);
@@ -295,20 +406,41 @@ export default function TrailersSemanalesScreen({ readOnly = false }: { readOnly
       if (!dbWeekly || !dbWeekly.weeklyRows) return null;
 
       const screens: Record<number, string[]> = {};
-      dbWeekly.weeklyRows.forEach((row: any) => {
-        const salaNum = parseInt(row.sala, 10);
-        if (isNaN(salaNum)) return;
-        if (!screens[salaNum]) {
-          screens[salaNum] = [];
-        }
-        const movieTitle = row.calificacion 
-          ? `${row.pelicula} (${row.calificacion})` 
-          : row.pelicula;
+      if (dbWeekly.isApiSource) {
+        // Parse from sessions list
+        const sessions = dbWeekly.weeklyRows;
+        sessions.forEach((session: any) => {
+          const salaNum = Number(session.theaterRoom);
+          if (isNaN(salaNum)) return;
+          if (!screens[salaNum]) {
+            screens[salaNum] = [];
+          }
+          const rating = session.tags?.[0]?.label || "";
+          const movieTitle = rating 
+            ? `${session.movieName} (${rating})` 
+            : session.movieName;
+            
+          if (!screens[salaNum].includes(movieTitle)) {
+            screens[salaNum].push(movieTitle);
+          }
+        });
+      } else {
+        // Parse from programacion_semanal weeklyRows
+        dbWeekly.weeklyRows.forEach((row: any) => {
+          const salaNum = parseInt(row.sala, 10);
+          if (isNaN(salaNum)) return;
+          if (!screens[salaNum]) {
+            screens[salaNum] = [];
+          }
+          const movieTitle = row.calificacion 
+            ? `${row.pelicula} (${row.calificacion})` 
+            : row.pelicula;
 
-        if (!screens[salaNum].includes(movieTitle)) {
-          screens[salaNum].push(movieTitle);
-        }
-      });
+          if (!screens[salaNum].includes(movieTitle)) {
+            screens[salaNum].push(movieTitle);
+          }
+        });
+      }
       return screens;
     }
   }, [sourceMode, parsedSessions, dbWeekly]);
@@ -1105,26 +1237,105 @@ export default function TrailersSemanalesScreen({ readOnly = false }: { readOnly
               </View>
             </Pressable>
           ) : (
-            <Pressable
-              style={[s.filePicker, !!dbWeekly && s.filePickerActive]}
-              onPress={() => loadDbWeekly(true)}
-            >
-              <View style={s.filePickerIcon}>
-                {loadingDbWeekly ? (
-                  <ActivityIndicator color={COLORS.primary} size="small" />
-                ) : (
-                  <Text style={{ fontSize: 20 }}>🖥️</Text>
-                )}
+            <View style={{ gap: 10 }}>
+              {/* Database Sub-Source Tabs */}
+              <View style={[s.tabContainer, { marginBottom: 6, backgroundColor: COLORS.bg }]}>
+                <Pressable
+                  style={[s.tabButton, dbSubSource === "servicios" && s.tabButtonActive]}
+                  onPress={() => setDbSubSource("servicios")}
+                >
+                  <Text style={[s.tabButtonText, dbSubSource === "servicios" && s.tabButtonTextActive, { fontSize: 11 }]}>
+                    📋 Servicios Programación
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[s.tabButton, dbSubSource === "api" && s.tabButtonActive]}
+                  onPress={() => setDbSubSource("api")}
+                >
+                  <Text style={[s.tabButtonText, dbSubSource === "api" && s.tabButtonTextActive, { fontSize: 11 }]}>
+                    🌐 API de Cinemark
+                  </Text>
+                </Pressable>
               </View>
-              <View style={s.filePickerInfo}>
-                <Text style={s.filePickerText}>
-                  {dbWeekly ? "Programación cargada desde base de datos" : "Sin programación cargada"}
-                </Text>
-                <Text style={s.filePickerSubtext}>
-                  {dbWeekly ? `Semana de programación: ${activePeriod}` : "Presioná para intentar cargar nuevamente"}
-                </Text>
-              </View>
-            </Pressable>
+
+              {/* Week Selector Bar */}
+              {(() => {
+                const currentIndex = availableWeeks.indexOf(selectedWeekStart);
+                if (currentIndex === -1) return null;
+                const canGoPrev = currentIndex > 0;
+                const canGoNext = currentIndex < availableWeeks.length - 1;
+                const currentWeek = getMovieWeekStartForNow();
+                const isCurrent = selectedWeekStart === currentWeek;
+                
+                let weekLabel = formatWeekRange(selectedWeekStart);
+                if (isCurrent) {
+                  weekLabel += " (Actual)";
+                } else if (selectedWeekStart > currentWeek) {
+                  weekLabel += " (Preventa)";
+                } else if (selectedWeekStart < currentWeek) {
+                  weekLabel += " (Pasada)";
+                }
+                
+                return (
+                  <View style={s.singleWeekSelectorContainer}>
+                    <Pressable
+                      disabled={!canGoPrev}
+                      onPress={() => setSelectedWeekStart(availableWeeks[currentIndex - 1])}
+                      style={[s.arrowButton, !canGoPrev && s.arrowButtonDisabled]}
+                    >
+                      <Text style={{ fontSize: 14, fontWeight: "bold", color: canGoPrev ? COLORS.text : COLORS.muted }}>◀</Text>
+                    </Pressable>
+                    
+                    <View style={s.singleWeekLabelContainer}>
+                      <Text style={s.singleWeekLabelText}>{weekLabel}</Text>
+                    </View>
+        
+                    <Pressable
+                      disabled={!canGoNext}
+                      onPress={() => setSelectedWeekStart(availableWeeks[currentIndex + 1])}
+                      style={[s.arrowButton, !canGoNext && s.arrowButtonDisabled]}
+                    >
+                      <Text style={{ fontSize: 14, fontWeight: "bold", color: canGoNext ? COLORS.text : COLORS.muted }}>▶</Text>
+                    </Pressable>
+                  </View>
+                );
+              })()}
+
+              {/* Fallback Banner for Servicios Programación */}
+              {dbWeekly && dbWeekly.isFallbackActual && dbSubSource === "servicios" && (
+                <View style={s.fallbackBanner}>
+                  <Text style={s.fallbackBannerText}>
+                    ⚠️ Mostrando la programación 'actual' (última guardada) porque no hay una guardada específicamente para la semana seleccionada ({selectedWeekStart}).
+                  </Text>
+                </View>
+              )}
+
+              {/* Source Picker Status Box */}
+              <Pressable
+                style={[s.filePicker, !!dbWeekly && s.filePickerActive]}
+                onPress={() => loadDbWeekly(true)}
+              >
+                <View style={s.filePickerIcon}>
+                  {loadingDbWeekly ? (
+                    <ActivityIndicator color={COLORS.primary} size="small" />
+                  ) : (
+                    <Text style={{ fontSize: 20 }}>{dbSubSource === "api" ? "🌐" : "🖥️"}</Text>
+                  )}
+                </View>
+                <View style={s.filePickerInfo}>
+                  <Text style={s.filePickerText}>
+                    {dbWeekly 
+                      ? `Cargado: ${dbSubSource === "api" ? "API Cinemark" : "Servicios Programación"}` 
+                      : "Sin programación cargada"}
+                  </Text>
+                  <Text style={s.filePickerSubtext}>
+                    {dbWeekly 
+                      ? `Origen: ${dbSubSource === "api" ? "Showtimes de API" : (dbWeekly.isFallbackActual ? "Último guardado (actual)" : "Guardado específico de fecha")}` 
+                      : "Presioná para intentar cargar nuevamente"}
+                  </Text>
+                </View>
+              </Pressable>
+            </View>
           )}
         </View>
 
@@ -1724,5 +1935,56 @@ const s = StyleSheet.create({
   },
   tabButtonTextActive: {
     color: COLORS.primary,
+  },
+  singleWeekSelectorContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.card,
+    marginTop: 6,
+    gap: 12,
+  },
+  singleWeekLabelContainer: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: COLORS.bg,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    minWidth: 220,
+    alignItems: "center",
+  },
+  singleWeekLabelText: {
+    fontSize: 12,
+    color: COLORS.text,
+    fontWeight: "bold",
+  },
+  arrowButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    backgroundColor: COLORS.bg,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  arrowButtonDisabled: {
+    opacity: 0.4,
+  },
+  fallbackBanner: {
+    backgroundColor: MKT.warningBg,
+    borderColor: MKT.warning,
+    borderWidth: 1.2,
+    borderRadius: 12,
+    padding: 10,
+    marginTop: 8,
+  },
+  fallbackBannerText: {
+    color: MKT.warning,
+    fontSize: 11,
+    fontWeight: "800",
+    textAlign: "center",
+    lineHeight: 16,
   },
 });

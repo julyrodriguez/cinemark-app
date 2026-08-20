@@ -384,6 +384,7 @@ export default function ProgramacionTab() {
       if (shouldSaveAutomatically && cineId && rowsToSave.length > 0) {
         try {
           const docRef = doc(db, CINES_COLLECTION, cineId, "programacion_semanal", "actual");
+          const dateDocRef = doc(db, CINES_COLLECTION, cineId, "programacion_semanal", startDateToSave);
           const sanitizedRows = JSON.parse(JSON.stringify(rowsToSave));
           const payload = {
             startDate: startDateToSave,
@@ -392,6 +393,7 @@ export default function ProgramacionTab() {
             updatedAt: new Date().toISOString(),
           };
           await setDoc(docRef, payload);
+          await setDoc(dateDocRef, payload);
 
           setSavedWeekly({
             startDate: payload.startDate,
@@ -498,6 +500,7 @@ export default function ProgramacionTab() {
       if (shouldSaveAutomatically && cineId && rowsToSave.length > 0) {
         try {
           const docRef = doc(db, CINES_COLLECTION, cineId, "programacion_semanal", "actual");
+          const dateDocRef = doc(db, CINES_COLLECTION, cineId, "programacion_semanal", startDateToSave);
           const sanitizedRows = JSON.parse(JSON.stringify(rowsToSave));
           const payload = {
             startDate: startDateToSave,
@@ -506,6 +509,7 @@ export default function ProgramacionTab() {
             updatedAt: new Date().toISOString(),
           };
           await setDoc(docRef, payload);
+          await setDoc(dateDocRef, payload);
 
           setSavedWeekly({
             startDate: payload.startDate,
