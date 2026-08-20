@@ -56,7 +56,7 @@ interface ActiveReport {
     [salaId: string]: RoomIssues;
   };
   generalIssues?: {
-    [salaId: string]: string;
+    [salaId: string]: string[];
   };
 }
 
@@ -362,7 +362,7 @@ export default function ControlSalasScreen() {
       const ref = doc(db, CINES_COLLECTION, cineId, "salas_layouts", String(sala.id));
       return onSnapshot(
         ref,
-        (snapshot) => {
+        (snapshot: any) => {
           if (snapshot.exists()) {
             const data = snapshot.data() as FirestoreSalaLayout;
             setDbLayouts((prev) => ({
@@ -382,7 +382,7 @@ export default function ControlSalasScreen() {
             setLoading(false);
           }
         },
-        (error) => {
+        (error: any) => {
           console.error(`Error loading layout for Sala ${sala.id}:`, error);
           loadedCount++;
           if (loadedCount >= salasInfoList.length) {
@@ -432,7 +432,7 @@ export default function ControlSalasScreen() {
     const docRef = doc(db, CINES_COLLECTION, cineId, "control_salas", "active");
     const unsubscribe = onSnapshot(
       docRef,
-      (snapshot) => {
+      (snapshot: any) => {
         if (snapshot.exists()) {
           const data = snapshot.data() as ActiveReport;
           setReport({
@@ -451,7 +451,7 @@ export default function ControlSalasScreen() {
         }
         setLoading(false);
       },
-      (error) => {
+      (error: any) => {
         console.error("Error reading room control report:", error);
         setLoading(false);
       }
@@ -907,7 +907,7 @@ export default function ControlSalasScreen() {
 
         const issuesSorted = roomIssues
           ? Object.entries(roomIssues)
-              .map(([key, val]) => {
+              .map(([key, val]: any) => {
                 const [row, numStr] = key.split("-");
                 const num = parseInt(numStr, 10);
                 const parts: string[] = [];
