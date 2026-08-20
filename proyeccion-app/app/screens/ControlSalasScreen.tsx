@@ -583,6 +583,11 @@ export default function ControlSalasScreen() {
       delete newGeneralIssues[salaKey];
     }
 
+    Alert.alert(
+      "Depuración Borrado",
+      `Sala: ${salaKey}\nBorrando: ${itemToDelete}\nLista resultante: ${JSON.stringify(currentList)}\nPayload final: ${JSON.stringify(newGeneralIssues)}`
+    );
+
     setSaving(true);
     try {
       const docRef = doc(db, CINES_COLLECTION, cineId, "control_salas", "active");
@@ -593,9 +598,10 @@ export default function ControlSalasScreen() {
         generalIssues: newGeneralIssues,
       };
       await setDoc(docRef, payload);
-    } catch (e) {
+      Alert.alert("Éxito", "Actualizado en la base de datos.");
+    } catch (e: any) {
       console.error("Error deleting general issue:", e);
-      Alert.alert("Error", "No se pudo borrar la observación.");
+      Alert.alert("Error", "No se pudo borrar: " + e.message);
     } finally {
       setSaving(false);
     }
