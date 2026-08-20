@@ -14,6 +14,9 @@ import {
   View,
 } from "react-native";
 import * as XLSX from "xlsx-js-style";
+import dayjs from "dayjs";
+import { doc, getDoc } from "@/lib/dbService";
+import { db, CINES_COLLECTION } from "../../lib/firebaseConfig";
 import { COLORS, THEME } from "../../lib/theme";
 import { useAuthUser } from "../../lib/useAuthUser";
 
@@ -51,7 +54,63 @@ export default function TrailersSemanalesScreen({ readOnly = false }: { readOnly
   const [trlsName, setTrlsName] = useState<string | null>(null);
   const [trlsData, setTrlsData] = useState<TrlMovie[] | null>(null);
 
-  const [exhibitionPeriod, setExhibitionPeriod] = useState<string>("21/05/2026 al 28/05/2026");
+  const [sourceMode, setSourceMode] = useState<"pdf" | "programacion">("pdf");
+  const [dbWeekly, setDbWeekly] = useState<{
+    startDate: string;
+    weeklyRows: any[];
+  } | null>(null);
+  const [loadingDbWeekly, setLoadingDbWeekly] = useState(false);
+  const [pdfPeriod, setPdfPeriod] = useState<string | null>(null);
+
+  const dbPeriod = useMemo(() => {
+    if (!dbWeekly || !dbWeekly.startDate) return null;
+    const start = dayjs(dbWeekly.startDate);
+    const end = start.add(6, "day");
+    return `${start.format("DD/MM/YYYY")} al ${end.format("DD/MM/YYYY")}`;
+  }, [dbWeekly]);
+
+  const activePeriod = useMemo(() => {
+    if (sourceMode === "pdf") {
+      return pdfPeriod || "21/05/2026 al 28/05/2026";
+    } else {
+      return dbPeriod || "21/05/2026 al 28/05/2026";
+    }
+  }, [sourceMode, pdfPeriod, dbPeriod]);
+
+  const loadDbWeekly = async (showFeedback = false) => {
+    if (!cineId) return;
+    try {
+      setLoadingDbWeekly(true);
+      const docRef = doc(db, CINES_COLLECTION, cineId, "programacion_semanal", "actual");
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        const data = snap.data();
+        setDbWeekly({
+          startDate: data.startDate || "",
+          weeklyRows: data.weeklyRows || [],
+        });
+        if (showFeedback) {
+          Alert.alert("Éxito", "Programación de la semana cargada correctamente.");
+        }
+      } else {
+        setDbWeekly(null);
+        if (showFeedback) {
+          Alert.alert("Sin datos", "No hay una programación guardada en la base de datos.");
+        }
+      }
+    } catch (e: any) {
+      console.error("Error al cargar programación:", e);
+      if (showFeedback) {
+        Alert.alert("Error", "No se pudo cargar la programación de la semana.");
+      }
+    } finally {
+      setLoadingDbWeekly(false);
+    }
+  };
+
+  useEffect(() => {
+    loadDbWeekly(false);
+  }, [cineId]);
 
   const [loadingPdf, setLoadingPdf] = useState(false);
   const [loadingTrls, setLoadingTrls] = useState(false);
@@ -228,6 +287,32 @@ export default function TrailersSemanalesScreen({ readOnly = false }: { readOnly
     return result;
   }, [pdfText]);
 
+  // Compute the sessions (screens map) depending on selected source mode
+  const weeklySessions = useMemo(() => {
+    if (sourceMode === "pdf") {
+      return parsedSessions;
+    } else {
+      if (!dbWeekly || !dbWeekly.weeklyRows) return null;
+
+      const screens: Record<number, string[]> = {};
+      dbWeekly.weeklyRows.forEach((row: any) => {
+        const salaNum = parseInt(row.sala, 10);
+        if (isNaN(salaNum)) return;
+        if (!screens[salaNum]) {
+          screens[salaNum] = [];
+        }
+        const movieTitle = row.calificacion 
+          ? `${row.pelicula} (${row.calificacion})` 
+          : row.pelicula;
+
+        if (!screens[salaNum].includes(movieTitle)) {
+          screens[salaNum].push(movieTitle);
+        }
+      });
+      return screens;
+    }
+  }, [sourceMode, parsedSessions, dbWeekly]);
+
   // Intelligent matching functions
   function normalizeForMatching(title: string): string {
     return title
@@ -293,12 +378,12 @@ export default function TrailersSemanalesScreen({ readOnly = false }: { readOnly
 
   // Combine sessions and trls data
   const matchedCalculated = useMemo(() => {
-    if (!parsedSessions || !trlsData) return null;
+    if (!weeklySessions || !trlsData) return null;
 
     const screens: ScreenMovies[] = [];
-    for (let scrNumStr in parsedSessions) {
+    for (let scrNumStr in weeklySessions) {
       const screenNum = parseInt(scrNumStr, 10);
-      const movies = parsedSessions[screenNum].map((sessionMovie) => {
+      const movies = weeklySessions[screenNum].map((sessionMovie) => {
         const match = matchMovieToTrl(sessionMovie, trlsData);
         if (match) {
           const trailersList = [...match.trailers];
@@ -322,7 +407,7 @@ export default function TrailersSemanalesScreen({ readOnly = false }: { readOnly
       screens.push({ screenNum, movies });
     }
     return screens.sort((a, b) => a.screenNum - b.screenNum);
-  }, [parsedSessions, trlsData]);
+  }, [weeklySessions, trlsData]);
 
   // Set editableScreens state when matchedCalculated changes
   useEffect(() => {
@@ -516,7 +601,7 @@ export default function TrailersSemanalesScreen({ readOnly = false }: { readOnly
           // Auto extract exhibition dates
           const dateMatch = text.match(/From\s+Thursday\s+(\d{2}\/\d{2}\/\d{4}).*Until\s+Thursday\s+(\d{2}\/\d{2}\/\d{4})/i);
           if (dateMatch) {
-            setExhibitionPeriod(`${dateMatch[1]} al ${dateMatch[2]}`);
+            setPdfPeriod(`${dateMatch[1]} al ${dateMatch[2]}`);
           }
         } else {
           throw new Error("No se pudo obtener el archivo del navegador.");
@@ -788,7 +873,7 @@ export default function TrailersSemanalesScreen({ readOnly = false }: { readOnly
               </div>
               <div class="meta-item">
                 <span class="meta-label">Fecha de Exhibición</span>
-                <span class="meta-value">${exhibitionPeriod}</span>
+                <span class="meta-value">${activePeriod}</span>
               </div>
             </div>
           </div>
@@ -919,7 +1004,7 @@ export default function TrailersSemanalesScreen({ readOnly = false }: { readOnly
     }
   }
 
-  const canProcess = !!pdfText && !!trlsData && !!editableScreens;
+  const canProcess = (sourceMode === "pdf" ? !!pdfText : !!dbWeekly) && !!trlsData && !!editableScreens;
 
   return (
     <ScrollView style={s.main} contentContainerStyle={s.content}>
@@ -951,7 +1036,7 @@ export default function TrailersSemanalesScreen({ readOnly = false }: { readOnly
               <Text style={s.stepNumber}>2</Text>
               <View style={s.stepInfo}>
                 <Text style={s.stepTitle}>Cargar en la Aplicación</Text>
-                <Text style={s.stepText}>• Subir el PDF en la sección **Session by Screen**.</Text>
+                <Text style={s.stepText}>• Subir el PDF en la sección **Session by Screen** o seleccionar usar la programación semanal guardada de la base de datos.</Text>
                 <Text style={s.stepText}>• Subir el Excel en la sección **TRLS de la Semana**.</Text>
               </View>
             </View>
@@ -969,29 +1054,78 @@ export default function TrailersSemanalesScreen({ readOnly = false }: { readOnly
 
       {/* FILE UPLOAD CARD */}
       <View style={s.card}>
-        {/* SECTION 1: PDF */}
+        {/* SECTION 1: SOURCE SELECTOR & CONFIG */}
         <View style={s.section}>
-          <Text style={s.sectionLabel}>1. Session by Screen (PDF)</Text>
-          <Pressable
-            style={[s.filePicker, !!pdfText && s.filePickerActive, readOnly && { opacity: 0.6 }]}
-            onPress={readOnly ? undefined : pickPdf}
-          >
-            <View style={s.filePickerIcon}>
-              {loadingPdf ? (
-                <ActivityIndicator color={COLORS.primary} size="small" />
-              ) : (
-                <Text style={{ fontSize: 20 }}>📁</Text>
-              )}
-            </View>
-            <View style={s.filePickerInfo}>
-              <Text style={s.filePickerText}>
-                {pdfName ? pdfName : "Seleccionar SessionsbyScreen.pdf"}
+          <Text style={s.sectionLabel}>1. Programación Semanal</Text>
+
+          <View style={s.tabContainer}>
+            <Pressable
+              style={[s.tabButton, sourceMode === "pdf" && s.tabButtonActive]}
+              onPress={() => setSourceMode("pdf")}
+            >
+              <Text style={[s.tabButtonText, sourceMode === "pdf" && s.tabButtonTextActive]}>
+                📁 PDF Session by Screen
               </Text>
-              <Text style={s.filePickerSubtext}>
-                {pdfText ? `Texto extraído - Semana: ${exhibitionPeriod}` : "Formato .pdf"}
+            </Pressable>
+            <Pressable
+              style={[s.tabButton, sourceMode === "programacion" && s.tabButtonActive]}
+              onPress={() => {
+                setSourceMode("programacion");
+                loadDbWeekly(true);
+              }}
+            >
+              {loadingDbWeekly ? (
+                <ActivityIndicator color={COLORS.primary} size="small" style={{ marginRight: 6 }} />
+              ) : null}
+              <Text style={[s.tabButtonText, sourceMode === "programacion" && s.tabButtonTextActive]}>
+                🖥️ Usar Programación Guardada
               </Text>
-            </View>
-          </Pressable>
+            </Pressable>
+          </View>
+
+          {sourceMode === "pdf" ? (
+            <Pressable
+              style={[s.filePicker, !!pdfText && s.filePickerActive, readOnly && { opacity: 0.6 }]}
+              onPress={readOnly ? undefined : pickPdf}
+            >
+              <View style={s.filePickerIcon}>
+                {loadingPdf ? (
+                  <ActivityIndicator color={COLORS.primary} size="small" />
+                ) : (
+                  <Text style={{ fontSize: 20 }}>📁</Text>
+                )}
+              </View>
+              <View style={s.filePickerInfo}>
+                <Text style={s.filePickerText}>
+                  {pdfName ? pdfName : "Seleccionar SessionsbyScreen.pdf"}
+                </Text>
+                <Text style={s.filePickerSubtext}>
+                  {pdfText ? `Texto extraído - Semana: ${activePeriod}` : "Formato .pdf"}
+                </Text>
+              </View>
+            </Pressable>
+          ) : (
+            <Pressable
+              style={[s.filePicker, !!dbWeekly && s.filePickerActive]}
+              onPress={() => loadDbWeekly(true)}
+            >
+              <View style={s.filePickerIcon}>
+                {loadingDbWeekly ? (
+                  <ActivityIndicator color={COLORS.primary} size="small" />
+                ) : (
+                  <Text style={{ fontSize: 20 }}>🖥️</Text>
+                )}
+              </View>
+              <View style={s.filePickerInfo}>
+                <Text style={s.filePickerText}>
+                  {dbWeekly ? "Programación cargada desde base de datos" : "Sin programación cargada"}
+                </Text>
+                <Text style={s.filePickerSubtext}>
+                  {dbWeekly ? `Semana de programación: ${activePeriod}` : "Presioná para intentar cargar nuevamente"}
+                </Text>
+              </View>
+            </Pressable>
+          )}
         </View>
 
         <View style={s.divider} />
@@ -1561,5 +1695,34 @@ const s = StyleSheet.create({
     fontSize: 11,
     fontWeight: "900",
     color: "#FFF",
+  },
+  tabContainer: {
+    flexDirection: "row",
+    backgroundColor: COLORS.bg,
+    borderRadius: 12,
+    padding: 4,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  tabButton: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 8,
+    flexDirection: "row",
+  },
+  tabButtonActive: {
+    backgroundColor: COLORS.card,
+    ...THEME.shadow.soft,
+  },
+  tabButtonText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: COLORS.muted,
+  },
+  tabButtonTextActive: {
+    color: COLORS.primary,
   },
 });
