@@ -2741,7 +2741,9 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                       <MaterialCommunityIcons name="timer-outline" size={22} color={COLORS.muted} style={styles.detailIcon} />
                       <View>
                         <Text style={styles.detailLabel}>Duración Total del Bloque</Text>
-                        <Text style={styles.detailValue}>{getShowDuration(selectedShow)} minutos (incluye publicidad)</Text>
+                        <Text style={styles.detailValue}>
+                          {getShowDuration(selectedShow)} minutos (incluye publicidad){selectedShow.runTime ? ` (Película: ${selectedShow.runTime} min)` : ""}
+                        </Text>
                       </View>
                     </View>
 
