@@ -33,6 +33,7 @@ import { db, CINES_COLLECTION } from "../../lib/firebaseConfig";
 import { useAuthUser } from "../../lib/useAuthUser";
 import {
   generateProgramacionWorkbook,
+  generateWeeklyProgramacionWorkbook,
   parseWeeklyProgrammingExcel,
   buildDailyProgramming,
 } from "../../lib/programacion/excel";
@@ -440,6 +441,121 @@ export default function ProgramacionTab() {
     }
   }
 
+  async function handleGenerateWeekly() {
+    if (!useSavedWeekly && !weeklyUri) return;
+    try {
+      setLoading(true);
+      setSummary(null);
+      setStatusText("Generando reporte semanal...");
+
+      let weeklyRows: WeeklyMovieRow[] = [];
+      let startDateToUse: Date | null = null;
+
+      let shouldSaveAutomatically = false;
+      let rowsToSave: any[] = [];
+      let startDateToSave = "";
+
+      if (useSavedWeekly && savedWeekly) {
+        weeklyRows = savedWeekly.weeklyRows;
+        startDateToUse = dayjs(savedWeekly.startDate).toDate();
+      } else if (loadedWeeklyRows && loadedWeeklyRows.length > 0) {
+        weeklyRows = loadedWeeklyRows;
+        startDateToUse = dayjs(fechaInicioSemana).toDate();
+        shouldSaveAutomatically = true;
+        rowsToSave = loadedWeeklyRows;
+        startDateToSave = fechaInicioSemana;
+      } else if (weeklyUri) {
+        const isPdf = weeklyName?.toLowerCase().endsWith(".pdf") || false;
+        const { rows, startDate } = isPdf
+          ? await parseWeeklyProgrammingPDF(weeklyUri)
+          : await parseWeeklyProgrammingExcel(weeklyUri);
+        weeklyRows = rows;
+        startDateToUse = startDate;
+        shouldSaveAutomatically = true;
+        rowsToSave = rows;
+        startDateToSave = startDate ? dayjs(startDate).format("YYYY-MM-DD") : fechaInicioSemana;
+      }
+
+      if (!weeklyRows.length) {
+        Alert.alert("Sin datos", "La programación no contiene datos válidos.");
+        return;
+      }
+
+      const generated = await generateWeeklyProgramacionWorkbook({
+        weeklyRows,
+        startDate: startDateToUse,
+        floorConfig: useFloors ? {
+          active: true,
+          count: parseInt(numFloors.toString(), 10) || 2,
+          ranges: floorRanges.slice(0, parseInt(numFloors.toString(), 10)).map(r => ({
+            from: parseInt(r.from.toString(), 10) || 0,
+            to: parseInt(r.to.toString(), 10) || 0
+          }))
+        } : undefined
+      });
+
+      // Si guardamos automáticamente, corremos la misma lógica que handleSaveWeeklyToDb
+      if (shouldSaveAutomatically && cineId && rowsToSave.length > 0) {
+        try {
+          const docRef = doc(db, CINES_COLLECTION, cineId, "programacion_semanal", "actual");
+          const sanitizedRows = JSON.parse(JSON.stringify(rowsToSave));
+          const payload = {
+            startDate: startDateToSave,
+            weeklyRows: sanitizedRows,
+            savedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+          await setDoc(docRef, payload);
+
+          setSavedWeekly({
+            startDate: payload.startDate,
+            savedAt: payload.savedAt,
+            weeklyRows: payload.weeklyRows,
+          });
+          setUseSavedWeekly(true);
+
+          // Limpiar archivo local temporal cargado tras guardar con éxito
+          setWeeklyUri(null);
+          setWeeklyName(null);
+          setLoadedWeeklyRows(null);
+          setLoadedWeeklyType(null);
+
+          await loadLatestSavedWeekly();
+        } catch (saveError) {
+          console.error("[Weekly Save Automatic] Error al guardar en la BD:", saveError);
+        }
+      }
+
+      setStatusText("Generación semanal exitosa");
+
+      if (Platform.OS === "web") {
+        if (generated.webArrayBuffer) {
+          const blob = new Blob([generated.webArrayBuffer], {
+            type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = generated.fileName;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }
+        return;
+      }
+
+      if (generated.uri && await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(generated.uri);
+      }
+    } catch (error) {
+      console.error(error);
+      Alert.alert("Error", "Ocurrió un problema al generar el Excel semanal.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
 
 
   return (
@@ -734,9 +850,26 @@ export default function ProgramacionTab() {
             <ActivityIndicator color="#fff" size="small" />
           ) : (
             <>
-              <Text style={s.mainButtonText}>GENERAR EXCEL</Text>
+              <Text style={s.mainButtonText}>GENERAR EXCEL DÍA</Text>
               <Text style={{ color: "rgba(255,255,255,0.6)", fontSize: 10, fontWeight: "600" }}>
                 {selectedDay.toUpperCase()}
+              </Text>
+            </>
+          )}
+        </Pressable>
+
+        <Pressable
+          style={[s.secondaryButton, (!canGenerate || loading) && s.mainButtonDisabled]}
+          onPress={handleGenerateWeekly}
+          disabled={!canGenerate || loading}
+        >
+          {loading ? (
+            <ActivityIndicator color={COLORS.primary} size="small" />
+          ) : (
+            <>
+              <Text style={s.secondaryButtonText}>DESCARGAR SEMANA COMPLETA (WEEKLY)</Text>
+              <Text style={{ color: COLORS.muted, fontSize: 10, fontWeight: "600" }}>
+                JUEVES A MIÉRCOLES
               </Text>
             </>
           )}
@@ -957,6 +1090,8 @@ const s = StyleSheet.create({
   mainButtonDisabled: { backgroundColor: COLORS.border, opacity: 0.7 },
   mainButtonText: { color: "#FFF", fontSize: 15, fontWeight: "900", letterSpacing: 1 },
   statusInfo: { fontSize: 12, color: COLORS.primary, fontWeight: "700" },
+  secondaryButton: { backgroundColor: COLORS.card, borderWidth: 1.5, borderColor: COLORS.success, width: "100%", height: 54, borderRadius: 16, alignItems: "center", justifyContent: "center", ...THEME.shadow.soft },
+  secondaryButtonText: { color: COLORS.success, fontSize: 13, fontWeight: "900", letterSpacing: 0.5 },
 
   // Resumen Card
   summaryCard: { backgroundColor: COLORS.card, borderRadius: 20, padding: 20, borderWidth: 1, borderColor: COLORS.border, gap: 16 },

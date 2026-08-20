@@ -10,6 +10,7 @@ import {
   WEEKDAY_LABELS,
   WeekdayKey,
   WeeklyMovieRow,
+  FloorConfig,
 } from "./types";
 import { extractDateFromText } from "./pdf";
 
@@ -1003,5 +1004,175 @@ export async function generateProgramacionWorkbook(params: GenerateProgramacionP
     uri: outputUri,
     fileName,
     data,
+  };
+}
+
+export async function generateWeeklyProgramacionWorkbook(params: {
+  weeklyRows: WeeklyMovieRow[];
+  startDate: Date | null;
+  floorConfig?: FloorConfig;
+}): Promise<{
+  uri?: string;
+  fileName: string;
+  webArrayBuffer?: ArrayBuffer;
+}> {
+  const { weeklyRows, startDate, floorConfig } = params;
+
+  const wb = XLSX.utils.book_new();
+  const daysOrdered: WeekdayKey[] = ["jueves", "viernes", "sabado", "domingo", "lunes", "martes", "miercoles"];
+
+  // Re-define MONTH_LABELS_ES and DAY_OFFSETS for date formatting
+  const MONTH_LABELS_ES = [
+    "enero", "febrero", "marzo", "abril", "mayo", "junio",
+    "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+  ];
+  const DAY_OFFSETS: Record<WeekdayKey, number> = {
+    jueves: 0,
+    viernes: 1,
+    sabado: 2,
+    domingo: 3,
+    lunes: 4,
+    martes: 5,
+    miercoles: 6,
+  };
+
+  const getDayDateLabel = (day: WeekdayKey): string => {
+    const label = WEEKDAY_LABELS[day];
+    if (!startDate) return label;
+    const offset = DAY_OFFSETS[day];
+    const d = new Date(startDate);
+    d.setDate(d.getDate() + offset);
+    const dd = String(d.getDate()).padStart(2, "0");
+    const month = MONTH_LABELS_ES[d.getMonth()];
+    const yyyy = d.getFullYear();
+    return `${label} ${dd} de ${month.charAt(0).toUpperCase() + month.slice(1)} de ${yyyy}`;
+  };
+
+  for (const day of daysOrdered) {
+    const finalDateLabel = getDayDateLabel(day);
+    const data = buildDailyProgramming(weeklyRows, day, finalDateLabel);
+
+    const dataRowsFull = Math.max(data.entrada.length, data.salida.length, 1);
+    const legendStartRowFull = dataRowsFull + 4;
+
+    const ws = createBaseSheet(finalDateLabel, legendStartRowFull);
+    setDefaultRowHeights(ws, legendStartRowFull + 10, 17);
+
+    const lastRowSheet1 = legendStartRowFull + 3;
+    let finalMaxRow = lastRowSheet1;
+
+    // Determine sheet names (upper case day names, and handle floors if config is active)
+    const sheetNameBase = WEEKDAY_LABELS[day].toUpperCase();
+
+    if (floorConfig && floorConfig.active) {
+      const floorWs = XLSX.utils.aoa_to_sheet([["", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]]);
+      floorWs["!cols"] = ws["!cols"];
+      floorWs["!merges"] = [];
+
+      let currentRowOffset = 0;
+      const floorLabels = ["PRIMER PISO", "SEGUNDO PISO", "TERCER PISO", "CUARTO PISO"];
+
+      const count = parseInt(floorConfig.count.toString(), 10) || 0;
+      for (let i = 0; i < count; i++) {
+        const range = floorConfig.ranges[i];
+        const floorEntrada = data.entrada.filter(
+          (val) => Number(val.sala) >= range.from && Number(val.sala) <= range.to
+        );
+        const floorSalida = data.salida.filter(
+          (val) => Number(val.sala) >= range.from && Number(val.sala) <= range.to
+        );
+
+        if (floorEntrada.length === 0 && floorSalida.length === 0) continue;
+
+        const floorData: ProgramacionBuildResult = {
+          ...data,
+          entrada: floorEntrada,
+          salida: floorSalida,
+          dateLabel: floorLabels[i] || `PISO ${i + 1}`,
+        };
+
+        const floorRowsCount = Math.max(floorEntrada.length, floorSalida.length, 1);
+        const baseRows = createBaseRows(floorData.dateLabel, floorRowsCount + 4, true, true);
+
+        XLSX.utils.sheet_add_aoa(floorWs, baseRows, { origin: `A${currentRowOffset + 1}` });
+
+        const floorMerges = [
+          { s: { r: currentRowOffset, c: 0 }, e: { r: currentRowOffset, c: 4 } },
+          { s: { r: currentRowOffset, c: 5 }, e: { r: currentRowOffset, c: 6 } },
+          { s: { r: currentRowOffset, c: 8 }, e: { r: currentRowOffset, c: 12 } },
+          { s: { r: currentRowOffset, c: 13 }, e: { r: currentRowOffset, c: 14 } },
+        ];
+        floorWs["!merges"]!.push(...floorMerges);
+
+        fillPrograArea(floorWs, floorData, currentRowOffset, true, true);
+
+        const blockHeight = floorRowsCount + 2;
+        const isLastFloor = i === count - 1;
+
+        if (!isLastFloor) {
+          currentRowOffset += blockHeight + 3; // +3 de separación
+        } else {
+          currentRowOffset += blockHeight;
+        }
+      }
+
+      const lastRowSheet2 = currentRowOffset;
+      finalMaxRow = Math.max(lastRowSheet1, lastRowSheet2);
+
+      ws["!ref"] = `A1:O${finalMaxRow}`;
+      floorWs["!ref"] = `A1:O${finalMaxRow}`;
+
+      applyPrintOptions(ws, finalMaxRow);
+      applyPrintOptions(floorWs, finalMaxRow);
+
+      fillPrograArea(ws, data, 0, false);
+
+      XLSX.utils.book_append_sheet(wb, ws, sheetNameBase);
+      // Limit to 31 chars (e.g. "JUEVES PISOS")
+      XLSX.utils.book_append_sheet(wb, floorWs, `${sheetNameBase.substring(0, 25)} PISOS`);
+    } else {
+      applyPrintOptions(ws, lastRowSheet1);
+      fillPrograArea(ws, data, 0, false);
+      XLSX.utils.book_append_sheet(wb, ws, sheetNameBase);
+    }
+  }
+
+  let formattedDate = "semanal";
+  if (startDate) {
+    const sd = new Date(startDate);
+    const dd = String(sd.getDate()).padStart(2, "0");
+    const mm = String(sd.getMonth() + 1).padStart(2, "0");
+    const yyyy = sd.getFullYear();
+    formattedDate = `${dd}-${mm}-${yyyy}`;
+  }
+  const fileName = `programacion-semanal-${formattedDate}.xlsx`;
+
+  if (Platform.OS === "web") {
+    const webArrayBuffer = XLSX.write(wb, {
+      type: "array",
+      bookType: "xlsx",
+      cellStyles: true,
+    }) as ArrayBuffer;
+
+    return {
+      fileName,
+      webArrayBuffer,
+    };
+  }
+
+  const base64 = XLSX.write(wb, {
+    type: "base64",
+    bookType: "xlsx",
+    cellStyles: true,
+  });
+
+  const outputUri = `${FileSystem.cacheDirectory}${fileName}`;
+  await FileSystem.writeAsStringAsync(outputUri, base64, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+
+  return {
+    uri: outputUri,
+    fileName,
   };
 }

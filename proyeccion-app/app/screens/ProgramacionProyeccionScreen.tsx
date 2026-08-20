@@ -2567,8 +2567,12 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
         animationType="fade"
         onRequestClose={() => { setSelectedShow(null); setShowSeatMap(false); setSeatMapData(null); }}
       >
-        <View style={[styles.modalOverlay, selectedShow?.isSimulated && isMobile && styles.modalOverlayFullScreen]}>
-          <View style={[styles.modalContent, selectedShow?.isSimulated && (isMobile ? styles.modalContentFullScreen : styles.modalContentLarge)]}>
+        <View style={[styles.modalOverlay, isMobile && styles.modalOverlayFullScreen]}>
+          <View style={[
+            styles.modalContent,
+            isMobile ? styles.modalContentFullScreen : (selectedShow?.isSimulated ? styles.modalContentLarge : {}),
+            isMobile && { maxHeight: windowHeight - 40 }
+          ]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalHeaderTitle}>Detalle de Función</Text>
               <TouchableOpacity onPress={() => { setSelectedShow(null); setShowSeatMap(false); setSeatMapData(null); }} style={styles.modalCloseButton}>
@@ -2578,7 +2582,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
             {selectedShow && (
               <ScrollView 
-                style={{ maxHeight: isMobile ? windowHeight - 100 : windowHeight - 160 }} 
+                style={{ maxHeight: isMobile ? windowHeight - 150 : windowHeight - 200 }} 
                 contentContainerStyle={[styles.modalBody, isMobile && { paddingHorizontal: 0, paddingBottom: 8 }]}
                 showsVerticalScrollIndicator={false}
               >
