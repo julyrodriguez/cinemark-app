@@ -571,10 +571,10 @@ export default function ControlSalasScreen() {
     }
   };
 
-  const handleDeleteGeneralItem = async (indexToDelete: number) => {
+  const handleDeleteGeneralItem = async (itemToDelete: string) => {
     if (!cineId) return;
     const salaKey = String(selectedSala);
-    const currentList = generalIssuesList.filter((_, idx) => idx !== indexToDelete);
+    const currentList = generalIssuesList.filter((item) => item !== itemToDelete);
 
     const newGeneralIssues = { ...report?.generalIssues };
     if (currentList.length > 0) {
@@ -1819,7 +1819,7 @@ export default function ControlSalasScreen() {
                       </Text>
                     </View>
                     <TouchableOpacity 
-                      onPress={() => handleDeleteGeneralItem(index)} 
+                      onPress={() => handleDeleteGeneralItem(item)} 
                       style={{ padding: 4, minWidth: 32, alignItems: "center" }}
                       activeOpacity={0.7}
                     >
