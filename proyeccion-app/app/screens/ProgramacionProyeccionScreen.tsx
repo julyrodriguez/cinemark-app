@@ -780,7 +780,11 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
           fin,
           format: `${formatStr} ${langStr}`,
           dayKey: sessionDay,
-          sortVal: arDate.getUTCHours() * 60 + arDate.getUTCMinutes()
+          sortVal: (() => {
+            const h = arDate.getUTCHours();
+            const m = arDate.getUTCMinutes();
+            return h < 6 ? (h + 24) * 60 + m : h * 60 + m;
+          })()
         };
       });
 
