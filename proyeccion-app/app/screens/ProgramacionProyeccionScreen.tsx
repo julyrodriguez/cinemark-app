@@ -280,7 +280,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
     const salaId = selectedShow.sala;
     const ref = doc(db, CINES_COLLECTION, cineId, "salas_layouts", String(salaId));
     
-    const unsubscribe = onSnapshot(ref, (snapshot) => {
+    const unsubscribe = onSnapshot(ref, (snapshot: any) => {
       if (snapshot.exists()) {
         const dbLayout = snapshot.data() as FirestoreSalaLayout;
         const seats: { [row: string]: SeatInfo[] } = {};
@@ -328,7 +328,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
       } else {
         setActiveSalaLayout(getRoomLayout(salaId));
       }
-    }, (error) => {
+    }, (error: any) => {
       console.error("Error listening to sala layout:", error);
       setActiveSalaLayout(getRoomLayout(salaId));
     });
@@ -570,7 +570,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
     const docRef = doc(db, CINES_COLLECTION, cineId, "programacion_semanal", "actual");
     const unsubscribe = onSnapshot(
       docRef,
-      (snap) => {
+      (snap: any) => {
         if (snap.exists()) {
           const data = snap.data();
           setSavedWeekly({
@@ -585,7 +585,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
           setLoading(false);
         }
       },
-      (error) => {
+      (error: any) => {
         console.error("[ProgramacionProyeccionScreen] Error loading programming:", error);
         if (!useApiData) {
           setLoading(false);
@@ -1092,9 +1092,9 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
         return;
       }
 
-      const fileUri = `${FileSystem.cacheDirectory}programacion-semanal-${selectedWeekStart}.html`;
+      const fileUri = `${(FileSystem as any).cacheDirectory}programacion-semanal-${selectedWeekStart}.html`;
       await FileSystem.writeAsStringAsync(fileUri, htmlTemplate, {
-        encoding: FileSystem.EncodingType.UTF8,
+        encoding: (FileSystem as any).EncodingType.UTF8,
       });
 
       if (await Sharing.isAvailableAsync()) {
