@@ -1020,13 +1020,13 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                       const is3D = show.format.includes("3D");
                       const tagClass = is3D ? "format-tag format-tag-3d" : "format-tag";
                       const nameClass = is3D ? "show-name show-name-3d" : "show-name";
-                      td.innerHTML += `
+                      td.innerHTML += \`
                         <div class="show-entry">
                           <span class="show-time">\${show.inicio} - \${show.fin}</span>
                           <span class="\${nameClass}">\${show.movieName}</span>
                           <span class="show-detail"><span class="\${tagClass}">\${show.format}</span></span>
                         </div>
-                      `;
+                      \`;
                     });
                   }
                   tr.appendChild(td);
@@ -1056,7 +1056,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                     daySessions.forEach(show => {
                       const is3D = show.format.includes("3D");
                       const tagClass = is3D ? "format-tag format-tag-3d" : "format-tag";
-                      td.innerHTML += `
+                      td.innerHTML += \`
                         <div class="show-entry">
                           <span class="show-time">\${show.inicio} - \${show.fin}</span>
                           <span class="show-detail">
@@ -1064,7 +1064,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                             <span class="\${tagClass}">\${show.format}</span>
                           </span>
                         </div>
-                      `;
+                      \`;
                     });
                   }
                   tr.appendChild(td);

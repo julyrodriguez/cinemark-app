@@ -311,6 +311,7 @@ export default function ControlSalasScreen() {
   const [apoyabrazosRoto, setApoyabrazosRoto] = useState(false);
   const [extraDetails, setExtraDetails] = useState("");
   const [generalDetailsInput, setGeneralDetailsInput] = useState("");
+  const [isEditingGeneralReport, setIsEditingGeneralReport] = useState(false);
 
   // Seating grid configuration editor state
   const [isLayoutEditorMode, setIsLayoutEditorMode] = useState<boolean>(false);
@@ -1734,25 +1735,39 @@ export default function ControlSalasScreen() {
 
           {/* Detalles Generales de la Sala */}
           <View style={styles.listCard}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 }}>
-              <MaterialCommunityIcons name="clipboard-text-outline" size={20} color={COLORS.primary} />
-              <Text style={[styles.listCardTitle, { marginBottom: 0 }]}>
-                Detalles Generales de la Sala {selectedSala}
-              </Text>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <MaterialCommunityIcons name="clipboard-text-outline" size={20} color={COLORS.primary} />
+                <Text style={[styles.listCardTitle, { marginBottom: 0 }]}>
+                  Reporte General (Sala {selectedSala})
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.editGeneralReportBtn}
+                onPress={() => setIsEditingGeneralReport(true)}
+                activeOpacity={0.7}
+              >
+                <MaterialCommunityIcons 
+                  name={generalDetailsInput.trim() ? "pencil-outline" : "plus-circle-outline"} 
+                  size={16} 
+                  color={COLORS.primary} 
+                  style={{ marginRight: 4 }} 
+                />
+                <Text style={styles.editGeneralReportBtnText}>
+                  {generalDetailsInput.trim() ? "Editar" : "Agregar"}
+                </Text>
+              </TouchableOpacity>
             </View>
-            <TextInput
-              value={generalDetailsInput}
-              onChangeText={setGeneralDetailsInput}
-              onBlur={() => handleSaveGeneralDetails(generalDetailsInput)}
-              placeholder="Ingresá detalles de la sala que no correspondan a una butaca (ej: parlante roto, pantalla sucia, falla de temperatura, etc.)"
-              placeholderTextColor={COLORS.muted}
-              style={[styles.modalDetailsInput, { minHeight: 70, textAlignVertical: "top" }]}
-              multiline
-              numberOfLines={3}
-            />
-            <Text style={{ fontSize: 10, color: COLORS.muted, marginTop: 4, fontStyle: "italic" }}>
-              Se guarda automáticamente al salir del campo de texto.
-            </Text>
+
+            {generalDetailsInput.trim() ? (
+              <View style={[styles.issueDetailsWrap, { marginTop: 12, borderLeftColor: COLORS.primary }]}>
+                <Text style={styles.issueDetailsText}>{generalDetailsInput}</Text>
+              </View>
+            ) : (
+              <Text style={{ fontSize: 12, color: COLORS.muted, marginTop: 8, fontStyle: "italic" }}>
+                Sin comentarios generales. Hacé clic en "Agregar" para reportar problemas de sonido, pantalla, limpieza o clima.
+              </Text>
+            )}
           </View>
 
           {/* List of reported issues in current room */}
@@ -2033,6 +2048,59 @@ export default function ControlSalasScreen() {
             </View>
           </View>
         )}
+      </Modal>
+
+      {/* General Report Edit Modal */}
+      <Modal
+        visible={isEditingGeneralReport}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsEditingGeneralReport(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Observaciones Generales</Text>
+            <Text style={styles.modalSubtitle}>Sala {selectedSala}</Text>
+
+            <View style={styles.modalInputBlock}>
+              <Text style={styles.modalInputLabel}>Detalles / Comentarios (Sin asignar a butaca)</Text>
+              <TextInput
+                value={generalDetailsInput}
+                onChangeText={setGeneralDetailsInput}
+                placeholder="Ej. parlantes rotos, aire acondicionado sin andar, pantalla sucia, problemas de iluminación..."
+                placeholderTextColor={COLORS.muted}
+                style={[styles.modalDetailsInput, { minHeight: 100 }]}
+                multiline
+                numberOfLines={4}
+              />
+            </View>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.modalBtnCancel, { marginRight: 12 }]}
+                onPress={() => {
+                  const salaKey = String(selectedSala);
+                  setGeneralDetailsInput(report?.generalIssues?.[salaKey] || "");
+                  setIsEditingGeneralReport(false);
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.modalBtnCancelText}>Cancelar</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.modalBtnPrimary]}
+                onPress={async () => {
+                  await handleSaveGeneralDetails(generalDetailsInput);
+                  setIsEditingGeneralReport(false);
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.modalBtnPrimaryText}>Guardar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       </Modal>
     </View>
   );
@@ -2758,6 +2826,21 @@ const styles = StyleSheet.create({
   },
   modalBtnPrimaryText: {
     color: "#FFF",
+    fontWeight: "700",
+  },
+  editGeneralReportBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    backgroundColor: "transparent",
+  },
+  editGeneralReportBtnText: {
+    fontSize: 11,
+    color: COLORS.primary,
     fontWeight: "700",
   },
 });
