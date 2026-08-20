@@ -1,6 +1,6 @@
 // app/screens/ChequeoCopiasScreen.tsx
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -22,7 +22,9 @@ import {
   query,
   onSnapshot,
   addDoc,
-  serverTimestamp
+  serverTimestamp,
+  doc,
+  getDoc
 } from "@/lib/dbService";
 import { db, CINES_COLLECTION } from "../../lib/firebaseConfig";
 
@@ -206,6 +208,70 @@ interface EstrenoMovie {
   idioma: "Doblada" | "Subtitulada" | "Nativo";
 }
 
+// Custom colors matching other tabs
+const MKT = {
+  warning: Platform.OS === "web" ? "var(--warning, #8a5a00)" : "#8a5a00",
+  warningBg: Platform.OS === "web" ? "var(--warning-bg, #fff4d6)" : "#fff4d6",
+};
+
+// Get start of movie week (Thursday) for a given date in yyyy-mm-dd
+function getMovieWeekStart(date: Date): string {
+  const localDate = new Date(date.getTime() - (3 * 60 * 60 * 1000));
+  if (localDate.getUTCHours() < 6) {
+    localDate.setTime(localDate.getTime() - 24 * 60 * 60 * 1000);
+  }
+  const dayNum = localDate.getUTCDay();
+  const daysToSubtract = dayNum <= 3 ? dayNum + 3 : dayNum - 4;
+  const thurDate = new Date(localDate.getTime() - daysToSubtract * 24 * 60 * 60 * 1000);
+  const yyyy = thurDate.getUTCFullYear();
+  const mm = String(thurDate.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(thurDate.getUTCDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+// Get start of movie week (Thursday) for the current date
+function getMovieWeekStartForNow(): string {
+  const localDate = new Date(Date.now() - (3 * 60 * 60 * 1000));
+  if (localDate.getUTCHours() < 6) {
+    localDate.setTime(localDate.getTime() - 24 * 60 * 60 * 1000);
+  }
+  const dayNum = localDate.getUTCDay();
+  const daysToSubtract = dayNum <= 3 ? dayNum + 3 : dayNum - 4;
+  const thurDate = new Date(localDate.getTime() - daysToSubtract * 24 * 60 * 60 * 1000);
+  const yyyy = thurDate.getUTCFullYear();
+  const mm = String(thurDate.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(thurDate.getUTCDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+// Format week start date to range label, e.g., "Semana del 25/6 a 01/7"
+function formatWeekRange(weekStart: string): string {
+  if (!weekStart) return "";
+  const [y, m, d] = weekStart.split("-").map(Number);
+  const start = new Date(Date.UTC(y, m - 1, d));
+  const end = new Date(start.getTime() + 6 * 24 * 60 * 60 * 1000);
+  const startD = start.getUTCDate();
+  const startM = start.getUTCMonth() + 1;
+  const endD = end.getUTCDate();
+  const endM = end.getUTCMonth() + 1;
+  return `Semana del ${startD}/${startM} al ${endD}/${endM}`;
+}
+
+const getWeekdayKeyFromDate = (dateStr: string): WeekdayKey => {
+  const d = dayjs(dateStr);
+  const dayNum = d.day(); // 0 is Sunday, 1 is Monday...
+  const mapping: Record<number, WeekdayKey> = {
+    0: "domingo",
+    1: "lunes",
+    2: "martes",
+    3: "miercoles",
+    4: "jueves",
+    5: "viernes",
+    6: "sabado",
+  };
+  return mapping[dayNum] || "jueves";
+};
+
 export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: boolean }) {
   const { user, displayName, cineId } = useAuthUser();
   const { isMobile } = useAppLayout();
@@ -274,6 +340,26 @@ export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: b
   const [estrenos, setEstrenos] = useState<EstrenoMovie[]>([]);
   const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
   const [comparisonDone, setComparisonDone] = useState(false);
+
+  const [sourceMode, setSourceMode] = useState<"pdf" | "programacion">("pdf");
+  const [dbSubSource, setDbSubSource] = useState<"servicios" | "api">("servicios");
+  const [selectedWeekStart, setSelectedWeekStart] = useState<string>(() => getMovieWeekStartForNow());
+
+  const availableWeeks = useMemo(() => {
+    const list: string[] = [];
+    const currentThur = getMovieWeekStartForNow();
+    const [y, m, d] = currentThur.split('-');
+    const thurDate = new Date(Date.UTC(Number(y), Number(m) - 1, Number(d)));
+
+    for (let i = -4; i < 6; i++) {
+      const nextThur = new Date(thurDate.getTime() + i * 7 * 24 * 60 * 60 * 1000);
+      const yyyy = nextThur.getUTCFullYear();
+      const mm = String(nextThur.getUTCMonth() + 1).padStart(2, '0');
+      const dd = String(nextThur.getUTCDate()).padStart(2, '0');
+      list.push(`${yyyy}-${mm}-${dd}`);
+    }
+    return list;
+  }, []);
 
   const uiCards = React.useMemo(() => {
     const groups: Record<string, EstrenoMovie[]> = {};
@@ -414,143 +500,357 @@ export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: b
 
   // Compare both weeks to detect estrenos
   const handleCompare = async () => {
-    if (!oldUri || !newUri) {
-      Alert.alert("Archivos faltantes", "Por favor carga ambos archivos para realizar la comparación.");
-      return;
-    }
-
-    try {
-      setLoading(true);
-      setStatusText("Parseando semana vieja...");
-      const oldResult = await parseWeeklyProgrammingPDF(oldUri);
-
-      setStatusText("Parseando semana nueva...");
-      const newResult = await parseWeeklyProgrammingPDF(newUri);
-
-      setStatusText("Comparando programaciones...");
-
-      // Compute week date range label from new week startDate
-      if (newResult.startDate) {
-        const start = dayjs(newResult.startDate);
-        const end = start.add(6, "day");
-        setSemanaText(`${start.format("DD/MM")} al ${end.format("DD/MM")}`);
-      } else {
-        setSemanaText("Nueva Semana");
+    if (sourceMode === "pdf") {
+      if (!oldUri || !newUri) {
+        Alert.alert("Archivos faltantes", "Por favor carga ambos archivos para realizar la comparación.");
+        return;
       }
 
-      // Group old week rows by cleaned movie name to check if they only have showtimes on Wednesday
-      const oldMoviesSchedule: Record<string, Record<WeekdayKey, number>> = {};
+      try {
+        setLoading(true);
+        setStatusText("Parseando semana vieja...");
+        const oldResult = await parseWeeklyProgrammingPDF(oldUri);
 
-      oldResult.rows.forEach((row) => {
-        const compName = cleanTitleForComparison(row.pelicula);
-        if (!oldMoviesSchedule[compName]) {
-          oldMoviesSchedule[compName] = {
-            jueves: 0,
-            viernes: 0,
-            sabado: 0,
-            domingo: 0,
-            lunes: 0,
-            martes: 0,
-            miercoles: 0,
-          };
+        setStatusText("Parseando semana nueva...");
+        const newResult = await parseWeeklyProgrammingPDF(newUri);
+
+        setStatusText("Comparando programaciones...");
+
+        // Compute week date range label from new week startDate
+        if (newResult.startDate) {
+          const start = dayjs(newResult.startDate);
+          const end = start.add(6, "day");
+          setSemanaText(`${start.format("DD/MM")} al ${end.format("DD/MM")}`);
+        } else {
+          setSemanaText("Nueva Semana");
         }
-        
-        if (row.horariosPorDia) {
-          Object.keys(row.horariosPorDia).forEach((dayKey) => {
-            const times = row.horariosPorDia[dayKey as WeekdayKey] || [];
-            oldMoviesSchedule[compName][dayKey as WeekdayKey] += times.length;
+
+        // Group old week rows by cleaned movie name to check if they only have showtimes on Wednesday
+        const oldMoviesSchedule: Record<string, Record<WeekdayKey, number>> = {};
+
+        oldResult.rows.forEach((row) => {
+          const compName = cleanTitleForComparison(row.pelicula);
+          if (!oldMoviesSchedule[compName]) {
+            oldMoviesSchedule[compName] = {
+              jueves: 0,
+              viernes: 0,
+              sabado: 0,
+              domingo: 0,
+              lunes: 0,
+              martes: 0,
+              miercoles: 0,
+            };
+          }
+          
+          if (row.horariosPorDia) {
+            Object.keys(row.horariosPorDia).forEach((dayKey) => {
+              const times = row.horariosPorDia[dayKey as WeekdayKey] || [];
+              oldMoviesSchedule[compName][dayKey as WeekdayKey] += times.length;
+            });
+          }
+        });
+
+        // Unique clean titles from old week that are NOT preestrenos (only Wednesday shows)
+        const oldTitles = new Set<string>();
+
+        Object.keys(oldMoviesSchedule).forEach((compName) => {
+          const sched = oldMoviesSchedule[compName];
+          const hasOtherDays = (
+            sched.jueves > 0 ||
+            sched.viernes > 0 ||
+            sched.sabado > 0 ||
+            sched.domingo > 0 ||
+            sched.lunes > 0 ||
+            sched.martes > 0
+          );
+
+          // A movie is NOT a Wednesday-only preestreno if it has showtimes on any other day of the week.
+          // If it only has showtimes on Wednesday, we exclude it from oldTitles so it's treated as an estreno in the new week.
+          if (hasOtherDays) {
+            oldTitles.add(compName);
+          }
+        });
+
+        // Group new week rows by cleaned movie name to ignore DBOX and find screens
+        const newMoviesMap: Record<string, { calificacion: string; salas: Set<number> }> = {};
+
+        newResult.rows.forEach((row) => {
+          const originalName = row.pelicula.trim().toUpperCase();
+          const compName = cleanTitleForComparison(originalName);
+          if (!newMoviesMap[compName]) {
+            newMoviesMap[compName] = {
+              calificacion: row.calificacion || "",
+              salas: new Set<number>(),
+            };
+          }
+          newMoviesMap[compName].salas.add(row.sala);
+        });
+
+        // Find which new movies are not in old week
+        const detectedEstrenos: EstrenoMovie[] = [];
+
+        Object.keys(newMoviesMap).forEach((compName) => {
+          if (!oldTitles.has(compName)) {
+            // It's an estreno!
+            const data = newMoviesMap[compName];
+
+            // Auto-detect format from name
+            const is3D = /3D/i.test(compName);
+            const is2D = !is3D;
+
+            // Auto-detect language
+            let idioma: "Doblada" | "Subtitulada" | "Nativo" = "Doblada";
+            if (/SUB/i.test(compName)) {
+              idioma = "Subtitulada";
+            } else if (/CAS/i.test(compName) || /DOB/i.test(compName)) {
+              idioma = "Doblada";
+            }
+
+            // Auto-detect aspect ratio (default flat, or scope if name suggests)
+            let aspect: "FLAT" | "SCOPE" = "FLAT";
+            if (/SCOPE/i.test(compName)) {
+              aspect = "SCOPE";
+            }
+
+            detectedEstrenos.push({
+              pelicula: compName,
+              calificacion: data.calificacion,
+              salas: Array.from(data.salas).sort((a, b) => a - b),
+              distribuidora: "",
+              responsable: displayName || "",
+              aspect,
+              imageKey: "framing_1", // Default to FLAT en FLAT
+              is3D,
+              is2D,
+              audio: "5.1",
+              idioma,
+            });
+          }
+        });
+
+        setEstrenos(detectedEstrenos);
+        setExpandedCards({});
+        setSplitMovies({});
+        setComparisonDone(true);
+        setStatusText(`Comparación finalizada. Se encontraron ${detectedEstrenos.length} estrenos.`);
+      } catch (err) {
+        console.error(err);
+        Alert.alert("Error de comparación", "Ocurrió un error al procesar y comparar los archivos PDF.");
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      // Programación (API Cinemark / Servicios)
+      if (!cineId) return;
+
+      try {
+        setLoading(true);
+        setStatusText("Buscando programación de la semana...");
+
+        // Calculate old week date string (7 days before)
+        const previousWeekStart = dayjs(selectedWeekStart).subtract(7, "day").format("YYYY-MM-DD");
+
+        // Set week range text
+        const start = dayjs(selectedWeekStart);
+        const end = start.add(6, "day");
+        setSemanaText(`${start.format("DD/MM")} al ${end.format("DD/MM")}`);
+
+        let newResultRows: any[] = [];
+        let oldResultRows: any[] = [];
+
+        if (dbSubSource === "api") {
+          // 1. Fetch new week showtimes from Cinemark API (showtimes collection)
+          setStatusText("Obteniendo showtimes semana nueva...");
+          const newDocRef = doc(db, CINES_COLLECTION, cineId, "showtimes", selectedWeekStart);
+          const newSnap = await getDoc(newDocRef);
+
+          if (!newSnap.exists()) {
+            Alert.alert("Sin datos", `No hay showtimes guardados para la semana ${selectedWeekStart}. Por favor sincronizá la programación primero.`);
+            setLoading(false);
+            return;
+          }
+          newResultRows = newSnap.data()?.sessions || [];
+
+          // 2. Fetch old week showtimes from Cinemark API (showtimes collection)
+          setStatusText("Obteniendo showtimes semana vieja...");
+          const oldDocRef = doc(db, CINES_COLLECTION, cineId, "showtimes", previousWeekStart);
+          const oldSnap = await getDoc(oldDocRef);
+          oldResultRows = oldSnap.exists() ? oldSnap.data()?.sessions || [] : [];
+        } else {
+          // 1. Fetch new week from Servicios Programación (programacion_semanal collection)
+          setStatusText("Obteniendo programación semana nueva...");
+          const newDocRef = doc(db, CINES_COLLECTION, cineId, "programacion_semanal", selectedWeekStart);
+          const newSnap = await getDoc(newDocRef);
+
+          if (!newSnap.exists()) {
+            Alert.alert("Sin datos", `No hay programación guardada en servicios para la semana ${selectedWeekStart}.`);
+            setLoading(false);
+            return;
+          }
+          newResultRows = newSnap.data()?.weeklyRows || [];
+
+          // 2. Fetch old week from Servicios Programación
+          setStatusText("Obteniendo programación semana vieja...");
+          const oldDocRef = doc(db, CINES_COLLECTION, cineId, "programacion_semanal", previousWeekStart);
+          const oldSnap = await getDoc(oldDocRef);
+          oldResultRows = oldSnap.exists() ? oldSnap.data()?.weeklyRows || [] : [];
+        }
+
+        setStatusText("Comparando programaciones...");
+
+        // Build oldMoviesSchedule to check if they only have showtimes on Wednesday
+        const oldMoviesSchedule: Record<string, Record<WeekdayKey, number>> = {};
+
+        if (dbSubSource === "api") {
+          oldResultRows.forEach((session: any) => {
+            const formatStr = (session.sessionFormat || "").toUpperCase().includes("3D") ? "3D" : "2D";
+            const langName = (session.language?.name || session.language || "").toUpperCase();
+            let langStr = "CAS";
+            if (langName.includes("SUB") || langName.includes("ING") || langName.includes("ORIG")) {
+              langStr = "SUB";
+            }
+
+            const movieTitle = `${session.movieName} ${formatStr} ${langStr}`.toUpperCase();
+            const compName = cleanTitleForComparison(movieTitle);
+
+            if (!oldMoviesSchedule[compName]) {
+              oldMoviesSchedule[compName] = {
+                jueves: 0, viernes: 0, sabado: 0, domingo: 0, lunes: 0, martes: 0, miercoles: 0
+              };
+            }
+
+            const displayDate = session.sessionDisplayDate || (session.sessionDateTime ? session.sessionDateTime.substring(0, 10) : "");
+            if (displayDate) {
+              const dayKey = getWeekdayKeyFromDate(displayDate);
+              oldMoviesSchedule[compName][dayKey] += 1;
+            }
+          });
+        } else {
+          oldResultRows.forEach((row: any) => {
+            const compName = cleanTitleForComparison(row.pelicula);
+            if (!oldMoviesSchedule[compName]) {
+              oldMoviesSchedule[compName] = {
+                jueves: 0, viernes: 0, sabado: 0, domingo: 0, lunes: 0, martes: 0, miercoles: 0
+              };
+            }
+            if (row.horariosPorDia) {
+              Object.keys(row.horariosPorDia).forEach((dayKey) => {
+                const times = row.horariosPorDia[dayKey as WeekdayKey] || [];
+                oldMoviesSchedule[compName][dayKey as WeekdayKey] += times.length;
+              });
+            }
           });
         }
-      });
 
-      // Unique clean titles from old week that are NOT preestrenos (only Wednesday shows)
-      const oldTitles = new Set<string>();
-
-      Object.keys(oldMoviesSchedule).forEach((compName) => {
-        const sched = oldMoviesSchedule[compName];
-        const hasOtherDays = (
-          sched.jueves > 0 ||
-          sched.viernes > 0 ||
-          sched.sabado > 0 ||
-          sched.domingo > 0 ||
-          sched.lunes > 0 ||
-          sched.martes > 0
-        );
-
-        // A movie is NOT a Wednesday-only preestreno if it has showtimes on any other day of the week.
-        // If it only has showtimes on Wednesday, we exclude it from oldTitles so it's treated as an estreno in the new week.
-        if (hasOtherDays) {
-          oldTitles.add(compName);
-        }
-      });
-
-      // Group new week rows by cleaned movie name to ignore DBOX and find screens
-      const newMoviesMap: Record<string, { calificacion: string; salas: Set<number> }> = {};
-
-      newResult.rows.forEach((row) => {
-        const originalName = row.pelicula.trim().toUpperCase();
-        const compName = cleanTitleForComparison(originalName);
-        if (!newMoviesMap[compName]) {
-          newMoviesMap[compName] = {
-            calificacion: row.calificacion || "",
-            salas: new Set<number>(),
-          };
-        }
-        newMoviesMap[compName].salas.add(row.sala);
-      });
-
-      // Find which new movies are not in old week
-      const detectedEstrenos: EstrenoMovie[] = [];
-
-      Object.keys(newMoviesMap).forEach((compName) => {
-        if (!oldTitles.has(compName)) {
-          // It's an estreno!
-          const data = newMoviesMap[compName];
-
-          // Auto-detect format from name
-          const is3D = /3D/i.test(compName);
-          const is2D = !is3D;
-
-          // Auto-detect language
-          let idioma: "Doblada" | "Subtitulada" | "Nativo" = "Doblada";
-          if (/SUB/i.test(compName)) {
-            idioma = "Subtitulada";
-          } else if (/CAS/i.test(compName) || /DOB/i.test(compName)) {
-            idioma = "Doblada";
+        // Build oldTitles set
+        const oldTitles = new Set<string>();
+        Object.keys(oldMoviesSchedule).forEach((compName) => {
+          const sched = oldMoviesSchedule[compName];
+          const hasOtherDays = (
+            sched.jueves > 0 ||
+            sched.viernes > 0 ||
+            sched.sabado > 0 ||
+            sched.domingo > 0 ||
+            sched.lunes > 0 ||
+            sched.martes > 0
+          );
+          if (hasOtherDays) {
+            oldTitles.add(compName);
           }
+        });
 
-          // Auto-detect aspect ratio (default flat, or scope if name suggests)
-          let aspect: "FLAT" | "SCOPE" = "FLAT";
-          if (/SCOPE/i.test(compName)) {
-            aspect = "SCOPE";
-          }
+        // Build newMoviesMap
+        const newMoviesMap: Record<string, { calificacion: string; salas: Set<number> }> = {};
 
-          detectedEstrenos.push({
-            pelicula: compName,
-            calificacion: data.calificacion,
-            salas: Array.from(data.salas).sort((a, b) => a - b),
-            distribuidora: "",
-            responsable: displayName || "",
-            aspect,
-            imageKey: "framing_1", // Default to FLAT en FLAT
-            is3D,
-            is2D,
-            audio: "5.1",
-            idioma,
+        if (dbSubSource === "api") {
+          newResultRows.forEach((session: any) => {
+            const formatStr = (session.sessionFormat || "").toUpperCase().includes("3D") ? "3D" : "2D";
+            const langName = (session.language?.name || session.language || "").toUpperCase();
+            let langStr = "CAS";
+            if (langName.includes("SUB") || langName.includes("ING") || langName.includes("ORIG")) {
+              langStr = "SUB";
+            }
+            const movieTitle = `${session.movieName} ${formatStr} ${langStr}`.toUpperCase();
+            const compName = cleanTitleForComparison(movieTitle);
+
+            if (!newMoviesMap[compName]) {
+              const rating = session.tags?.[0]?.label || "";
+              newMoviesMap[compName] = {
+                calificacion: rating,
+                salas: new Set<number>(),
+              };
+            }
+            const salaNum = Number(session.theaterRoom);
+            if (!isNaN(salaNum)) {
+              newMoviesMap[compName].salas.add(salaNum);
+            }
+          });
+        } else {
+          newResultRows.forEach((row: any) => {
+            const originalName = row.pelicula.trim().toUpperCase();
+            const compName = cleanTitleForComparison(originalName);
+            if (!newMoviesMap[compName]) {
+              newMoviesMap[compName] = {
+                calificacion: row.calificacion || "",
+                salas: new Set<number>(),
+              };
+            }
+            newMoviesMap[compName].salas.add(Number(row.sala));
           });
         }
-      });
 
-      setEstrenos(detectedEstrenos);
-      setExpandedCards({});
-      setSplitMovies({});
-      setComparisonDone(true);
-      setStatusText(`Comparación finalizada. Se encontraron ${detectedEstrenos.length} estrenos.`);
-    } catch (err) {
-      console.error(err);
-      Alert.alert("Error de comparación", "Ocurrió un error al procesar y comparar los archivos PDF.");
-    } finally {
-      setLoading(false);
+        // Find estrenos
+        const detectedEstrenos: EstrenoMovie[] = [];
+
+        Object.keys(newMoviesMap).forEach((compName) => {
+          if (!oldTitles.has(compName)) {
+            const data = newMoviesMap[compName];
+
+            // Auto-detect format from name
+            const is3D = /3D/i.test(compName);
+            const is2D = !is3D;
+
+            // Auto-detect language
+            let idioma: "Doblada" | "Subtitulada" | "Nativo" = "Doblada";
+            if (/SUB/i.test(compName)) {
+              idioma = "Subtitulada";
+            } else if (/CAS/i.test(compName) || /DOB/i.test(compName)) {
+              idioma = "Doblada";
+            }
+
+            // Auto-detect aspect ratio (default flat, or scope if name suggests)
+            let aspect: "FLAT" | "SCOPE" = "FLAT";
+            if (/SCOPE/i.test(compName)) {
+              aspect = "SCOPE";
+            }
+
+            detectedEstrenos.push({
+              pelicula: compName,
+              calificacion: data.calificacion,
+              salas: Array.from(data.salas).sort((a, b) => a - b),
+              distribuidora: "",
+              responsable: displayName || "",
+              aspect,
+              imageKey: "framing_1",
+              is3D,
+              is2D,
+              audio: "5.1",
+              idioma,
+            });
+          }
+        });
+
+        setEstrenos(detectedEstrenos);
+        setExpandedCards({});
+        setSplitMovies({});
+        setComparisonDone(true);
+        setStatusText(`Comparación finalizada. Se encontraron ${detectedEstrenos.length} estrenos.`);
+      } catch (err) {
+        console.error(err);
+        Alert.alert("Error de comparación", "Ocurrió un error al procesar y comparar las programaciones.");
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
@@ -935,53 +1235,153 @@ export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: b
 
       {/* Upload files card */}
       <View style={s.card}>
-        <Text style={s.cardHeader}>Carga de Reportes Semanales (PDF)</Text>
+        <Text style={s.cardHeader}>Carga de Reportes Semanales</Text>
         <Text style={s.cardSubtitle}>
-          Subí los PDFs de la semana vieja (anterior) y semana nueva (siguiente) para calcular qué películas son nuevos estrenos.
+          {sourceMode === "pdf"
+            ? "Subí los PDFs de la semana vieja (anterior) y semana nueva (siguiente) para calcular qué películas son nuevos estrenos."
+            : "Seleccioná la semana y la fuente para calcular qué películas son nuevos estrenos a partir de la base de datos."}
         </Text>
 
-        <View style={[s.uploadRow, isMobile && { flexDirection: "column" }]}>
-          {/* Old Week File Picker */}
-          <View style={s.uploadCol}>
-            <Text style={s.pickerLabel}>Semana Vieja (Anterior)</Text>
-            <Pressable
-              style={[s.filePickerBtn, !!oldUri && s.filePickerActive, readOnly && { opacity: 0.6 }]}
-              onPress={readOnly ? undefined : pickOldFile}
-            >
-              <Text style={s.filePickerIcon}>{oldUri ? "📄" : "📥"}</Text>
-              <Text style={s.filePickerText} numberOfLines={1}>
-                {oldName || "Cargar PDF Semana Vieja"}
-              </Text>
-            </Pressable>
-          </View>
-
-          {/* New Week File Picker */}
-          <View style={s.uploadCol}>
-            <Text style={s.pickerLabel}>Semana Nueva (Entrante)</Text>
-            <Pressable
-              style={[s.filePickerBtn, !!newUri && s.filePickerActive, readOnly && { opacity: 0.6 }]}
-              onPress={readOnly ? undefined : pickNewFile}
-            >
-              <Text style={s.filePickerIcon}>{newUri ? "📄" : "📥"}</Text>
-              <Text style={s.filePickerText} numberOfLines={1}>
-                {newName || "Cargar PDF Semana Nueva"}
-              </Text>
-            </Pressable>
-          </View>
+        {/* Source selector (PDF vs Programación) */}
+        <View style={s.tabContainer}>
+          <Pressable
+            style={[s.tabButton, sourceMode === "pdf" && s.tabButtonActive]}
+            onPress={() => {
+              setSourceMode("pdf");
+              setComparisonDone(false);
+              setEstrenos([]);
+            }}
+          >
+            <Text style={[s.tabButtonText, sourceMode === "pdf" && s.tabButtonTextActive]}>
+              📁 Cargar PDFs
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[s.tabButton, sourceMode === "programacion" && s.tabButtonActive]}
+            onPress={() => {
+              setSourceMode("programacion");
+              setComparisonDone(false);
+              setEstrenos([]);
+            }}
+          >
+            <Text style={[s.tabButtonText, sourceMode === "programacion" && s.tabButtonTextActive]}>
+              🖥️ Usar Programación Guardada
+            </Text>
+          </Pressable>
         </View>
+
+        {sourceMode === "pdf" ? (
+          <View style={[s.uploadRow, isMobile && { flexDirection: "column" }]}>
+            {/* Old Week File Picker */}
+            <View style={s.uploadCol}>
+              <Text style={s.pickerLabel}>Semana Vieja (Anterior)</Text>
+              <Pressable
+                style={[s.filePickerBtn, !!oldUri && s.filePickerActive, readOnly && { opacity: 0.6 }]}
+                onPress={readOnly ? undefined : pickOldFile}
+              >
+                <Text style={s.filePickerIcon}>{oldUri ? "📄" : "📥"}</Text>
+                <Text style={s.filePickerText} numberOfLines={1}>
+                  {oldName || "Cargar PDF Semana Vieja"}
+                </Text>
+              </Pressable>
+            </View>
+
+            {/* New Week File Picker */}
+            <View style={s.uploadCol}>
+              <Text style={s.pickerLabel}>Semana Nueva (Entrante)</Text>
+              <Pressable
+                style={[s.filePickerBtn, !!newUri && s.filePickerActive, readOnly && { opacity: 0.6 }]}
+                onPress={readOnly ? undefined : pickNewFile}
+              >
+                <Text style={s.filePickerIcon}>{newUri ? "📄" : "📥"}</Text>
+                <Text style={s.filePickerText} numberOfLines={1}>
+                  {newName || "Cargar PDF Semana Nueva"}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : (
+          <View style={{ gap: 12, marginBottom: THEME.spacing.lg }}>
+            {/* Database Sub-Source Tabs */}
+            <View style={[s.tabContainer, { marginBottom: 6, backgroundColor: COLORS.bg }]}>
+              <Pressable
+                style={[s.tabButton, dbSubSource === "servicios" && s.tabButtonActive]}
+                onPress={() => setDbSubSource("servicios")}
+              >
+                <Text style={[s.tabButtonText, dbSubSource === "servicios" && s.tabButtonTextActive, { fontSize: 11 }]}>
+                  📋 Servicios Programación
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[s.tabButton, dbSubSource === "api" && s.tabButtonActive]}
+                onPress={() => setDbSubSource("api")}
+              >
+                <Text style={[s.tabButtonText, dbSubSource === "api" && s.tabButtonTextActive, { fontSize: 11 }]}>
+                  🌐 API de Cinemark
+                </Text>
+              </Pressable>
+            </View>
+
+            {/* Week Selector Bar */}
+            {(() => {
+              const currentIndex = availableWeeks.indexOf(selectedWeekStart);
+              if (currentIndex === -1) return null;
+              const canGoPrev = currentIndex > 0;
+              const canGoNext = currentIndex < availableWeeks.length - 1;
+              const currentWeek = getMovieWeekStartForNow();
+              const isCurrent = selectedWeekStart === currentWeek;
+              
+              let weekLabel = formatWeekRange(selectedWeekStart);
+              if (isCurrent) {
+                weekLabel += " (Actual)";
+              } else if (selectedWeekStart > currentWeek) {
+                weekLabel += " (Preventa)";
+              } else if (selectedWeekStart < currentWeek) {
+                weekLabel += " (Pasada)";
+              }
+              
+              return (
+                <View style={s.singleWeekSelectorContainer}>
+                  <Pressable
+                    disabled={!canGoPrev}
+                    onPress={() => setSelectedWeekStart(availableWeeks[currentIndex - 1])}
+                    style={[s.arrowButton, !canGoPrev && s.arrowButtonDisabled]}
+                  >
+                    <Text style={{ fontSize: 14, fontWeight: "bold", color: canGoPrev ? COLORS.text : COLORS.muted }}>◀</Text>
+                  </Pressable>
+                  
+                  <View style={s.singleWeekLabelContainer}>
+                    <Text style={s.singleWeekLabelText}>{weekLabel}</Text>
+                  </View>
+      
+                  <Pressable
+                    disabled={!canGoNext}
+                    onPress={() => setSelectedWeekStart(availableWeeks[currentIndex + 1])}
+                    style={[s.arrowButton, !canGoNext && s.arrowButtonDisabled]}
+                  >
+                    <Text style={{ fontSize: 14, fontWeight: "bold", color: canGoNext ? COLORS.text : COLORS.muted }}>▶</Text>
+                  </Pressable>
+                </View>
+              );
+            })()}
+          </View>
+        )}
 
         {/* Action Buttons */}
         <View style={s.actionRow}>
-          {(oldUri || newUri) && !readOnly && (
+          {sourceMode === "pdf" && (oldUri || newUri) && !readOnly && (
             <Pressable style={s.resetBtn} onPress={handleReset}>
               <Text style={s.resetBtnText}>Limpiar</Text>
             </Pressable>
           )}
 
           <Pressable
-            style={[s.compareBtn, (!oldUri || !newUri || loading || readOnly) && s.compareBtnDisabled]}
+            style={[
+              s.compareBtn,
+              ((sourceMode === "pdf" && (!oldUri || !newUri)) || loading || readOnly) && s.compareBtnDisabled
+            ]}
             onPress={readOnly ? undefined : handleCompare}
-            disabled={!oldUri || !newUri || loading || readOnly}
+            disabled={(sourceMode === "pdf" && (!oldUri || !newUri)) || loading || readOnly}
           >
             {loading ? (
               <ActivityIndicator color="#fff" size="small" />
@@ -1836,5 +2236,85 @@ const s = StyleSheet.create({
     fontWeight: "900",
     color: "#FFF",
     letterSpacing: 0.5,
+  },
+  tabContainer: {
+    flexDirection: "row",
+    backgroundColor: COLORS.bg,
+    borderRadius: 12,
+    padding: 4,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  tabButton: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 8,
+    flexDirection: "row",
+  },
+  tabButtonActive: {
+    backgroundColor: COLORS.card,
+    ...THEME.shadow.soft,
+  },
+  tabButtonText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: COLORS.muted,
+  },
+  tabButtonTextActive: {
+    color: COLORS.primary,
+  },
+  singleWeekSelectorContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.card,
+    marginTop: 6,
+    gap: 12,
+  },
+  singleWeekLabelContainer: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: COLORS.bg,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    minWidth: 220,
+    alignItems: "center",
+  },
+  singleWeekLabelText: {
+    fontSize: 12,
+    color: COLORS.text,
+    fontWeight: "bold",
+  },
+  arrowButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    backgroundColor: COLORS.bg,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  arrowButtonDisabled: {
+    opacity: 0.4,
+  },
+  fallbackBanner: {
+    backgroundColor: MKT.warningBg,
+    borderColor: MKT.warning,
+    borderWidth: 1.2,
+    borderRadius: 12,
+    padding: 10,
+    marginTop: 8,
+  },
+  fallbackBannerText: {
+    color: MKT.warning,
+    fontSize: 11,
+    fontWeight: "800",
+    textAlign: "center",
+    lineHeight: 16,
   },
 });
