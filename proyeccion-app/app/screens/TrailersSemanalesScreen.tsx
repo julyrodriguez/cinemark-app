@@ -415,10 +415,17 @@ export default function TrailersSemanalesScreen({ readOnly = false }: { readOnly
           if (!screens[salaNum]) {
             screens[salaNum] = [];
           }
+          
+          const formatStr = (session.sessionFormat || "").toUpperCase().includes("3D") ? "3D" : "2D";
+          const langName = (session.language?.name || session.language || "").toUpperCase();
+          let langStr = "CAS";
+          if (langName.includes("SUB") || langName.includes("ING") || langName.includes("ORIG")) {
+            langStr = "SUB";
+          }
+          
           const rating = session.tags?.[0]?.label || "";
-          const movieTitle = rating 
-            ? `${session.movieName} (${rating})` 
-            : session.movieName;
+          const baseTitle = `${session.movieName} ${formatStr} ${langStr}`;
+          const movieTitle = rating ? `${baseTitle} (${rating})` : baseTitle;
             
           if (!screens[salaNum].includes(movieTitle)) {
             screens[salaNum].push(movieTitle);
