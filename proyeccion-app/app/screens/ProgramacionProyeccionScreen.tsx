@@ -729,12 +729,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
         miercoles: "Miércoles",
       };
 
-      const MONTH_LABELS_ES = [
-        "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
-        "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
-      ];
-
-      const getDayDateLabel = (day: WeekdayKey): string => {
+      const getDayDateLabelShort = (day: WeekdayKey): string => {
         const label = WEEKDAY_LABELS_ES[day];
         if (!selectedWeekStart) return label;
         const offset = DAY_OFFSETS[day];
@@ -742,16 +737,12 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
         const start = new Date(Date.UTC(y, m - 1, d));
         const dateObj = new Date(start.getTime() + offset * 24 * 60 * 60 * 1000);
         const dd = String(dateObj.getUTCDate()).padStart(2, "0");
-        const month = MONTH_LABELS_ES[dateObj.getUTCMonth()];
-        const yyyy = dateObj.getUTCFullYear();
-        return `${label} ${dd} de ${month} de ${yyyy}`;
+        const mm = String(dateObj.getUTCMonth() + 1).padStart(2, "0");
+        return `${label} ${dd}/${mm}`;
       };
 
-      const grouped: Record<WeekdayKey, Record<number, any[]>> = {
-        jueves: {}, viernes: {}, sabado: {}, domingo: {}, lunes: {}, martes: {}, miercoles: {}
-      };
-
-      apiData.forEach((session: any) => {
+      // Build sessions array for JSON
+      const sessionsJson = apiData.map((session: any) => {
         const utcDate = new Date(session.sessionDateTime);
         const arDate = new Date(utcDate.getTime());
         if (arDate.getUTCHours() < 6) {
@@ -764,18 +755,16 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
           4: "jueves", 5: "viernes", 6: "sabado"
         };
         const sessionDay = dayMap[dayNum];
-        if (!sessionDay) return;
-
-        const salaNum = Number(session.theaterRoom);
-        if (isNaN(salaNum)) return;
-
-        if (!grouped[sessionDay][salaNum]) {
-          grouped[sessionDay][salaNum] = [];
-        }
 
         const hours = String(arDate.getUTCHours()).padStart(2, '0');
         const mins = String(arDate.getUTCMinutes()).padStart(2, '0');
         const inicio = `${hours}:${mins}`;
+
+        const durationMins = (session.runTime || 120) + 15;
+        const endMins = (arDate.getUTCHours() * 60 + arDate.getUTCMinutes() + durationMins) % 1440;
+        const endH = Math.floor(endMins / 60);
+        const endM = endMins % 60;
+        const fin = `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
 
         const formatStr = (session.sessionFormat || "").toUpperCase().includes("3D") ? "3D" : "2D";
         const langName = (session.language?.name || session.language || "").toUpperCase();
@@ -784,52 +773,23 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
           langStr = "SUB";
         }
 
-        grouped[sessionDay][salaNum].push({
+        return {
+          movieName: session.movieName.toUpperCase(),
+          theaterRoom: Number(session.theaterRoom),
           inicio,
-          movieName: session.movieName,
+          fin,
           format: `${formatStr} ${langStr}`,
+          dayKey: sessionDay,
           sortVal: arDate.getUTCHours() * 60 + arDate.getUTCMinutes()
-        });
+        };
       });
 
-      let contentHtml = "";
-      daysOrdered.forEach((day) => {
-        const dayLabel = getDayDateLabel(day);
-        const roomsData = grouped[day];
-        const roomsKeys = Object.keys(roomsData).map(Number).sort((a, b) => a - b);
-
-        if (roomsKeys.length === 0) return;
-
-        contentHtml += `
-        <div class="day-section">
-          <div class="day-header">${dayLabel}</div>
-          <div class="rooms-grid">`;
-
-        roomsKeys.forEach((roomNum) => {
-          const shows = roomsData[roomNum].sort((a, b) => a.sortVal - b.sortVal);
-          contentHtml += `
-            <div class="room-card">
-              <div class="room-title">SALA ${roomNum}</div>
-              <ul class="show-list">`;
-              
-          shows.forEach((show) => {
-            contentHtml += `
-                <li class="show-item">
-                  <span class="show-time">${show.inicio}</span>
-                  <span class="show-name">${show.movieName}</span>
-                  <span class="show-format">${show.format}</span>
-                </li>`;
-          });
-
-          contentHtml += `
-              </ul>
-            </div>`;
-        });
-
-        contentHtml += `
-          </div>
-        </div>`;
-      });
+      // Build days list for JSON
+      const daysList = daysOrdered.map(day => ({
+        key: day,
+        label: WEEKDAY_LABELS_ES[day],
+        labelShort: getDayDateLabelShort(day)
+      }));
 
       const weekRangeLabel = formatWeekRange(selectedWeekStart);
 
@@ -842,127 +802,271 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
         <style>
           body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            margin: 20px;
+            margin: 15px;
             padding: 0;
             color: #333;
             background-color: #fff;
           }
-          h1 {
-            text-align: center;
-            color: #b30000;
-            margin-bottom: 5px;
-            font-size: 24px;
-          }
-          .subtitle {
-            text-align: center;
-            color: #666;
-            font-size: 14px;
-            margin-bottom: 30px;
-          }
-          .day-section {
-            margin-bottom: 30px;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            overflow: hidden;
-            page-break-inside: avoid;
-          }
-          .day-header {
-            background-color: #f7f7f7;
-            padding: 10px 15px;
-            font-size: 16px;
-            font-weight: bold;
-            color: #111;
-            border-bottom: 1px solid #ddd;
-          }
-          .rooms-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-            gap: 15px;
-            padding: 15px;
-          }
-          .room-card {
-            border: 1px solid #eee;
-            border-radius: 6px;
-            background-color: #fafafa;
-            padding: 10px;
-          }
-          .room-title {
-            font-size: 13px;
-            font-weight: bold;
-            color: #b30000;
-            margin-top: 0;
-            margin-bottom: 8px;
-            border-bottom: 2px solid #b30000;
-            padding-bottom: 4px;
-          }
-          .show-list {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-          }
-          .show-item {
-            font-size: 11.5px;
-            padding: 6px 0;
-            border-bottom: 1px dashed #eee;
+          .header-bar {
             display: flex;
             justify-content: space-between;
             align-items: center;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #b30000;
+            padding-bottom: 10px;
           }
-          .show-item:last-child {
+          h1 {
+            margin: 0;
+            color: #b30000;
+            font-size: 20px;
+          }
+          .controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+          }
+          .btn {
+            padding: 8px 12px;
+            font-size: 13px;
+            font-weight: bold;
+            border: 1px solid #ddd;
+            background-color: #f7f7f7;
+            cursor: pointer;
+            border-radius: 6px;
+            color: #333;
+          }
+          .btn-active {
+            background-color: #b30000;
+            color: #fff;
+            border-color: #b30000;
+          }
+          .btn-print {
+            background-color: #10B981;
+            color: #fff;
+            border-color: #10B981;
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 11px;
+            table-layout: fixed;
+          }
+          th, td {
+            border: 1px solid #ddd;
+            padding: 6px;
+            vertical-align: top;
+            word-wrap: break-word;
+          }
+          th {
+            background-color: #f1f1f1;
+            font-weight: bold;
+            text-align: center;
+            font-size: 11.5px;
+          }
+          .row-header {
+            background-color: #fafafa;
+            font-weight: bold;
+            font-size: 12px;
+            color: #b30000;
+            vertical-align: middle;
+            text-align: center;
+          }
+          .show-entry {
+            margin-bottom: 6px;
+            padding-bottom: 6px;
+            border-bottom: 1px dashed #eee;
+            line-height: 1.3;
+          }
+          .show-entry:last-child {
             border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
           }
           .show-time {
             font-weight: bold;
             color: #000;
-            margin-right: 8px;
-            white-space: nowrap;
+            display: block;
           }
           .show-name {
-            flex: 1;
             color: #333;
+            display: block;
           }
-          .show-format {
-            font-size: 9px;
+          .show-detail {
+            font-size: 9.5px;
+            color: #666;
+          }
+          .format-tag {
+            font-size: 8.5px;
             background-color: #e6f2ff;
             color: #0066cc;
-            padding: 2px 4px;
+            padding: 1px 3px;
             border-radius: 3px;
             font-weight: bold;
-            margin-left: 5px;
-            white-space: nowrap;
+            margin-left: 2px;
+          }
+          .room-prefix {
+            color: #b30000;
+            font-weight: bold;
           }
           @media print {
+            .header-bar {
+              display: none;
+            }
             body {
-              margin: 10px;
+              margin: 0;
             }
-            .day-section {
-              page-break-after: always;
+            table {
+              font-size: 9.5px;
             }
-            .day-section:last-child {
-              page-break-after: avoid;
+            th {
+              font-size: 10px;
+              background-color: #f1f1f1 !important;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+            .format-tag {
+              background-color: #e6f2ff !important;
+              color: #0066cc !important;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
             }
           }
         </style>
       </head>
       <body>
-        <h1>PROGRAMACIÓN SEMANAL CINEMARK</h1>
-        <div class="subtitle">Semana del ${weekRangeLabel}</div>
-        
-        ${contentHtml}
+        <div class="header-bar">
+          <h1>PROGRAMACIÓN SEMANAL - Semana del <span id="week-label"></span></h1>
+          <div class="controls">
+            <button id="btn-sala" class="btn btn-active" onclick="setViewMode('sala')">Agrupar por Sala</button>
+            <button id="btn-pelicula" class="btn" onclick="setViewMode('pelicula')">Agrupar por Película</button>
+            <button class="btn btn-print" onclick="window.print()">Imprimir</button>
+          </div>
+        </div>
+
+        <table id="program-table">
+          <thead>
+            <tr id="table-headers">
+              <!-- Will be filled dynamically -->
+            </tr>
+          </thead>
+          <tbody id="table-body">
+            <!-- Will be filled dynamically -->
+          </tbody>
+        </table>
+
+        <script>
+          const weekLabelText = "${weekRangeLabel}";
+          const days = ${JSON.stringify(daysList)};
+          const sessions = ${JSON.stringify(sessionsJson)};
+          
+          document.getElementById("week-label").textContent = weekLabelText;
+          
+          let currentViewMode = 'sala';
+          
+          function setViewMode(mode) {
+            currentViewMode = mode;
+            document.getElementById("btn-sala").classList.toggle("btn-active", mode === 'sala');
+            document.getElementById("btn-pelicula").classList.toggle("btn-active", mode === 'pelicula');
+            renderTable();
+          }
+          
+          function renderTable() {
+            const headersTr = document.getElementById("table-headers");
+            const bodyTbody = document.getElementById("table-body");
+            
+            headersTr.innerHTML = "";
+            bodyTbody.innerHTML = "";
+            
+            const firstColHeader = currentViewMode === 'sala' ? 'SALA' : 'PELÍCULA';
+            headersTr.innerHTML += '<th style="width: 100px;">' + firstColHeader + '</th>';
+            
+            days.forEach(day => {
+              headersTr.innerHTML += '<th>' + day.labelShort + '</th>';
+            });
+            
+            if (currentViewMode === 'sala') {
+              const roomsSet = new Set();
+              sessions.forEach(s => roomsSet.add(s.theaterRoom));
+              const rooms = Array.from(roomsSet).sort((a, b) => a - b);
+              
+              rooms.forEach(room => {
+                let tr = document.createElement("tr");
+                tr.innerHTML += '<td class="row-header">SALA ' + room + '</td>';
+                
+                days.forEach(day => {
+                  const daySessions = sessions.filter(s => s.theaterRoom === room && s.dayKey === day.key)
+                                              .sort((a, b) => a.sortVal - b.sortVal);
+                  
+                  let td = document.createElement("td");
+                  if (daySessions.length === 0) {
+                    td.innerHTML = "-";
+                  } else {
+                    daySessions.forEach(show => {
+                      td.innerHTML += \`
+                        <div class="show-entry">
+                          <span class="show-time">\${show.inicio} - \${show.fin}</span>
+                          <span class="show-name">\${show.movieName}</span>
+                          <span class="show-detail"><span class="format-tag">\${show.format}</span></span>
+                        </div>
+                      \`;
+                    });
+                  }
+                  tr.appendChild(td);
+                });
+                
+                bodyTbody.appendChild(tr);
+              });
+            } else {
+              const moviesSet = new Set();
+              sessions.forEach(s => moviesSet.add(s.movieName));
+              const movies = Array.from(moviesSet).sort();
+              
+              movies.forEach(movie => {
+                let tr = document.createElement("tr");
+                tr.innerHTML += '<td class="row-header" style="font-size: 11px; text-align: left; padding-left: 8px;">' + movie + '</td>';
+                
+                days.forEach(day => {
+                  const daySessions = sessions.filter(s => s.movieName === movie && s.dayKey === day.key)
+                                              .sort((a, b) => a.sortVal - b.sortVal);
+                  
+                  let td = document.createElement("td");
+                  if (daySessions.length === 0) {
+                    td.innerHTML = "-";
+                  } else {
+                    daySessions.forEach(show => {
+                      td.innerHTML += \`
+                        <div class="show-entry">
+                          <span class="show-time">\${show.inicio} - \${show.fin}</span>
+                          <span class="show-detail">
+                            <span class="room-prefix">S\${show.theaterRoom}</span> 
+                            <span class="format-tag">\${show.format}</span>
+                          </span>
+                        </div>
+                      \`;
+                    });
+                  }
+                  tr.appendChild(td);
+                });
+                
+                bodyTbody.appendChild(tr);
+              });
+            }
+          }
+          
+          renderTable();
+        </script>
       </body>
       </html>
       `;
 
       if (Platform.OS === "web") {
-        const blob = new Blob([htmlTemplate], { type: "text/html" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `programacion-semanal-${selectedWeekStart}.html`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        const newWindow = window.open();
+        if (newWindow) {
+          newWindow.document.write(htmlTemplate);
+          newWindow.document.close();
+        } else {
+          Alert.alert("Bloqueador de ventanas", "Por favor habilita las ventanas emergentes en tu navegador para ver la programación.");
+        }
         return;
       }
 
@@ -974,13 +1078,13 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(fileUri, {
           mimeType: "text/html",
-          dialogTitle: "Descargar Programación HTML",
+          dialogTitle: "Ver Programación Semanal",
         });
       } else {
         Alert.alert("Guardado", `HTML guardado en: ${fileUri}`);
       }
     } catch (err: any) {
-      console.error("Error al descargar HTML:", err);
+      console.error("Error al generar HTML:", err);
       Alert.alert("Error", "No se pudo generar el archivo HTML.");
     }
   };
@@ -2849,8 +2953,8 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
           onPress={downloadWeeklyHtml}
           activeOpacity={0.8}
         >
-          <MaterialCommunityIcons name="download" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
-          <Text style={styles.downloadHtmlButtonText}>DESCARGAR PROGRAMACIÓN SEMANAL (HTML)</Text>
+          <MaterialCommunityIcons name="eye" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
+          <Text style={styles.downloadHtmlButtonText}>VER PROGRAMACIÓN SEMANAL (HTML)</Text>
         </TouchableOpacity>
       )}
     </ScrollView>
