@@ -1786,28 +1786,41 @@ export default function ControlSalasScreen() {
             </View>
 
             {generalIssuesList.length > 0 ? (
-              <View style={{ gap: 6, marginBottom: 12 }}>
+              <View style={{ gap: 6, marginBottom: 12, width: "100%" }}>
                 {generalIssuesList.map((item, index) => (
                   <View 
                     key={index} 
                     style={{ 
                       flexDirection: "row", 
                       justifyContent: "space-between", 
-                      alignItems: "center", 
+                      alignItems: "flex-start", 
                       backgroundColor: COLORS.bg, 
-                      paddingVertical: 6,
-                      paddingHorizontal: 10,
+                      paddingVertical: 8,
+                      paddingHorizontal: 12,
                       borderRadius: THEME.radius.sm, 
                       borderWidth: 1, 
-                      borderColor: COLORS.border 
+                      borderColor: COLORS.border,
+                      gap: 12,
+                      width: "100%"
                     }}
                   >
-                    <Text style={{ fontSize: 13, color: COLORS.text, flex: 1, fontWeight: "500" }}>
-                      • {item}
-                    </Text>
+                    <View style={{ flex: 1, flexShrink: 1 }}>
+                      <Text 
+                        style={{ 
+                          fontSize: 13, 
+                          color: COLORS.text, 
+                          fontWeight: "500",
+                          flexWrap: "wrap",
+                          // Web wrapping fallback
+                          wordBreak: "break-word" as any,
+                        }}
+                      >
+                        • {item}
+                      </Text>
+                    </View>
                     <TouchableOpacity 
                       onPress={() => handleDeleteGeneralItem(index)} 
-                      style={{ padding: 4 }}
+                      style={{ padding: 4, minWidth: 32, alignItems: "center" }}
                       activeOpacity={0.7}
                     >
                       <MaterialCommunityIcons name="trash-can-outline" size={18} color={COLORS.danger} />
