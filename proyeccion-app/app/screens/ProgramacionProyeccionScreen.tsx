@@ -2425,7 +2425,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                               )}
 
                               {/* Card Content */}
-                              <View style={[styles.movieCardContent, showAds && { paddingLeft: 12 * MINUTE_WIDTH + 6 }]}>
+                              <View style={[styles.movieCardContent, showAds && { paddingLeft: 15 * MINUTE_WIDTH + 6 }]}>
                                 <View style={styles.movieCardHeaderRow}>
                                   {isPlaying && <View style={styles.playingDot} />}
                                   <Text
@@ -2726,10 +2726,10 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                       <View>
                         <Text style={styles.detailLabel}>Cronograma de Proyección</Text>
                         <Text style={styles.detailValueSub}>
-                          • Encendido / Publicidad (12 min): <Text style={styles.detailHighlight}>{selectedShow.inicio} hs</Text>
+                          • Encendido / Publicidad (15 min): <Text style={styles.detailHighlight}>{selectedShow.inicio} hs</Text>
                         </Text>
                         <Text style={styles.detailValueSub}>
-                          • Inicio de Película: <Text style={styles.detailHighlight}>{addMinutesToTimeStr(selectedShow.inicio, 12)} hs</Text>
+                          • Inicio de Película: <Text style={styles.detailHighlight}>{addMinutesToTimeStr(selectedShow.inicio, 15)} hs</Text>
                         </Text>
                         <Text style={styles.detailValueSub}>
                           • Finalización de Función: <Text style={styles.detailHighlight}>{selectedShow.fin} hs</Text>
@@ -3161,7 +3161,7 @@ const styles = StyleSheet.create({
     left: 0,
     top: 0,
     bottom: 0,
-    width: 12 * MINUTE_WIDTH,
+    width: 15 * MINUTE_WIDTH,
     borderRightWidth: 1,
   },
   movieCardContent: {
