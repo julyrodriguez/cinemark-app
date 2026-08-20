@@ -572,7 +572,11 @@ export default function ControlSalasScreen() {
   };
 
   const handleDeleteGeneralItem = async (itemToDelete: string) => {
-    if (!cineId) return;
+    console.log("handleDeleteGeneralItem called with:", itemToDelete);
+    if (!cineId) {
+      console.log("handleDeleteGeneralItem: cineId is missing");
+      return;
+    }
     const salaKey = String(selectedSala);
     const currentList = generalIssuesList.filter((item) => item !== itemToDelete);
 
@@ -583,10 +587,18 @@ export default function ControlSalasScreen() {
       delete newGeneralIssues[salaKey];
     }
 
-    Alert.alert(
-      "Depuración Borrado",
-      `Sala: ${salaKey}\nBorrando: ${itemToDelete}\nLista resultante: ${JSON.stringify(currentList)}\nPayload final: ${JSON.stringify(newGeneralIssues)}`
-    );
+    console.log("Current generalIssues list:", generalIssuesList);
+    console.log("Filtered list (currentList):", currentList);
+    console.log("Final newGeneralIssues payload:", newGeneralIssues);
+
+    if (Platform.OS === "web") {
+      window.alert(`Borrando: ${itemToDelete}\nSala: ${salaKey}\nQuedan: ${currentList.length} items`);
+    } else {
+      Alert.alert(
+        "Depuración Borrado",
+        `Sala: ${salaKey}\nBorrando: ${itemToDelete}\nLista resultante: ${JSON.stringify(currentList)}\nPayload final: ${JSON.stringify(newGeneralIssues)}`
+      );
+    }
 
     setSaving(true);
     try {
@@ -598,10 +610,19 @@ export default function ControlSalasScreen() {
         generalIssues: newGeneralIssues,
       };
       await setDoc(docRef, payload);
-      Alert.alert("Éxito", "Actualizado en la base de datos.");
+      console.log("Firestore setDoc completed successfully!");
+      if (Platform.OS === "web") {
+        window.alert("Éxito: Actualizado en la base de datos.");
+      } else {
+        Alert.alert("Éxito", "Actualizado en la base de datos.");
+      }
     } catch (e: any) {
       console.error("Error deleting general issue:", e);
-      Alert.alert("Error", "No se pudo borrar: " + e.message);
+      if (Platform.OS === "web") {
+        window.alert("Error al borrar: " + e.message);
+      } else {
+        Alert.alert("Error", "No se pudo borrar: " + e.message);
+      }
     } finally {
       setSaving(false);
     }
@@ -2297,6 +2318,7 @@ const styles = StyleSheet.create({
     marginBottom: THEME.spacing.md,
     alignItems: "center",
     ...THEME.shadow.soft,
+    overflow: "hidden",
   },
   mapHeaderRow: {
     flexDirection: "row",
@@ -2615,7 +2637,6 @@ const styles = StyleSheet.create({
     color: "#FFF",
   },
 
-  // Reported list Card styling
   listCard: {
     backgroundColor: COLORS.card,
     borderRadius: THEME.radius.lg,
@@ -2624,6 +2645,8 @@ const styles = StyleSheet.create({
     padding: THEME.spacing.lg,
     marginBottom: THEME.spacing.md,
     ...THEME.shadow.soft,
+    position: "relative",
+    zIndex: 5,
   },
   listCardTitle: {
     fontSize: THEME.fontSize.md,
