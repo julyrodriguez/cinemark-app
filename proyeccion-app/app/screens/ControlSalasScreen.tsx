@@ -55,6 +55,9 @@ interface ActiveReport {
   issues: {
     [salaId: string]: RoomIssues;
   };
+  generalIssues?: {
+    [salaId: string]: string;
+  };
 }
 
 export interface SeatInfo {
@@ -307,6 +310,7 @@ export default function ControlSalasScreen() {
   const [asientoRoto, setAsientoRoto] = useState(false);
   const [apoyabrazosRoto, setApoyabrazosRoto] = useState(false);
   const [extraDetails, setExtraDetails] = useState("");
+  const [generalDetailsInput, setGeneralDetailsInput] = useState("");
 
   // Seating grid configuration editor state
   const [isLayoutEditorMode, setIsLayoutEditorMode] = useState<boolean>(false);
@@ -435,12 +439,14 @@ export default function ControlSalasScreen() {
             updatedAt: data.updatedAt || "",
             updatedBy: data.updatedBy || "",
             issues: data.issues || {},
+            generalIssues: data.generalIssues || {},
           });
         } else {
           setReport({
             updatedAt: "",
             updatedBy: "",
             issues: {},
+            generalIssues: {},
           });
         }
         setLoading(false);
@@ -453,6 +459,12 @@ export default function ControlSalasScreen() {
 
     return () => unsubscribe();
   }, [cineId]);
+
+  // Sync general details input when room or report changes
+  useEffect(() => {
+    const salaKey = String(selectedSala);
+    setGeneralDetailsInput(report?.generalIssues?.[salaKey] || "");
+  }, [selectedSala, report]);
 
   // Get active layout for a sala (loads from DB if exists, otherwise falls back to hardcoded defaults)
   const getActiveSalaLayout = (salaId: number): RoomLayout => {
@@ -515,11 +527,42 @@ export default function ControlSalasScreen() {
         updatedAt: new Date().toISOString(),
         updatedBy: userEmail,
         issues: updatedIssues,
+        generalIssues: report?.generalIssues || {},
       };
       await setDoc(docRef, payload);
     } catch (e) {
       console.error("Error saving report to Firestore:", e);
       Alert.alert("Error", "No se pudo sincronizar la información en la nube.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Save room general details to Firestore
+  const handleSaveGeneralDetails = async (text: string) => {
+    if (!cineId) return;
+    const salaKey = String(selectedSala);
+    const newGeneralIssues = { ...report?.generalIssues };
+    
+    if (text.trim()) {
+      newGeneralIssues[salaKey] = text.trim();
+    } else {
+      delete newGeneralIssues[salaKey];
+    }
+
+    setSaving(true);
+    try {
+      const docRef = doc(db, CINES_COLLECTION, cineId, "control_salas", "active");
+      const payload: ActiveReport = {
+        ...report,
+        updatedAt: new Date().toISOString(),
+        updatedBy: userEmail,
+        generalIssues: newGeneralIssues,
+      };
+      await setDoc(docRef, payload);
+    } catch (e) {
+      console.error("Error saving general details:", e);
+      Alert.alert("Error", "No se pudo guardar la información.");
     } finally {
       setSaving(false);
     }
@@ -602,7 +645,23 @@ export default function ControlSalasScreen() {
   // Reset entire active inspection (after confirmation)
   const handleClearActiveReport = () => {
     const executeClear = async () => {
-      await saveReportToFirebase({});
+      if (!cineId) return;
+      setSaving(true);
+      try {
+        const docRef = doc(db, CINES_COLLECTION, cineId, "control_salas", "active");
+        const payload: ActiveReport = {
+          updatedAt: new Date().toISOString(),
+          updatedBy: userEmail,
+          issues: {},
+          generalIssues: {},
+        };
+        await setDoc(docRef, payload);
+      } catch (e) {
+        console.error("Error clearing report:", e);
+        Alert.alert("Error", "No se pudo reiniciar el reporte.");
+      } finally {
+        setSaving(false);
+      }
     };
 
     if (Platform.OS === "web") {
@@ -613,7 +672,7 @@ export default function ControlSalasScreen() {
     } else {
       Alert.alert(
         "Confirmar limpieza",
-        "¿Seguro que querés borrar todas las butacas marcadas del reporte en todas las salas?",
+        "¿Seguro que querés borrar todas las butacas marcadas y reportes generales del reporte en todas las salas?",
         [
           { text: "Cancelar", style: "cancel" },
           { text: "Borrar Todo", style: "destructive", onPress: executeClear },
@@ -786,53 +845,68 @@ export default function ControlSalasScreen() {
   // Generate and export/print HTML report
   const handleExportPdf = async () => {
     let totalDamagedSeats = 0;
-    const salaReportsList: { salaName: string; issues: { row: string; num: number; seat: string; desc: string; details: string; isDbox?: boolean }[] }[] = [];
+    const salaReportsList: { 
+      salaName: string; 
+      issues: { row: string; num: number; seat: string; desc: string; details: string; isDbox?: boolean }[];
+      generalDetails: string;
+    }[] = [];
 
     salasInfoList.forEach((sInfo) => {
       const salaKey = String(sInfo.id);
       const roomIssues = report?.issues?.[salaKey];
-      if (roomIssues && Object.keys(roomIssues).length > 0) {
+      const roomGeneral = report?.generalIssues?.[salaKey];
+      
+      const hasIssues = roomIssues && Object.keys(roomIssues).length > 0;
+      const hasGeneral = roomGeneral && roomGeneral.trim().length > 0;
+
+      if (hasIssues || hasGeneral) {
         // Load layout parameters (from DB or default) to check DBOX exception
         const layoutObj = getActiveSalaLayout(sInfo.id);
 
-        const issuesSorted = Object.entries(roomIssues)
-          .map(([key, val]) => {
-            const [row, numStr] = key.split("-");
-            const num = parseInt(numStr, 10);
-            const parts: string[] = [];
-            if (val.respaldo) parts.push("Respaldo");
-            if (val.asiento) parts.push("Asiento");
-            if (val.apoyabrazos) parts.push("Apoyabrazos");
+        const issuesSorted = roomIssues
+          ? Object.entries(roomIssues)
+              .map(([key, val]) => {
+                const [row, numStr] = key.split("-");
+                const num = parseInt(numStr, 10);
+                const parts: string[] = [];
+                if (val.respaldo) parts.push("Respaldo");
+                if (val.asiento) parts.push("Asiento");
+                if (val.apoyabrazos) parts.push("Apoyabrazos");
 
-            // Look up seat in layout to verify Dbox status
-            const rowSeats = layoutObj.seats[row];
-            const seatLayout = rowSeats?.find((s) => s.number === num);
-            const isDbox = seatLayout?.isDbox || false;
+                // Look up seat in layout to verify Dbox status
+                const rowSeats = layoutObj.seats[row];
+                const seatLayout = rowSeats?.find((s) => s.number === num);
+                const isDbox = seatLayout?.isDbox || false;
 
-            return {
-              row,
-              num,
-              seat: `Fila ${row} - Butaca ${num}${isDbox ? " (D-BOX)" : ""}`,
-              desc: parts.length > 0 ? parts.join(", ") : "Detalles manuales",
-              details: val.detalles || "-",
-              isDbox,
-            };
-          })
-          .sort((a, b) => {
-            if (a.row !== b.row) return a.row.localeCompare(b.row);
-            return a.num - b.num;
-          });
+                return {
+                  row,
+                  num,
+                  seat: `Fila ${row} - Butaca ${num}${isDbox ? " (D-BOX)" : ""}`,
+                  desc: parts.length > 0 ? parts.join(", ") : "Detalles manuales",
+                  details: val.detalles || "-",
+                  isDbox,
+                };
+              })
+              .sort((a, b) => {
+                if (a.row !== b.row) return a.row.localeCompare(b.row);
+                return a.num - b.num;
+              })
+          : [];
 
-        totalDamagedSeats += issuesSorted.length;
+        if (hasIssues) {
+          totalDamagedSeats += issuesSorted.length;
+        }
+
         salaReportsList.push({
           salaName: sInfo.name,
           issues: issuesSorted,
+          generalDetails: roomGeneral || "",
         });
       }
     });
 
-    if (totalDamagedSeats === 0) {
-      Alert.alert("Reporte Vacío", "No se encontraron butacas rotas cargadas en ninguna sala.");
+    if (totalDamagedSeats === 0 && !salaReportsList.some((r) => r.generalDetails)) {
+      Alert.alert("Reporte Vacío", "No se encontraron butacas rotas ni detalles generales cargados en ninguna sala.");
       return;
     }
 
@@ -850,31 +924,41 @@ export default function ControlSalasScreen() {
         roomsTablesHtml += `
           <div class="room-section">
             <h2>${salaRep.salaName}</h2>
-            <table>
-              <thead>
-                <tr>
-                  <th style="width: 30%;">Butaca</th>
-                  <th style="width: 35%;">Daño</th>
-                  <th style="width: 35%;">Detalles</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${salaRep.issues
-                  .map(
-                    (issue) => `
+            
+            ${salaRep.generalDetails ? `
+              <div class="general-details-box">
+                <strong>Detalles Generales:</strong>
+                <p>${salaRep.generalDetails}</p>
+              </div>
+            ` : ""}
+
+            ${salaRep.issues.length > 0 ? `
+              <table>
+                <thead>
                   <tr>
-                    <td>
-                      <strong>${issue.row}-${issue.num}</strong>
-                      ${issue.isDbox ? `<span class="dbox-tag">D-BOX</span>` : ""}
-                    </td>
-                    <td><span class="badge">${issue.desc}</span></td>
-                    <td>${issue.details}</td>
+                    <th style="width: 30%;">Butaca</th>
+                    <th style="width: 35%;">Daño</th>
+                    <th style="width: 35%;">Detalles</th>
                   </tr>
-                `
-                  )
-                  .join("")}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  ${salaRep.issues
+                    .map(
+                      (issue) => `
+                    <tr>
+                      <td>
+                        <strong>${issue.row}-${issue.num}</strong>
+                        ${issue.isDbox ? `<span class="dbox-tag">D-BOX</span>` : ""}
+                      </td>
+                      <td><span class="badge">${issue.desc}</span></td>
+                      <td>${issue.details}</td>
+                    </tr>
+                  `
+                    )
+                    .join("")}
+                </tbody>
+              </table>
+            ` : ""}
           </div>
         `;
       });
@@ -1015,6 +1099,26 @@ export default function ControlSalasScreen() {
               font-weight: bold;
               margin-left: 4px;
               vertical-align: middle;
+            }
+            .general-details-box {
+              background-color: #fef08a;
+              border-left: 3px solid #eab308;
+              padding: 6px 8px;
+              margin-bottom: 8px;
+              border-radius: 4px;
+            }
+            .general-details-box strong {
+              font-size: 8px;
+              color: #854d0e;
+              display: block;
+              margin-bottom: 2px;
+              text-transform: uppercase;
+            }
+            .general-details-box p {
+              margin: 0;
+              font-size: 9px;
+              color: #451a03;
+              word-break: break-word;
             }
             .footer-sig {
               margin-top: 20px;
@@ -1627,6 +1731,29 @@ export default function ControlSalasScreen() {
           </View>
 
           {renderSeatingGrid()}
+
+          {/* Detalles Generales de la Sala */}
+          <View style={styles.listCard}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 }}>
+              <MaterialCommunityIcons name="clipboard-text-outline" size={20} color={COLORS.primary} />
+              <Text style={[styles.listCardTitle, { marginBottom: 0 }]}>
+                Detalles Generales de la Sala {selectedSala}
+              </Text>
+            </View>
+            <TextInput
+              value={generalDetailsInput}
+              onChangeText={setGeneralDetailsInput}
+              onBlur={() => handleSaveGeneralDetails(generalDetailsInput)}
+              placeholder="Ingresá detalles de la sala que no correspondan a una butaca (ej: parlante roto, pantalla sucia, falla de temperatura, etc.)"
+              placeholderTextColor={COLORS.muted}
+              style={[styles.modalDetailsInput, { minHeight: 70, textAlignVertical: "top" }]}
+              multiline
+              numberOfLines={3}
+            />
+            <Text style={{ fontSize: 10, color: COLORS.muted, marginTop: 4, fontStyle: "italic" }}>
+              Se guarda automáticamente al salir del campo de texto.
+            </Text>
+          </View>
 
           {/* List of reported issues in current room */}
           <View style={styles.listCard}>
