@@ -423,9 +423,7 @@ export default function TrailersSemanalesScreen({ readOnly = false }: { readOnly
             langStr = "SUB";
           }
           
-          const rating = session.tags?.[0]?.label || "";
-          const baseTitle = `${session.movieName} ${formatStr} ${langStr}`;
-          const movieTitle = rating ? `${baseTitle} (${rating})` : baseTitle;
+          const movieTitle = `${session.movieName} ${formatStr} ${langStr}`.toUpperCase();
             
           if (!screens[salaNum].includes(movieTitle)) {
             screens[salaNum].push(movieTitle);
