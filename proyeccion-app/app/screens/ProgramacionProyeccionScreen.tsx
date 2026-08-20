@@ -908,6 +908,17 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
             font-weight: bold;
             margin-left: 2px;
           }
+          .format-tag-3d {
+            background-color: #ffebe6 !important;
+            color: #ff3b30 !important;
+            border: 1px solid #ffb3a7 !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+          .show-name-3d {
+            font-weight: 800 !important;
+            color: #ff3b30 !important;
+          }
           .room-prefix {
             color: #b30000;
             font-weight: bold;
@@ -1006,13 +1017,16 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                     td.innerHTML = "-";
                   } else {
                     daySessions.forEach(show => {
-                      td.innerHTML += \`
+                      const is3D = show.format.includes("3D");
+                      const tagClass = is3D ? "format-tag format-tag-3d" : "format-tag";
+                      const nameClass = is3D ? "show-name show-name-3d" : "show-name";
+                      td.innerHTML += `
                         <div class="show-entry">
                           <span class="show-time">\${show.inicio} - \${show.fin}</span>
-                          <span class="show-name">\${show.movieName}</span>
-                          <span class="show-detail"><span class="format-tag">\${show.format}</span></span>
+                          <span class="\${nameClass}">\${show.movieName}</span>
+                          <span class="show-detail"><span class="\${tagClass}">\${show.format}</span></span>
                         </div>
-                      \`;
+                      `;
                     });
                   }
                   tr.appendChild(td);
@@ -1026,8 +1040,10 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
               const movies = Array.from(moviesSet).sort();
               
               movies.forEach(movie => {
+                const isMovie3D = sessions.some(s => s.movieName === movie && s.format.includes("3D"));
+                const rowHeaderClass = isMovie3D ? "row-header show-name-3d" : "row-header";
                 let tr = document.createElement("tr");
-                tr.innerHTML += '<td class="row-header" style="font-size: 11px; text-align: left; padding-left: 8px;">' + movie + '</td>';
+                tr.innerHTML += '<td class="' + rowHeaderClass + '" style="font-size: 11px; text-align: left; padding-left: 8px; vertical-align: middle;">' + movie + '</td>';
                 
                 days.forEach(day => {
                   const daySessions = sessions.filter(s => s.movieName === movie && s.dayKey === day.key)
@@ -1038,15 +1054,17 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                     td.innerHTML = "-";
                   } else {
                     daySessions.forEach(show => {
-                      td.innerHTML += \`
+                      const is3D = show.format.includes("3D");
+                      const tagClass = is3D ? "format-tag format-tag-3d" : "format-tag";
+                      td.innerHTML += `
                         <div class="show-entry">
                           <span class="show-time">\${show.inicio} - \${show.fin}</span>
                           <span class="show-detail">
                             <span class="room-prefix">S\${show.theaterRoom}</span> 
-                            <span class="format-tag">\${show.format}</span>
+                            <span class="\${tagClass}">\${show.format}</span>
                           </span>
                         </div>
-                      \`;
+                      `;
                     });
                   }
                   tr.appendChild(td);
