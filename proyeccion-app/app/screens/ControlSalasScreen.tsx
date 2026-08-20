@@ -536,7 +536,7 @@ export default function ControlSalasScreen() {
   // Selector to get itemized general issues for the selected room
   const generalIssuesList = useMemo(() => {
     const salaKey = String(selectedSala);
-    const raw = report?.generalIssues?.[salaKey];
+    const raw: any = report?.generalIssues?.[salaKey];
     if (!raw) return [];
     if (Array.isArray(raw)) return raw.filter(Boolean);
     if (typeof raw === "string" && raw.trim()) return [raw.trim()];
@@ -887,7 +887,7 @@ export default function ControlSalasScreen() {
     salasInfoList.forEach((sInfo) => {
       const salaKey = String(sInfo.id);
       const roomIssues = report?.issues?.[salaKey];
-      const roomGeneral = report?.generalIssues?.[salaKey];
+      const roomGeneral: any = report?.generalIssues?.[salaKey];
       
       let generalItems: string[] = [];
       if (roomGeneral) {
