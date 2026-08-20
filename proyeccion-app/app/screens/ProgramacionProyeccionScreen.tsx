@@ -859,8 +859,8 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
           const mins = String(arDate.getUTCMinutes()).padStart(2, '0');
           const inicio = `${hours}:${mins}`;
 
-          // Fallback duration 120 mins (using runTime if available from server)
-          const durationMins = first.runTime || 120;
+          // Fallback duration 120 mins (using runTime if available from server) + 15 mins of advertising
+          const durationMins = (first.runTime || 120) + 15;
           const endMins = (arDate.getUTCHours() * 60 + arDate.getUTCMinutes() + durationMins) % 1440;
           const endH = Math.floor(endMins / 60);
           const endM = endMins % 60;
