@@ -22,6 +22,8 @@ import { useAuthUser } from "../../lib/useAuthUser";
 import { COLORS, THEME } from "../../lib/theme";
 import { WeekdayKey } from "../../lib/programacion/types";
 import dayjs from "dayjs";
+import * as FileSystem from "expo-file-system";
+import * as Sharing from "expo-sharing";
 import { mockShowtimesData } from "./mockShowtimes";
 import { getRoomLayout, SeatInfo, RoomLayout, FirestoreSalaLayout } from "./ControlSalasScreen";
 import { getCineConfig } from "../../lib/cineConfig";
@@ -696,6 +698,290 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
       Alert.alert("Error", "No se pudo sincronizar con Cinemark: " + (err.message || err));
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const downloadWeeklyHtml = async () => {
+    if (!apiData || apiData.length === 0) {
+      Alert.alert("Sin datos", "No hay datos de programación cargados para esta semana.");
+      return;
+    }
+
+    try {
+      const daysOrdered: WeekdayKey[] = ["jueves", "viernes", "sabado", "domingo", "lunes", "martes", "miercoles"];
+      const DAY_OFFSETS: Record<WeekdayKey, number> = {
+        jueves: 0,
+        viernes: 1,
+        sabado: 2,
+        domingo: 3,
+        lunes: 4,
+        martes: 5,
+        miercoles: 6,
+      };
+      
+      const WEEKDAY_LABELS_ES: Record<WeekdayKey, string> = {
+        jueves: "Jueves",
+        viernes: "Viernes",
+        sabado: "Sábado",
+        domingo: "Domingo",
+        lunes: "Lunes",
+        martes: "Martes",
+        miercoles: "Miércoles",
+      };
+
+      const MONTH_LABELS_ES = [
+        "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+        "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
+      ];
+
+      const getDayDateLabel = (day: WeekdayKey): string => {
+        const label = WEEKDAY_LABELS_ES[day];
+        if (!selectedWeekStart) return label;
+        const offset = DAY_OFFSETS[day];
+        const [y, m, d] = selectedWeekStart.split("-").map(Number);
+        const start = new Date(Date.UTC(y, m - 1, d));
+        const dateObj = new Date(start.getTime() + offset * 24 * 60 * 60 * 1000);
+        const dd = String(dateObj.getUTCDate()).padStart(2, "0");
+        const month = MONTH_LABELS_ES[dateObj.getUTCMonth()];
+        const yyyy = dateObj.getUTCFullYear();
+        return `${label} ${dd} de ${month} de ${yyyy}`;
+      };
+
+      const grouped: Record<WeekdayKey, Record<number, any[]>> = {
+        jueves: {}, viernes: {}, sabado: {}, domingo: {}, lunes: {}, martes: {}, miercoles: {}
+      };
+
+      apiData.forEach((session: any) => {
+        const utcDate = new Date(session.sessionDateTime);
+        const arDate = new Date(utcDate.getTime());
+        if (arDate.getUTCHours() < 6) {
+          arDate.setTime(arDate.getTime() - 24 * 60 * 60 * 1000);
+        }
+
+        const dayNum = arDate.getUTCDay();
+        const dayMap: Record<number, WeekdayKey> = {
+          0: "domingo", 1: "lunes", 2: "martes", 3: "miercoles",
+          4: "jueves", 5: "viernes", 6: "sabado"
+        };
+        const sessionDay = dayMap[dayNum];
+        if (!sessionDay) return;
+
+        const salaNum = Number(session.theaterRoom);
+        if (isNaN(salaNum)) return;
+
+        if (!grouped[sessionDay][salaNum]) {
+          grouped[sessionDay][salaNum] = [];
+        }
+
+        const hours = String(arDate.getUTCHours()).padStart(2, '0');
+        const mins = String(arDate.getUTCMinutes()).padStart(2, '0');
+        const inicio = `${hours}:${mins}`;
+
+        const formatStr = (session.sessionFormat || "").toUpperCase().includes("3D") ? "3D" : "2D";
+        const langName = (session.language?.name || session.language || "").toUpperCase();
+        let langStr = "CAS";
+        if (langName.includes("SUB") || langName.includes("ING") || langName.includes("ORIG")) {
+          langStr = "SUB";
+        }
+
+        grouped[sessionDay][salaNum].push({
+          inicio,
+          movieName: session.movieName,
+          format: `${formatStr} ${langStr}`,
+          sortVal: arDate.getUTCHours() * 60 + arDate.getUTCMinutes()
+        });
+      });
+
+      let contentHtml = "";
+      daysOrdered.forEach((day) => {
+        const dayLabel = getDayDateLabel(day);
+        const roomsData = grouped[day];
+        const roomsKeys = Object.keys(roomsData).map(Number).sort((a, b) => a - b);
+
+        if (roomsKeys.length === 0) return;
+
+        contentHtml += `
+        <div class="day-section">
+          <div class="day-header">${dayLabel}</div>
+          <div class="rooms-grid">`;
+
+        roomsKeys.forEach((roomNum) => {
+          const shows = roomsData[roomNum].sort((a, b) => a.sortVal - b.sortVal);
+          contentHtml += `
+            <div class="room-card">
+              <div class="room-title">SALA ${roomNum}</div>
+              <ul class="show-list">`;
+              
+          shows.forEach((show) => {
+            contentHtml += `
+                <li class="show-item">
+                  <span class="show-time">${show.inicio}</span>
+                  <span class="show-name">${show.movieName}</span>
+                  <span class="show-format">${show.format}</span>
+                </li>`;
+          });
+
+          contentHtml += `
+              </ul>
+            </div>`;
+        });
+
+        contentHtml += `
+          </div>
+        </div>`;
+      });
+
+      const weekRangeLabel = formatWeekRange(selectedWeekStart);
+
+      const htmlTemplate = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Programación Semanal - ${weekRangeLabel}</title>
+        <style>
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 20px;
+            padding: 0;
+            color: #333;
+            background-color: #fff;
+          }
+          h1 {
+            text-align: center;
+            color: #b30000;
+            margin-bottom: 5px;
+            font-size: 24px;
+          }
+          .subtitle {
+            text-align: center;
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 30px;
+          }
+          .day-section {
+            margin-bottom: 30px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            overflow: hidden;
+            page-break-inside: avoid;
+          }
+          .day-header {
+            background-color: #f7f7f7;
+            padding: 10px 15px;
+            font-size: 16px;
+            font-weight: bold;
+            color: #111;
+            border-bottom: 1px solid #ddd;
+          }
+          .rooms-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 15px;
+            padding: 15px;
+          }
+          .room-card {
+            border: 1px solid #eee;
+            border-radius: 6px;
+            background-color: #fafafa;
+            padding: 10px;
+          }
+          .room-title {
+            font-size: 13px;
+            font-weight: bold;
+            color: #b30000;
+            margin-top: 0;
+            margin-bottom: 8px;
+            border-bottom: 2px solid #b30000;
+            padding-bottom: 4px;
+          }
+          .show-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+          }
+          .show-item {
+            font-size: 11.5px;
+            padding: 6px 0;
+            border-bottom: 1px dashed #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+          }
+          .show-item:last-child {
+            border-bottom: none;
+          }
+          .show-time {
+            font-weight: bold;
+            color: #000;
+            margin-right: 8px;
+            white-space: nowrap;
+          }
+          .show-name {
+            flex: 1;
+            color: #333;
+          }
+          .show-format {
+            font-size: 9px;
+            background-color: #e6f2ff;
+            color: #0066cc;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-weight: bold;
+            margin-left: 5px;
+            white-space: nowrap;
+          }
+          @media print {
+            body {
+              margin: 10px;
+            }
+            .day-section {
+              page-break-after: always;
+            }
+            .day-section:last-child {
+              page-break-after: avoid;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        <h1>PROGRAMACIÓN SEMANAL CINEMARK</h1>
+        <div class="subtitle">Semana del ${weekRangeLabel}</div>
+        
+        ${contentHtml}
+      </body>
+      </html>
+      `;
+
+      if (Platform.OS === "web") {
+        const blob = new Blob([htmlTemplate], { type: "text/html" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `programacion-semanal-${selectedWeekStart}.html`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        return;
+      }
+
+      const fileUri = `${FileSystem.cacheDirectory}programacion-semanal-${selectedWeekStart}.html`;
+      await FileSystem.writeAsStringAsync(fileUri, htmlTemplate, {
+        encoding: FileSystem.EncodingType.UTF8,
+      });
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(fileUri, {
+          mimeType: "text/html",
+          dialogTitle: "Descargar Programación HTML",
+        });
+      } else {
+        Alert.alert("Guardado", `HTML guardado en: ${fileUri}`);
+      }
+    } catch (err: any) {
+      console.error("Error al descargar HTML:", err);
+      Alert.alert("Error", "No se pudo generar el archivo HTML.");
     }
   };
 
@@ -2557,6 +2843,16 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
         </View>
       )}
       {useApiData && stats && renderStatsPanel()}
+      {useApiData && (
+        <TouchableOpacity
+          style={styles.downloadHtmlButton}
+          onPress={downloadWeeklyHtml}
+          activeOpacity={0.8}
+        >
+          <MaterialCommunityIcons name="download" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
+          <Text style={styles.downloadHtmlButtonText}>DESCARGAR PROGRAMACIÓN SEMANAL (HTML)</Text>
+        </TouchableOpacity>
+      )}
     </ScrollView>
   </View>
 
@@ -3969,5 +4265,23 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 12,
     fontWeight: "bold",
+  },
+  downloadHtmlButton: {
+    backgroundColor: "#10B981",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    marginHorizontal: 16,
+    marginVertical: 16,
+    ...THEME.shadow.soft,
+  },
+  downloadHtmlButtonText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "bold",
+    letterSpacing: 0.5,
   },
 });
