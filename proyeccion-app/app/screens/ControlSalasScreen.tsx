@@ -310,8 +310,7 @@ export default function ControlSalasScreen() {
   const [asientoRoto, setAsientoRoto] = useState(false);
   const [apoyabrazosRoto, setApoyabrazosRoto] = useState(false);
   const [extraDetails, setExtraDetails] = useState("");
-  const [generalDetailsInput, setGeneralDetailsInput] = useState("");
-  const [isEditingGeneralReport, setIsEditingGeneralReport] = useState(false);
+  const [newItemText, setNewItemText] = useState("");
 
   // Seating grid configuration editor state
   const [isLayoutEditorMode, setIsLayoutEditorMode] = useState<boolean>(false);
@@ -461,11 +460,6 @@ export default function ControlSalasScreen() {
     return () => unsubscribe();
   }, [cineId]);
 
-  // Sync general details input when room or report changes
-  useEffect(() => {
-    const salaKey = String(selectedSala);
-    setGeneralDetailsInput(report?.generalIssues?.[salaKey] || "");
-  }, [selectedSala, report]);
 
   // Get active layout for a sala (loads from DB if exists, otherwise falls back to hardcoded defaults)
   const getActiveSalaLayout = (salaId: number): RoomLayout => {
@@ -539,14 +533,52 @@ export default function ControlSalasScreen() {
     }
   };
 
-  // Save room general details to Firestore
-  const handleSaveGeneralDetails = async (text: string) => {
+  // Selector to get itemized general issues for the selected room
+  const generalIssuesList = useMemo(() => {
+    const salaKey = String(selectedSala);
+    const raw = report?.generalIssues?.[salaKey];
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw.filter(Boolean);
+    if (typeof raw === "string" && raw.trim()) return [raw.trim()];
+    return [];
+  }, [selectedSala, report]);
+
+  const handleAddNewGeneralItem = async () => {
+    if (!newItemText.trim() || !cineId) return;
+    const salaKey = String(selectedSala);
+    const currentList = [...generalIssuesList];
+    currentList.push(newItemText.trim());
+
+    const newGeneralIssues = { ...report?.generalIssues };
+    newGeneralIssues[salaKey] = currentList;
+
+    setSaving(true);
+    try {
+      const docRef = doc(db, CINES_COLLECTION, cineId, "control_salas", "active");
+      const payload: ActiveReport = {
+        ...report,
+        updatedAt: new Date().toISOString(),
+        updatedBy: userEmail,
+        generalIssues: newGeneralIssues,
+      };
+      await setDoc(docRef, payload);
+      setNewItemText(""); // Clear input
+    } catch (e) {
+      console.error("Error adding general issue:", e);
+      Alert.alert("Error", "No se pudo agregar la observación.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteGeneralItem = async (indexToDelete: number) => {
     if (!cineId) return;
     const salaKey = String(selectedSala);
+    const currentList = generalIssuesList.filter((_, idx) => idx !== indexToDelete);
+
     const newGeneralIssues = { ...report?.generalIssues };
-    
-    if (text.trim()) {
-      newGeneralIssues[salaKey] = text.trim();
+    if (currentList.length > 0) {
+      newGeneralIssues[salaKey] = currentList;
     } else {
       delete newGeneralIssues[salaKey];
     }
@@ -562,8 +594,8 @@ export default function ControlSalasScreen() {
       };
       await setDoc(docRef, payload);
     } catch (e) {
-      console.error("Error saving general details:", e);
-      Alert.alert("Error", "No se pudo guardar la información.");
+      console.error("Error deleting general issue:", e);
+      Alert.alert("Error", "No se pudo borrar la observación.");
     } finally {
       setSaving(false);
     }
@@ -849,7 +881,7 @@ export default function ControlSalasScreen() {
     const salaReportsList: { 
       salaName: string; 
       issues: { row: string; num: number; seat: string; desc: string; details: string; isDbox?: boolean }[];
-      generalDetails: string;
+      generalDetails: string[];
     }[] = [];
 
     salasInfoList.forEach((sInfo) => {
@@ -857,8 +889,17 @@ export default function ControlSalasScreen() {
       const roomIssues = report?.issues?.[salaKey];
       const roomGeneral = report?.generalIssues?.[salaKey];
       
+      let generalItems: string[] = [];
+      if (roomGeneral) {
+        if (Array.isArray(roomGeneral)) {
+          generalItems = roomGeneral.filter(Boolean);
+        } else if (typeof roomGeneral === "string" && roomGeneral.trim()) {
+          generalItems = [roomGeneral.trim()];
+        }
+      }
+
       const hasIssues = roomIssues && Object.keys(roomIssues).length > 0;
-      const hasGeneral = roomGeneral && roomGeneral.trim().length > 0;
+      const hasGeneral = generalItems.length > 0;
 
       if (hasIssues || hasGeneral) {
         // Load layout parameters (from DB or default) to check DBOX exception
@@ -901,13 +942,13 @@ export default function ControlSalasScreen() {
         salaReportsList.push({
           salaName: sInfo.name,
           issues: issuesSorted,
-          generalDetails: roomGeneral || "",
+          generalDetails: generalItems,
         });
       }
     });
 
-    if (totalDamagedSeats === 0 && !salaReportsList.some((r) => r.generalDetails)) {
-      Alert.alert("Reporte Vacío", "No se encontraron butacas rotas ni detalles generales cargados en ninguna sala.");
+    if (totalDamagedSeats === 0 && !salaReportsList.some((r) => r.generalDetails.length > 0)) {
+      Alert.alert("Reporte Vacío", "No se encontraron butacas rotas ni observaciones generales cargadas en ninguna sala.");
       return;
     }
 
@@ -926,10 +967,12 @@ export default function ControlSalasScreen() {
           <div class="room-section">
             <h2>${salaRep.salaName}</h2>
             
-            ${salaRep.generalDetails ? `
+            ${salaRep.generalDetails.length > 0 ? `
               <div class="general-details-box">
                 <strong>Detalles Generales:</strong>
-                <p>${salaRep.generalDetails}</p>
+                <ul style="margin: 4px 0 0 0; padding-left: 12px; font-size: 9px; color: #451a03;">
+                  ${salaRep.generalDetails.map(item => `<li>${item}</li>`).join("")}
+                </ul>
               </div>
             ` : ""}
 
@@ -1735,39 +1778,74 @@ export default function ControlSalasScreen() {
 
           {/* Detalles Generales de la Sala */}
           <View style={styles.listCard}>
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <MaterialCommunityIcons name="clipboard-text-outline" size={20} color={COLORS.primary} />
-                <Text style={[styles.listCardTitle, { marginBottom: 0 }]}>
-                  Reporte General (Sala {selectedSala})
-                </Text>
-              </View>
-              <TouchableOpacity
-                style={styles.editGeneralReportBtn}
-                onPress={() => setIsEditingGeneralReport(true)}
-                activeOpacity={0.7}
-              >
-                <MaterialCommunityIcons 
-                  name={generalDetailsInput.trim() ? "pencil-outline" : "plus-circle-outline"} 
-                  size={16} 
-                  color={COLORS.primary} 
-                  style={{ marginRight: 4 }} 
-                />
-                <Text style={styles.editGeneralReportBtnText}>
-                  {generalDetailsInput.trim() ? "Editar" : "Agregar"}
-                </Text>
-              </TouchableOpacity>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 }}>
+              <MaterialCommunityIcons name="clipboard-text-outline" size={20} color={COLORS.primary} />
+              <Text style={[styles.listCardTitle, { marginBottom: 0 }]}>
+                Observaciones Generales (Sala {selectedSala})
+              </Text>
             </View>
 
-            {generalDetailsInput.trim() ? (
-              <View style={[styles.issueDetailsWrap, { marginTop: 12, borderLeftColor: COLORS.primary }]}>
-                <Text style={styles.issueDetailsText}>{generalDetailsInput}</Text>
+            {generalIssuesList.length > 0 ? (
+              <View style={{ gap: 6, marginBottom: 12 }}>
+                {generalIssuesList.map((item, index) => (
+                  <View 
+                    key={index} 
+                    style={{ 
+                      flexDirection: "row", 
+                      justifyContent: "space-between", 
+                      alignItems: "center", 
+                      backgroundColor: COLORS.bg, 
+                      paddingVertical: 6,
+                      paddingHorizontal: 10,
+                      borderRadius: THEME.radius.sm, 
+                      borderWidth: 1, 
+                      borderColor: COLORS.border 
+                    }}
+                  >
+                    <Text style={{ fontSize: 13, color: COLORS.text, flex: 1, fontWeight: "500" }}>
+                      • {item}
+                    </Text>
+                    <TouchableOpacity 
+                      onPress={() => handleDeleteGeneralItem(index)} 
+                      style={{ padding: 4 }}
+                      activeOpacity={0.7}
+                    >
+                      <MaterialCommunityIcons name="trash-can-outline" size={18} color={COLORS.danger} />
+                    </TouchableOpacity>
+                  </View>
+                ))}
               </View>
             ) : (
-              <Text style={{ fontSize: 12, color: COLORS.muted, marginTop: 8, fontStyle: "italic" }}>
-                Sin comentarios generales. Hacé clic en "Agregar" para reportar problemas de sonido, pantalla, limpieza o clima.
+              <Text style={{ fontSize: 12, color: COLORS.muted, marginBottom: 12, fontStyle: "italic" }}>
+                Sin observaciones generales. Agregá ítems para reportar fallas de sonido, pantalla, limpieza o clima.
               </Text>
             )}
+
+            {/* Form to add a new observation item */}
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <TextInput
+                value={newItemText}
+                onChangeText={setNewItemText}
+                onSubmitEditing={handleAddNewGeneralItem}
+                placeholder="Nueva observación (ej: parlante con ruido, pantalla sucia...)"
+                placeholderTextColor={COLORS.muted}
+                style={[styles.modalDetailsInput, { flex: 1, paddingVertical: 8, height: 40 }]}
+              />
+              <TouchableOpacity
+                onPress={handleAddNewGeneralItem}
+                style={{ 
+                  backgroundColor: COLORS.primary, 
+                  width: 40,
+                  height: 40,
+                  borderRadius: THEME.radius.md, 
+                  justifyContent: "center", 
+                  alignItems: "center" 
+                }}
+                activeOpacity={0.8}
+              >
+                <MaterialCommunityIcons name="plus" size={20} color="#FFF" />
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* List of reported issues in current room */}
@@ -2050,58 +2128,6 @@ export default function ControlSalasScreen() {
         )}
       </Modal>
 
-      {/* General Report Edit Modal */}
-      <Modal
-        visible={isEditingGeneralReport}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setIsEditingGeneralReport(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Observaciones Generales</Text>
-            <Text style={styles.modalSubtitle}>Sala {selectedSala}</Text>
-
-            <View style={styles.modalInputBlock}>
-              <Text style={styles.modalInputLabel}>Detalles / Comentarios (Sin asignar a butaca)</Text>
-              <TextInput
-                value={generalDetailsInput}
-                onChangeText={setGeneralDetailsInput}
-                placeholder="Ej. parlantes rotos, aire acondicionado sin andar, pantalla sucia, problemas de iluminación..."
-                placeholderTextColor={COLORS.muted}
-                style={[styles.modalDetailsInput, { minHeight: 100 }]}
-                multiline
-                numberOfLines={4}
-              />
-            </View>
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={[styles.modalBtn, styles.modalBtnCancel, { marginRight: 12 }]}
-                onPress={() => {
-                  const salaKey = String(selectedSala);
-                  setGeneralDetailsInput(report?.generalIssues?.[salaKey] || "");
-                  setIsEditingGeneralReport(false);
-                }}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.modalBtnCancelText}>Cancelar</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.modalBtn, styles.modalBtnPrimary]}
-                onPress={async () => {
-                  await handleSaveGeneralDetails(generalDetailsInput);
-                  setIsEditingGeneralReport(false);
-                }}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.modalBtnPrimaryText}>Guardar</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }
