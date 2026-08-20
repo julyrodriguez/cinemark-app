@@ -57,6 +57,9 @@ interface DailyShow {
   dboxCapacity?: number;
   dboxAvailable?: number;
   dboxSold?: number;
+
+  runTime?: number;
+  filmPersons?: any[];
 }
 
 interface SavedWeekly {
@@ -856,8 +859,8 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
           const mins = String(arDate.getUTCMinutes()).padStart(2, '0');
           const inicio = `${hours}:${mins}`;
 
-          // Fallback duration 120 mins
-          const durationMins = 120;
+          // Fallback duration 120 mins (using runTime if available from server)
+          const durationMins = first.runTime || 120;
           const endMins = (arDate.getUTCHours() * 60 + arDate.getUTCMinutes() + durationMins) % 1440;
           const endH = Math.floor(endMins / 60);
           const endM = endMins % 60;
@@ -928,6 +931,9 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
             dboxCapacity,
             dboxAvailable,
             dboxSold,
+
+            runTime: first.runTime,
+            filmPersons: first.filmPersons,
           });
         });
 
@@ -1095,6 +1101,8 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
               show.corporateId = matchingSessions[0].corporateId;
               show.movieId = matchingSessions[0].movieId;
               show.occupiedSeats = matchingSessions[0].occupiedSeats || [];
+              show.runTime = matchingSessions[0].runTime;
+              show.filmPersons = matchingSessions[0].filmPersons;
 
               show.capacity = totalCapacity;
               show.availableSeats = totalAvailable;
@@ -2743,6 +2751,20 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                         <View>
                           <Text style={styles.detailLabel}>Calificación</Text>
                           <Text style={styles.detailValue}>{selectedShow.calificacion}</Text>
+                        </View>
+                      </View>
+                    ) : null}
+
+                    {selectedShow.filmPersons && selectedShow.filmPersons.length > 0 ? (
+                      <View style={styles.detailRow}>
+                        <MaterialCommunityIcons name="account-group-outline" size={22} color={COLORS.muted} style={styles.detailIcon} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.detailLabel}>Reparto y Dirección</Text>
+                          <Text style={styles.detailValue}>
+                            {selectedShow.filmPersons
+                              .map((p: any) => `${p.firstName} ${p.lastName} (${p.personType === "Actor" ? "Actor" : "Director"})`)
+                              .join(", ")}
+                          </Text>
                         </View>
                       </View>
                     ) : null}
