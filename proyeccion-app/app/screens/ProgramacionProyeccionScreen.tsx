@@ -2584,7 +2584,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
               >
                 <View style={{ flexDirection: isMobile ? "column" : "row", gap: 24, width: "100%" }}>
                   {/* Columna Izquierda: Poster y Detalles */}
-                  <View style={{ flex: 1.1, minWidth: isMobile ? "100%" : 320 }}>
+                  <View style={{ flex: 1, minWidth: isMobile ? "100%" : 320 }}>
                     {/* Fila del Poster y Cabecera */}
                     <View style={{ flexDirection: "row", gap: 14, marginBottom: 20 }}>
                       {selectedShow.posterUrl ? (
@@ -2682,7 +2682,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                   {/* Columna Derecha: Mapa de Asientos (solo si es simulada) */}
                   {selectedShow.isSimulated && (
                     <View style={{ 
-                      flex: 1.4, 
+                      flex: 1.7, 
                       minWidth: isMobile ? "100%" : 360,
                       borderLeftWidth: isMobile ? 0 : 1, 
                       borderLeftColor: COLORS.border, 
@@ -2707,7 +2707,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                           <Text style={{ color: COLORS.textSoft, textAlign: "center", marginTop: 4, paddingHorizontal: 16, fontSize: 12 }}>{seatMapError}</Text>
                         </View>
                       ) : (seatMapData || (selectedShow && selectedShow.occupiedSeats && selectedShow.occupiedSeats.length > 0)) ? (
-                        <View style={{ alignItems: "center" }}>
+                        <View style={{ alignItems: "center", width: "100%" }}>
                           <View style={[styles.legendContainer, { marginBottom: 16 }]}>
                             <View style={styles.legendItem}>
                               <View style={[styles.seatBase, styles.seatAvailable]} />
@@ -3192,7 +3192,7 @@ const styles = StyleSheet.create({
     }),
   },
   modalContentLarge: {
-    maxWidth: 800,
+    maxWidth: 1100,
     width: Platform.OS === "web" ? "90%" : "98%",
   },
   modalContentFullScreen: {
