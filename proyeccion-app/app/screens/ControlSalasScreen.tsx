@@ -1812,8 +1812,8 @@ export default function ControlSalasScreen() {
                           fontWeight: "500",
                           flexWrap: "wrap",
                           // Web wrapping fallback
-                          wordBreak: "break-word" as any,
-                        }}
+                          wordBreak: "break-word",
+                        } as any}
                       >
                         • {item}
                       </Text>
