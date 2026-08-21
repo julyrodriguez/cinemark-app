@@ -283,10 +283,10 @@ export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: b
   useEffect(() => {
     if (!cineId) return;
     const q = query(collection(db, CINES_COLLECTION, cineId, "creditos"));
-    const unsub = onSnapshot(q, (snap) => {
-      const titles = snap.docs.map(doc => removeAccents(doc.data().pelicula ?? "").toUpperCase().trim());
+    const unsub = onSnapshot(q, (snap: any) => {
+      const titles = snap.docs.map((doc: any) => removeAccents(doc.data().pelicula ?? "").toUpperCase().trim());
       setExistingCredits(titles);
-    }, (err) => {
+    }, (err: any) => {
       console.error("Error listening to creditos:", err);
     });
     return unsub;
