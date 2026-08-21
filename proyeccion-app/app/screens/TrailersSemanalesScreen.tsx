@@ -98,7 +98,7 @@ export default function TrailersSemanalesScreen({ readOnly = false }: { readOnly
   const [trlsData, setTrlsData] = useState<TrlMovie[] | null>(null);
 
   const [sourceMode, setSourceMode] = useState<"pdf" | "programacion">("pdf");
-  const [dbSubSource, setDbSubSource] = useState<"servicios" | "api">("servicios");
+  const [dbSubSource, setDbSubSource] = useState<"servicios" | "api">("api");
   const [selectedWeekStart, setSelectedWeekStart] = useState<string>(() => getMovieWeekStartForNow());
   const [dbWeekly, setDbWeekly] = useState<{
     startDate: string;
@@ -146,67 +146,24 @@ export default function TrailersSemanalesScreen({ readOnly = false }: { readOnly
     if (!cineId) return;
     try {
       setLoadingDbWeekly(true);
-      if (dbSubSource === "api") {
-        // Load from Cinemark API (showtimes collection)
-        const docRef = doc(db, CINES_COLLECTION, cineId, "showtimes", selectedWeekStart);
-        const snap = await getDoc(docRef);
-        if (snap.exists()) {
-          const data = snap.data();
-          setDbWeekly({
-            startDate: selectedWeekStart,
-            weeklyRows: data.sessions || [],
-            isApiSource: true,
-            isFallbackActual: false,
-          });
-          if (showFeedback) {
-            Alert.alert("Éxito", "Programación (API Cinemark) cargada correctamente.");
-          }
-        } else {
-          setDbWeekly(null);
-          if (showFeedback) {
-            Alert.alert("Sin datos", `No hay showtimes guardados para la semana ${selectedWeekStart}.`);
-          }
+      // Load from Cinemark API (showtimes collection)
+      const docRef = doc(db, CINES_COLLECTION, cineId, "showtimes", selectedWeekStart);
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        const data = snap.data();
+        setDbWeekly({
+          startDate: selectedWeekStart,
+          weeklyRows: data.sessions || [],
+          isApiSource: true,
+          isFallbackActual: false,
+        });
+        if (showFeedback) {
+          Alert.alert("Éxito", "Programación (API Cinemark) cargada correctamente.");
         }
       } else {
-        // Load from Servicios Programación (programacion_semanal collection)
-        // 1. Try date-specific document first
-        const docRef = doc(db, CINES_COLLECTION, cineId, "programacion_semanal", selectedWeekStart);
-        const snap = await getDoc(docRef);
-        if (snap.exists()) {
-          const data = snap.data();
-          setDbWeekly({
-            startDate: data.startDate || selectedWeekStart,
-            weeklyRows: data.weeklyRows || [],
-            isApiSource: false,
-            isFallbackActual: false,
-          });
-          if (showFeedback) {
-            Alert.alert("Éxito", "Programación de la semana cargada correctamente.");
-          }
-        } else {
-          // 2. Fallback to "actual" document
-          const actualRef = doc(db, CINES_COLLECTION, cineId, "programacion_semanal", "actual");
-          const actualSnap = await getDoc(actualRef);
-          if (actualSnap.exists()) {
-            const data = actualSnap.data();
-            setDbWeekly({
-              startDate: data.startDate || "",
-              weeklyRows: data.weeklyRows || [],
-              isApiSource: false,
-              isFallbackActual: true,
-            });
-            if (showFeedback) {
-              Alert.alert(
-                "Aviso", 
-                "No hay programación guardada para esta semana en particular. Se cargó la última programación guardada ('actual') como fallback."
-              );
-            }
-          } else {
-            setDbWeekly(null);
-            if (showFeedback) {
-              Alert.alert("Sin datos", "No hay una programación guardada en la base de datos.");
-            }
-          }
+        setDbWeekly(null);
+        if (showFeedback) {
+          Alert.alert("Sin datos", `No hay showtimes guardados para la semana ${selectedWeekStart}.`);
         }
       }
     } catch (e: any) {
@@ -1243,25 +1200,6 @@ export default function TrailersSemanalesScreen({ readOnly = false }: { readOnly
             </Pressable>
           ) : (
             <View style={{ gap: 10 }}>
-              {/* Database Sub-Source Tabs */}
-              <View style={[s.tabContainer, { marginBottom: 6, backgroundColor: COLORS.bg }]}>
-                <Pressable
-                  style={[s.tabButton, dbSubSource === "servicios" && s.tabButtonActive]}
-                  onPress={() => setDbSubSource("servicios")}
-                >
-                  <Text style={[s.tabButtonText, dbSubSource === "servicios" && s.tabButtonTextActive, { fontSize: 11 }]}>
-                    📋 Servicios Programación
-                  </Text>
-                </Pressable>
-                <Pressable
-                  style={[s.tabButton, dbSubSource === "api" && s.tabButtonActive]}
-                  onPress={() => setDbSubSource("api")}
-                >
-                  <Text style={[s.tabButtonText, dbSubSource === "api" && s.tabButtonTextActive, { fontSize: 11 }]}>
-                    🌐 API de Cinemark
-                  </Text>
-                </Pressable>
-              </View>
 
               {/* Week Selector Bar */}
               {(() => {
@@ -1324,18 +1262,18 @@ export default function TrailersSemanalesScreen({ readOnly = false }: { readOnly
                   {loadingDbWeekly ? (
                     <ActivityIndicator color={COLORS.primary} size="small" />
                   ) : (
-                    <Text style={{ fontSize: 20 }}>{dbSubSource === "api" ? "🌐" : "🖥️"}</Text>
+                    <Text style={{ fontSize: 20 }}>🌐</Text>
                   )}
                 </View>
                 <View style={s.filePickerInfo}>
                   <Text style={s.filePickerText}>
                     {dbWeekly 
-                      ? `Cargado: ${dbSubSource === "api" ? "API Cinemark" : "Servicios Programación"}` 
+                      ? "Cargado: API Cinemark" 
                       : "Sin programación cargada"}
                   </Text>
                   <Text style={s.filePickerSubtext}>
                     {dbWeekly 
-                      ? `Origen: ${dbSubSource === "api" ? "Showtimes de API" : (dbWeekly.isFallbackActual ? "Último guardado (actual)" : "Guardado específico de fecha")}` 
+                      ? "Origen: Showtimes de API" 
                       : "Presioná para intentar cargar nuevamente"}
                   </Text>
                 </View>
