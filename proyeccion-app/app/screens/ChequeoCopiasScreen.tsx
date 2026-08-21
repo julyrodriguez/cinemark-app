@@ -342,7 +342,6 @@ export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: b
   const [comparisonDone, setComparisonDone] = useState(false);
 
   const [sourceMode, setSourceMode] = useState<"pdf" | "programacion">("pdf");
-  const [dbSubSource, setDbSubSource] = useState<"servicios" | "api">("servicios");
   const [selectedWeekStart, setSelectedWeekStart] = useState<string>(() => getMovieWeekStartForNow());
 
   const availableWeeks = useMemo(() => {
@@ -640,7 +639,7 @@ export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: b
         setLoading(false);
       }
     } else {
-      // Programación (API Cinemark / Servicios)
+      // Programación (API Cinemark)
       if (!cineId) return;
 
       try {
@@ -655,92 +654,52 @@ export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: b
         const end = start.add(6, "day");
         setSemanaText(`${start.format("DD/MM")} al ${end.format("DD/MM")}`);
 
-        let newResultRows: any[] = [];
-        let oldResultRows: any[] = [];
+        // 1. Fetch new week showtimes from Cinemark API (showtimes collection)
+        setStatusText("Obteniendo showtimes semana nueva...");
+        const newDocRef = doc(db, CINES_COLLECTION, cineId, "showtimes", selectedWeekStart);
+        const newSnap = await getDoc(newDocRef);
 
-        if (dbSubSource === "api") {
-          // 1. Fetch new week showtimes from Cinemark API (showtimes collection)
-          setStatusText("Obteniendo showtimes semana nueva...");
-          const newDocRef = doc(db, CINES_COLLECTION, cineId, "showtimes", selectedWeekStart);
-          const newSnap = await getDoc(newDocRef);
-
-          if (!newSnap.exists()) {
-            Alert.alert("Sin datos", `No hay showtimes guardados para la semana ${selectedWeekStart}. Por favor sincronizá la programación primero.`);
-            setLoading(false);
-            return;
-          }
-          newResultRows = newSnap.data()?.sessions || [];
-
-          // 2. Fetch old week showtimes from Cinemark API (showtimes collection)
-          setStatusText("Obteniendo showtimes semana vieja...");
-          const oldDocRef = doc(db, CINES_COLLECTION, cineId, "showtimes", previousWeekStart);
-          const oldSnap = await getDoc(oldDocRef);
-          oldResultRows = oldSnap.exists() ? oldSnap.data()?.sessions || [] : [];
-        } else {
-          // 1. Fetch new week from Servicios Programación (programacion_semanal collection)
-          setStatusText("Obteniendo programación semana nueva...");
-          const newDocRef = doc(db, CINES_COLLECTION, cineId, "programacion_semanal", selectedWeekStart);
-          const newSnap = await getDoc(newDocRef);
-
-          if (!newSnap.exists()) {
-            Alert.alert("Sin datos", `No hay programación guardada en servicios para la semana ${selectedWeekStart}.`);
-            setLoading(false);
-            return;
-          }
-          newResultRows = newSnap.data()?.weeklyRows || [];
-
-          // 2. Fetch old week from Servicios Programación
-          setStatusText("Obteniendo programación semana vieja...");
-          const oldDocRef = doc(db, CINES_COLLECTION, cineId, "programacion_semanal", previousWeekStart);
-          const oldSnap = await getDoc(oldDocRef);
-          oldResultRows = oldSnap.exists() ? oldSnap.data()?.weeklyRows || [] : [];
+        if (!newSnap.exists()) {
+          Alert.alert("Sin datos", `No hay showtimes guardados para la semana ${selectedWeekStart}. Por favor sincronizá la programación primero.`);
+          setLoading(false);
+          return;
         }
+        const newResultRows = newSnap.data()?.sessions || [];
+
+        // 2. Fetch old week showtimes from Cinemark API (showtimes collection)
+        setStatusText("Obteniendo showtimes semana vieja...");
+        const oldDocRef = doc(db, CINES_COLLECTION, cineId, "showtimes", previousWeekStart);
+        const oldSnap = await getDoc(oldDocRef);
+        const oldResultRows = oldSnap.exists() ? oldSnap.data()?.sessions || [] : [];
 
         setStatusText("Comparando programaciones...");
 
         // Build oldMoviesSchedule to check if they only have showtimes on Wednesday
         const oldMoviesSchedule: Record<string, Record<WeekdayKey, number>> = {};
 
-        if (dbSubSource === "api") {
-          oldResultRows.forEach((session: any) => {
-            const formatStr = (session.sessionFormat || "").toUpperCase().includes("3D") ? "3D" : "2D";
-            const langName = (session.language?.name || session.language || "").toUpperCase();
-            let langStr = "CAS";
-            if (langName.includes("SUB") || langName.includes("ING") || langName.includes("ORIG")) {
-              langStr = "SUB";
-            }
+        oldResultRows.forEach((session: any) => {
+          const formatStr = (session.sessionFormat || "").toUpperCase().includes("3D") ? "3D" : "2D";
+          const langName = (session.language?.name || session.language || "").toUpperCase();
+          let langStr = "CAS";
+          if (langName.includes("SUB") || langName.includes("ING") || langName.includes("ORIG")) {
+            langStr = "SUB";
+          }
 
-            const movieTitle = `${session.movieName} ${formatStr} ${langStr}`.toUpperCase();
-            const compName = cleanTitleForComparison(movieTitle);
+          const movieTitle = `${session.movieName} ${formatStr} ${langStr}`.toUpperCase();
+          const compName = cleanTitleForComparison(movieTitle);
 
-            if (!oldMoviesSchedule[compName]) {
-              oldMoviesSchedule[compName] = {
-                jueves: 0, viernes: 0, sabado: 0, domingo: 0, lunes: 0, martes: 0, miercoles: 0
-              };
-            }
+          if (!oldMoviesSchedule[compName]) {
+            oldMoviesSchedule[compName] = {
+              jueves: 0, viernes: 0, sabado: 0, domingo: 0, lunes: 0, martes: 0, miercoles: 0
+            };
+          }
 
-            const displayDate = session.sessionDisplayDate || (session.sessionDateTime ? session.sessionDateTime.substring(0, 10) : "");
-            if (displayDate) {
-              const dayKey = getWeekdayKeyFromDate(displayDate);
-              oldMoviesSchedule[compName][dayKey] += 1;
-            }
-          });
-        } else {
-          oldResultRows.forEach((row: any) => {
-            const compName = cleanTitleForComparison(row.pelicula);
-            if (!oldMoviesSchedule[compName]) {
-              oldMoviesSchedule[compName] = {
-                jueves: 0, viernes: 0, sabado: 0, domingo: 0, lunes: 0, martes: 0, miercoles: 0
-              };
-            }
-            if (row.horariosPorDia) {
-              Object.keys(row.horariosPorDia).forEach((dayKey) => {
-                const times = row.horariosPorDia[dayKey as WeekdayKey] || [];
-                oldMoviesSchedule[compName][dayKey as WeekdayKey] += times.length;
-              });
-            }
-          });
-        }
+          const displayDate = session.sessionDisplayDate || (session.sessionDateTime ? session.sessionDateTime.substring(0, 10) : "");
+          if (displayDate) {
+            const dayKey = getWeekdayKeyFromDate(displayDate);
+            oldMoviesSchedule[compName][dayKey] += 1;
+          }
+        });
 
         // Build oldTitles set
         const oldTitles = new Set<string>();
@@ -762,42 +721,28 @@ export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: b
         // Build newMoviesMap
         const newMoviesMap: Record<string, { calificacion: string; salas: Set<number> }> = {};
 
-        if (dbSubSource === "api") {
-          newResultRows.forEach((session: any) => {
-            const formatStr = (session.sessionFormat || "").toUpperCase().includes("3D") ? "3D" : "2D";
-            const langName = (session.language?.name || session.language || "").toUpperCase();
-            let langStr = "CAS";
-            if (langName.includes("SUB") || langName.includes("ING") || langName.includes("ORIG")) {
-              langStr = "SUB";
-            }
-            const movieTitle = `${session.movieName} ${formatStr} ${langStr}`.toUpperCase();
-            const compName = cleanTitleForComparison(movieTitle);
+        newResultRows.forEach((session: any) => {
+          const formatStr = (session.sessionFormat || "").toUpperCase().includes("3D") ? "3D" : "2D";
+          const langName = (session.language?.name || session.language || "").toUpperCase();
+          let langStr = "CAS";
+          if (langName.includes("SUB") || langName.includes("ING") || langName.includes("ORIG")) {
+            langStr = "SUB";
+          }
+          const movieTitle = `${session.movieName} ${formatStr} ${langStr}`.toUpperCase();
+          const compName = cleanTitleForComparison(movieTitle);
 
-            if (!newMoviesMap[compName]) {
-              const rating = session.tags?.[0]?.label || "";
-              newMoviesMap[compName] = {
-                calificacion: rating,
-                salas: new Set<number>(),
-              };
-            }
-            const salaNum = Number(session.theaterRoom);
-            if (!isNaN(salaNum)) {
-              newMoviesMap[compName].salas.add(salaNum);
-            }
-          });
-        } else {
-          newResultRows.forEach((row: any) => {
-            const originalName = row.pelicula.trim().toUpperCase();
-            const compName = cleanTitleForComparison(originalName);
-            if (!newMoviesMap[compName]) {
-              newMoviesMap[compName] = {
-                calificacion: row.calificacion || "",
-                salas: new Set<number>(),
-              };
-            }
-            newMoviesMap[compName].salas.add(Number(row.sala));
-          });
-        }
+          if (!newMoviesMap[compName]) {
+            const rating = session.tags?.[0]?.label || "";
+            newMoviesMap[compName] = {
+              calificacion: rating,
+              salas: new Set<number>(),
+            };
+          }
+          const salaNum = Number(session.theaterRoom);
+          if (!isNaN(salaNum)) {
+            newMoviesMap[compName].salas.add(salaNum);
+          }
+        });
 
         // Find estrenos
         const detectedEstrenos: EstrenoMovie[] = [];
@@ -1302,26 +1247,6 @@ export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: b
           </View>
         ) : (
           <View style={{ gap: 12, marginBottom: THEME.spacing.lg }}>
-            {/* Database Sub-Source Tabs */}
-            <View style={[s.tabContainer, { marginBottom: 6, backgroundColor: COLORS.bg }]}>
-              <Pressable
-                style={[s.tabButton, dbSubSource === "servicios" && s.tabButtonActive]}
-                onPress={() => setDbSubSource("servicios")}
-              >
-                <Text style={[s.tabButtonText, dbSubSource === "servicios" && s.tabButtonTextActive, { fontSize: 11 }]}>
-                  📋 Servicios Programación
-                </Text>
-              </Pressable>
-              <Pressable
-                style={[s.tabButton, dbSubSource === "api" && s.tabButtonActive]}
-                onPress={() => setDbSubSource("api")}
-              >
-                <Text style={[s.tabButtonText, dbSubSource === "api" && s.tabButtonTextActive, { fontSize: 11 }]}>
-                  🌐 API de Cinemark
-                </Text>
-              </Pressable>
-            </View>
-
             {/* Week Selector Bar */}
             {(() => {
               const currentIndex = availableWeeks.indexOf(selectedWeekStart);
