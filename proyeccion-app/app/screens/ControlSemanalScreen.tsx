@@ -143,6 +143,7 @@ export default function ControlSemanalScreen({ readOnly = false }: { readOnly?: 
 
   // Configuración de autollenado de horas de lámpara
   const [autollenado, setAutollenado] = useState<boolean>(true);
+  const [vidaUtil4500, setVidaUtil4500] = useState<string>("1000");
   const [vidaUtil4000, setVidaUtil4000] = useState<string>("1000");
   const [vidaUtil3000, setVidaUtil3000] = useState<string>("3000");
   const [vidaUtil2200, setVidaUtil2200] = useState<string>("2500");
@@ -166,6 +167,7 @@ export default function ControlSemanalScreen({ readOnly = false }: { readOnly?: 
   // Helper para obtener vida útil predeterminada de la lámpara
   const getVidaUtil = (potenciaStr: string) => {
     const p = String(potenciaStr || "").toLowerCase();
+    if (p.includes("4500")) return parseInt(vidaUtil4500, 10) || 1000;
     if (p.includes("4000")) return parseInt(vidaUtil4000, 10) || 1000;
     if (p.includes("3000")) return parseInt(vidaUtil3000, 10) || 3000;
     if (p.includes("2200")) return parseInt(vidaUtil2200, 10) || 2500;
@@ -222,6 +224,7 @@ export default function ControlSemanalScreen({ readOnly = false }: { readOnly?: 
     (async () => {
       try {
         const localAuto = await AsyncStorage.getItem("cs_config_auto");
+        const local4500 = await AsyncStorage.getItem("cs_config_4500");
         const local4000 = await AsyncStorage.getItem("cs_config_4000");
         const local3000 = await AsyncStorage.getItem("cs_config_3000");
         const local2200 = await AsyncStorage.getItem("cs_config_2200");
@@ -229,6 +232,7 @@ export default function ControlSemanalScreen({ readOnly = false }: { readOnly?: 
         const local1200 = await AsyncStorage.getItem("cs_config_1200");
 
         if (localAuto !== null) setAutollenado(localAuto === "true");
+        if (local4500 !== null) setVidaUtil4500(local4500);
         if (local4000 !== null) setVidaUtil4000(local4000);
         if (local3000 !== null) setVidaUtil3000(local3000);
         if (local2200 !== null) setVidaUtil2200(local2200);
@@ -241,6 +245,7 @@ export default function ControlSemanalScreen({ readOnly = false }: { readOnly?: 
         if (snap.exists()) {
           const data = snap.data();
           if (data.autollenado !== undefined) setAutollenado(!!data.autollenado);
+          if (data.vidaUtil4500 !== undefined) setVidaUtil4500(String(data.vidaUtil4500));
           if (data.vidaUtil4000 !== undefined) setVidaUtil4000(String(data.vidaUtil4000));
           if (data.vidaUtil3000 !== undefined) setVidaUtil3000(String(data.vidaUtil3000));
           if (data.vidaUtil2200 !== undefined) setVidaUtil2200(String(data.vidaUtil2200));
@@ -257,6 +262,7 @@ export default function ControlSemanalScreen({ readOnly = false }: { readOnly?: 
     if (!cineId) return;
     setSavingConfig(true);
     try {
+      const v4500 = parseInt(vidaUtil4500, 10);
       const v4000 = parseInt(vidaUtil4000, 10);
       const v3000 = parseInt(vidaUtil3000, 10);
       const v2200 = parseInt(vidaUtil2200, 10);
@@ -264,6 +270,7 @@ export default function ControlSemanalScreen({ readOnly = false }: { readOnly?: 
       const v1200 = parseInt(vidaUtil1200, 10);
 
       if (
+        isNaN(v4500) || v4500 <= 0 ||
         isNaN(v4000) || v4000 <= 0 ||
         isNaN(v3000) || v3000 <= 0 ||
         isNaN(v2200) || v2200 <= 0 ||
@@ -276,6 +283,7 @@ export default function ControlSemanalScreen({ readOnly = false }: { readOnly?: 
       }
 
       await AsyncStorage.setItem("cs_config_auto", String(autollenado));
+      await AsyncStorage.setItem("cs_config_4500", String(v4500));
       await AsyncStorage.setItem("cs_config_4000", String(v4000));
       await AsyncStorage.setItem("cs_config_3000", String(v3000));
       await AsyncStorage.setItem("cs_config_2200", String(v2200));
@@ -284,6 +292,7 @@ export default function ControlSemanalScreen({ readOnly = false }: { readOnly?: 
 
       await setDoc(doc(db, CINES_COLLECTION, cineId, "config", "controles_semanales"), {
         autollenado,
+        vidaUtil4500: v4500,
         vidaUtil4000: v4000,
         vidaUtil3000: v3000,
         vidaUtil2200: v2200,
@@ -1646,6 +1655,16 @@ export default function ControlSemanalScreen({ readOnly = false }: { readOnly?: 
                 <MaterialCommunityIcons name={autollenado ? "checkbox-marked" : "checkbox-blank-outline"} size={22} color="#1F497D" />
                 <Text style={s.checkboxRowText}>Aplicar autollenado automático</Text>
               </TouchableOpacity>
+
+              <Text style={s.label}>Vida útil para 4500W (en horas)</Text>
+              <TextInput
+                value={vidaUtil4500}
+                onChangeText={setVidaUtil4500}
+                placeholder="1000"
+                placeholderTextColor={COLORS.muted}
+                style={s.input}
+                keyboardType="numeric"
+              />
 
               <Text style={s.label}>Vida útil para 4000W (en horas)</Text>
               <TextInput
