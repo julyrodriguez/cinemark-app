@@ -7,6 +7,8 @@ import {
   orderBy,
   query,
   where,
+  doc,
+  getDoc,
 } from "@/lib/dbService";
 import React, { useEffect, useMemo, useState } from "react";
 import {
@@ -19,6 +21,7 @@ import {
   Text,
   View,
 } from "react-native";
+import dayjs from "dayjs";
 
 import { getCineConfig } from "../../lib/cineConfig";
 import { CINES_COLLECTION, db } from "../../lib/firebaseConfig";
@@ -43,6 +46,59 @@ const MKT = {
   warningBg: Platform.OS === "web" ? "var(--warning-bg, #fff4d6)" : "#fff4d6",
 };
 
+function getMovieWeekStartForNow(): string {
+  const localDate = new Date(Date.now() - (3 * 60 * 60 * 1000));
+  if (localDate.getUTCHours() < 6) {
+    localDate.setTime(localDate.getTime() - 24 * 60 * 60 * 1000);
+  }
+  const dayNum = localDate.getUTCDay();
+  const daysToSubtract = dayNum <= 3 ? dayNum + 3 : dayNum - 4;
+  const thurDate = new Date(localDate.getTime() - daysToSubtract * 24 * 60 * 60 * 1000);
+  const yyyy = thurDate.getUTCFullYear();
+  const mm = String(thurDate.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(thurDate.getUTCDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function formatWeekRange(weekStart: string): string {
+  if (!weekStart) return "";
+  const [y, m, d] = weekStart.split("-").map(Number);
+  const start = new Date(Date.UTC(y, m - 1, d));
+  const end = new Date(start.getTime() + 6 * 24 * 60 * 60 * 1000);
+  const startD = start.getUTCDate();
+  const startM = start.getUTCMonth() + 1;
+  const endD = end.getUTCDate();
+  const endM = end.getUTCMonth() + 1;
+  return `Semana del ${startD}/${startM} al ${endD}/${endM}`;
+}
+
+const mapShowtimesToMarketingRows = (sessions: any[], weekStart: string): MarketingParsedRow[] => {
+  const rows: MarketingParsedRow[] = [];
+  sessions.forEach((session: any) => {
+    const sala = Number(session.theaterRoom);
+    if (isNaN(sala)) return;
+
+    const formatStr = (session.sessionFormat || "").toUpperCase().includes("3D") ? "3D" : "2D";
+    const langName = (session.language?.name || session.language || "").toUpperCase();
+    let langStr = "CAS";
+    if (langName.includes("SUB") || langName.includes("ING") || langName.includes("ORIG")) {
+      langStr = "SUB";
+    }
+    const movieTitle = `${session.movieName} ${formatStr} ${langStr}`.toUpperCase();
+
+    const displayDate = session.sessionDisplayDate || (session.sessionDateTime ? session.sessionDateTime.substring(0, 10) : "");
+    const isJueves = displayDate === weekStart;
+    const hora = isJueves && session.sessionDateTime ? session.sessionDateTime.substring(11, 16) : null;
+
+    rows.push({
+      sala,
+      pelicula: movieTitle,
+      hora,
+    });
+  });
+  return rows;
+};
+
 type LoadedSheet = {
   name: string;
   rows: MarketingParsedRow[];
@@ -65,7 +121,36 @@ export default function MarketingTab() {
   const [eventos, setEventos] = useState<EventoForPrint[]>([]);
   const [loadingEventos, setLoadingEventos] = useState(true);
 
-  const canCompare = !!prevSheet && !!currSheet && !loadingSalas;
+  const [sourceMode, setSourceMode] = useState<"excel" | "programacion">("excel");
+  const [selectedWeekStart, setSelectedWeekStart] = useState<string>(() => getMovieWeekStartForNow());
+  const [statusText, setStatusText] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const availableWeeks = useMemo(() => {
+    const list: string[] = [];
+    const currentThur = getMovieWeekStartForNow();
+    const [y, m, d] = currentThur.split('-');
+    const thurDate = new Date(Date.UTC(Number(y), Number(m) - 1, Number(d)));
+
+    for (let i = -4; i < 6; i++) {
+      const nextThur = new Date(thurDate.getTime() + i * 7 * 24 * 60 * 60 * 1000);
+      const yyyy = nextThur.getUTCFullYear();
+      const mm = String(nextThur.getUTCMonth() + 1).padStart(2, '0');
+      const dd = String(nextThur.getUTCDate()).padStart(2, '0');
+      list.push(`${yyyy}-${mm}-${dd}`);
+    }
+    return list;
+  }, []);
+
+  const handleModeChange = (mode: "excel" | "programacion") => {
+    setSourceMode(mode);
+    setPrevSheet(null);
+    setCurrSheet(null);
+    setResult(null);
+    setStatusText("");
+  };
+
+  const canCompare = sourceMode === "programacion" ? (!loading && !loadingSalas && !!cineId) : (!!prevSheet && !!currSheet && !loadingSalas);
 
   useEffect(() => {
     let cancelled = false;
@@ -133,7 +218,7 @@ export default function MarketingTab() {
 
         if (cancelled) return;
 
-        const rows: EventoForPrint[] = snap.docs.map((d) => {
+        const rows: EventoForPrint[] = snap.docs.map((d: any) => {
           const data = d.data() as any;
           const diaHora = toDate(data.diaHora);
           const valid = diaHora instanceof Date && !isNaN(diaHora.getTime());
@@ -223,21 +308,91 @@ export default function MarketingTab() {
     }
   }
 
-  function handleCompare() {
-    if (!prevSheet || !currSheet) return;
+  async function handleCompare() {
+    if (sourceMode === "excel") {
+      if (!prevSheet || !currSheet) return;
 
-    try {
-      const compared = compareMarketingWeeks(
-        prevSheet.rows,
-        currSheet.rows,
-        salasCount
-      );
-      setResult(compared);
-    } catch (e: any) {
-      Alert.alert(
-        "Error al comparar",
-        e?.message ?? "No se pudo comparar los excels."
-      );
+      try {
+        const compared = compareMarketingWeeks(
+          prevSheet.rows,
+          currSheet.rows,
+          salasCount
+        );
+        setResult(compared);
+      } catch (e: any) {
+        Alert.alert(
+          "Error al comparar",
+          e?.message ?? "No se pudo comparar los excels."
+        );
+      }
+    } else {
+      // Programación (API Cinemark)
+      if (!cineId) return;
+
+      try {
+        setLoading(true);
+        setStatusText("Buscando programación de la semana...");
+
+        const previousWeekStart = dayjs(selectedWeekStart).subtract(7, "day").format("YYYY-MM-DD");
+
+        setStatusText("Obteniendo showtimes semana actual...");
+        const newDocRef = doc(db, CINES_COLLECTION, cineId, "showtimes", selectedWeekStart);
+        const newSnap = await getDoc(newDocRef);
+
+        if (!newSnap.exists()) {
+          Alert.alert(
+            "Sin datos",
+            `No hay showtimes guardados para la semana ${selectedWeekStart}. Por favor sincronizá la programación primero.`
+          );
+          setLoading(false);
+          setStatusText("");
+          return;
+        }
+
+        const newResultRows = newSnap.data()?.sessions || [];
+
+        setStatusText("Obteniendo showtimes semana anterior...");
+        const oldDocRef = doc(db, CINES_COLLECTION, cineId, "showtimes", previousWeekStart);
+        const oldSnap = await getDoc(oldDocRef);
+        const oldResultRows = oldSnap.exists() ? oldSnap.data()?.sessions || [] : [];
+
+        setStatusText("Procesando datos de la API...");
+
+        const currRows = mapShowtimesToMarketingRows(newResultRows, selectedWeekStart);
+        const prevRows = mapShowtimesToMarketingRows(oldResultRows, previousWeekStart);
+
+        const loadedPrev = {
+          name: `API (${formatWeekRange(previousWeekStart)})`,
+          rows: prevRows,
+        };
+        const loadedCurr = {
+          name: `API (${formatWeekRange(selectedWeekStart)})`,
+          rows: currRows,
+        };
+
+        setPrevSheet(loadedPrev);
+        setCurrSheet(loadedCurr);
+
+        setStatusText("Comparando programaciones...");
+
+        const compared = compareMarketingWeeks(
+          prevRows,
+          currRows,
+          salasCount
+        );
+
+        setResult(compared);
+        setStatusText(`Comparación finalizada. Se procesaron ${currRows.length} sesiones.`);
+      } catch (e: any) {
+        console.error(e);
+        Alert.alert(
+          "Error de comparación",
+          e?.message ?? "Ocurrió un error al procesar y comparar las programaciones de la API."
+        );
+        setStatusText("Error en la comparación.");
+      } finally {
+        setLoading(false);
+      }
     }
   }
 
@@ -361,61 +516,145 @@ export default function MarketingTab() {
 
       {/* TARJETA PRINCIPAL */}
       <View style={s.card}>
-        {/* SECCIÓN 1: ARCHIVO SEMANA ANTERIOR */}
-        <View style={s.section}>
-          <Text style={s.sectionLabel}>Semana Anterior</Text>
+        {/* Selector de origen (Excel vs Programación) */}
+        <View style={s.tabContainer}>
           <Pressable
-            style={[s.filePicker, !!prevSheet && s.filePickerActive]}
-            onPress={() => pickExcel("prev")}
+            style={[s.tabButton, sourceMode === "excel" && s.tabButtonActive]}
+            onPress={() => handleModeChange("excel")}
           >
-            <View style={s.filePickerIcon}>
-              {loadingPick === "prev" ? (
-                <ActivityIndicator color={COLORS.primary} size="small" />
-              ) : (
-                <Text style={{ fontSize: 20 }}>📊</Text>
-              )}
-            </View>
-            <View style={s.filePickerInfo}>
-              <Text style={s.filePickerText}>
-                {prevSheet ? prevSheet.name : "Seleccionar Excel"}
-              </Text>
-              <Text style={s.filePickerSubtext}>
-                {prevSheet
-                  ? `${prevSheet.rows.length} filas válidas`
-                  : "Formatos .xlsx, .xls, .csv"}
-              </Text>
-            </View>
+            <Text style={[s.tabButtonText, sourceMode === "excel" && s.tabButtonTextActive]}>
+              📁 Cargar Excels
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[s.tabButton, sourceMode === "programacion" && s.tabButtonActive]}
+            onPress={() => handleModeChange("programacion")}
+          >
+            <Text style={[s.tabButtonText, sourceMode === "programacion" && s.tabButtonTextActive]}>
+              🔌 Programación (API)
+            </Text>
           </Pressable>
         </View>
 
-        <View style={s.divider} />
+        {sourceMode === "excel" ? (
+          <>
+            {/* SECCIÓN 1: ARCHIVO SEMANA ANTERIOR */}
+            <View style={s.section}>
+              <Text style={s.sectionLabel}>Semana Anterior</Text>
+              <Pressable
+                style={[s.filePicker, !!prevSheet && s.filePickerActive]}
+                onPress={() => pickExcel("prev")}
+              >
+                <View style={s.filePickerIcon}>
+                  {loadingPick === "prev" ? (
+                    <ActivityIndicator color={COLORS.primary} size="small" />
+                  ) : (
+                    <Text style={{ fontSize: 20 }}>📊</Text>
+                  )}
+                </View>
+                <View style={s.filePickerInfo}>
+                  <Text style={s.filePickerText}>
+                    {prevSheet ? prevSheet.name : "Seleccionar Excel"}
+                  </Text>
+                  <Text style={s.filePickerSubtext}>
+                    {prevSheet
+                      ? `${prevSheet.rows.length} filas válidas`
+                      : "Formatos .xlsx, .xls, .csv"}
+                  </Text>
+                </View>
+              </Pressable>
+            </View>
 
-        {/* SECCIÓN 2: ARCHIVO SEMANA ACTUAL */}
-        <View style={s.section}>
-          <Text style={s.sectionLabel}>Semana Actual</Text>
-          <Pressable
-            style={[s.filePicker, !!currSheet && s.filePickerActive]}
-            onPress={() => pickExcel("curr")}
-          >
-            <View style={s.filePickerIcon}>
-              {loadingPick === "curr" ? (
-                <ActivityIndicator color={COLORS.primary} size="small" />
-              ) : (
-                <Text style={{ fontSize: 20 }}>📊</Text>
-              )}
+            <View style={s.divider} />
+
+            {/* SECCIÓN 2: ARCHIVO SEMANA ACTUAL */}
+            <View style={s.section}>
+              <Text style={s.sectionLabel}>Semana Actual</Text>
+              <Pressable
+                style={[s.filePicker, !!currSheet && s.filePickerActive]}
+                onPress={() => pickExcel("curr")}
+              >
+                <View style={s.filePickerIcon}>
+                  {loadingPick === "curr" ? (
+                    <ActivityIndicator color={COLORS.primary} size="small" />
+                  ) : (
+                    <Text style={{ fontSize: 20 }}>📊</Text>
+                  )}
+                </View>
+                <View style={s.filePickerInfo}>
+                  <Text style={s.filePickerText}>
+                    {currSheet ? currSheet.name : "Seleccionar Excel"}
+                  </Text>
+                  <Text style={s.filePickerSubtext}>
+                    {currSheet
+                      ? `${currSheet.rows.length} filas válidas`
+                      : "Formatos .xlsx, .xls, .csv"}
+                  </Text>
+                </View>
+              </Pressable>
             </View>
-            <View style={s.filePickerInfo}>
-              <Text style={s.filePickerText}>
-                {currSheet ? currSheet.name : "Seleccionar Excel"}
-              </Text>
-              <Text style={s.filePickerSubtext}>
-                {currSheet
-                  ? `${currSheet.rows.length} filas válidas`
-                  : "Formatos .xlsx, .xls, .csv"}
-              </Text>
-            </View>
-          </Pressable>
-        </View>
+          </>
+        ) : (
+          <View style={{ paddingVertical: 8 }}>
+            <Text style={s.sectionLabel}>Seleccionar Semana Cinematográfica</Text>
+            <Text style={[s.filePickerSubtext, { marginBottom: 12 }]}>
+              Se comparará la programación de la semana seleccionada (semana actual) contra la semana anterior en base a la API sincronizada.
+            </Text>
+            {(() => {
+              const currentIndex = availableWeeks.indexOf(selectedWeekStart);
+              if (currentIndex === -1) return null;
+              const canGoPrev = currentIndex > 0;
+              const canGoNext = currentIndex < availableWeeks.length - 1;
+              const currentWeek = getMovieWeekStartForNow();
+              const isCurrent = selectedWeekStart === currentWeek;
+              
+              let weekLabel = formatWeekRange(selectedWeekStart);
+              if (isCurrent) {
+                weekLabel += " (Actual)";
+              } else if (selectedWeekStart > currentWeek) {
+                weekLabel += " (Preventa)";
+              } else if (selectedWeekStart < currentWeek) {
+                weekLabel += " (Pasada)";
+              }
+              
+              return (
+                <View style={s.singleWeekSelectorContainer}>
+                  <Pressable
+                    disabled={!canGoPrev}
+                    onPress={() => {
+                      setSelectedWeekStart(availableWeeks[currentIndex - 1]);
+                      setResult(null);
+                      setPrevSheet(null);
+                      setCurrSheet(null);
+                      setStatusText("");
+                    }}
+                    style={[s.arrowButton, !canGoPrev && s.arrowButtonDisabled]}
+                  >
+                    <Text style={{ fontSize: 14, fontWeight: "bold", color: canGoPrev ? COLORS.text : COLORS.muted }}>◀</Text>
+                  </Pressable>
+                  
+                  <View style={s.singleWeekLabelContainer}>
+                    <Text style={s.singleWeekLabelText}>{weekLabel}</Text>
+                  </View>
+      
+                  <Pressable
+                    disabled={!canGoNext}
+                    onPress={() => {
+                      setSelectedWeekStart(availableWeeks[currentIndex + 1]);
+                      setResult(null);
+                      setPrevSheet(null);
+                      setCurrSheet(null);
+                      setStatusText("");
+                    }}
+                    style={[s.arrowButton, !canGoNext && s.arrowButtonDisabled]}
+                  >
+                    <Text style={{ fontSize: 14, fontWeight: "bold", color: canGoNext ? COLORS.text : COLORS.muted }}>▶</Text>
+                  </Pressable>
+                </View>
+              );
+            })()}
+          </View>
+        )}
 
         <View style={s.divider} />
 
@@ -439,6 +678,19 @@ export default function MarketingTab() {
         </View>
       </View>
 
+      {!!statusText && (
+        <Text style={{
+          textAlign: "center",
+          fontSize: 12,
+          color: COLORS.muted,
+          marginTop: -4,
+          marginBottom: 12,
+          fontStyle: "italic"
+        }}>
+          {statusText}
+        </Text>
+      )}
+
       {/* ACCIÓN PRINCIPAL */}
       <View style={s.actionArea}>
         <Pressable
@@ -447,10 +699,13 @@ export default function MarketingTab() {
           disabled={!canCompare}
         >
           <Text style={s.mainButtonText}>
-            {loadingSalas ? "CARGANDO SALAS..." : "COMPARAR SEMANAS"}
+            {loadingSalas ? "CARGANDO SALAS..." : (loading ? "OBTENIENDO DATOS..." : "COMPARAR SEMANAS")}
           </Text>
           <Text style={{ color: "rgba(255,255,255,0.6)", fontSize: 10, fontWeight: "600" }}>
-            {prevSheet && currSheet ? "Archivos listos" : "Cargar ambos archivos"}
+            {sourceMode === "programacion"
+              ? (loading ? "Conectando con la base de datos..." : `Semana: ${formatWeekRange(selectedWeekStart)}`)
+              : (prevSheet && currSheet ? "Archivos listos" : "Cargar ambos archivos")
+            }
           </Text>
         </Pressable>
 
@@ -680,6 +935,72 @@ export default function MarketingTab() {
 const s = StyleSheet.create({
   main: { flex: 1, backgroundColor: COLORS.bg },
   content: { padding: 16, gap: 16, paddingBottom: 40 },
+
+  tabContainer: {
+    flexDirection: "row",
+    backgroundColor: COLORS.bg,
+    borderRadius: 12,
+    padding: 4,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  tabButton: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 8,
+    flexDirection: "row",
+  },
+  tabButtonActive: {
+    backgroundColor: COLORS.card,
+    ...THEME.shadow.soft,
+  },
+  tabButtonText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: COLORS.muted,
+  },
+  tabButtonTextActive: {
+    color: COLORS.primary,
+  },
+  singleWeekSelectorContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.card,
+    marginTop: 6,
+    gap: 12,
+  },
+  singleWeekLabelContainer: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: COLORS.bg,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    minWidth: 220,
+    alignItems: "center",
+  },
+  singleWeekLabelText: {
+    fontSize: 12,
+    color: COLORS.text,
+    fontWeight: "bold",
+  },
+  arrowButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    backgroundColor: COLORS.bg,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  arrowButtonDisabled: {
+    opacity: 0.4,
+  },
 
   // Card base — matches ProgramacionTab
   card: {
