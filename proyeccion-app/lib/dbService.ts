@@ -683,7 +683,7 @@ export function httpsCallable(functionsInstance: any, functionName: string) {
       }
 
       const result = await res.json();
-      return result;
+      return { data: result };
     } catch (err: any) {
       console.error(`[DB Service] Falló la llamada a la función ${functionName} en la API:`, err.message);
       console.warn(`[DB Service] Intentando fallback directo a Firebase Cloud Functions para ${functionName}...`);
