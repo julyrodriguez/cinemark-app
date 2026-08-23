@@ -3010,7 +3010,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
               >
                 <View style={{ flexDirection: isMobile ? "column" : "row", gap: 24, width: "100%" }}>
                   {/* Columna Izquierda: Poster y Detalles */}
-                  <View style={{ flex: 1, minWidth: isMobile ? "100%" : 320 }}>
+                  <View style={{ flex: isMobile ? undefined : 1, minWidth: isMobile ? "100%" : 320 }}>
                     {/* Fila del Poster y Cabecera */}
                     <View style={{ flexDirection: "row", gap: 14, marginBottom: 20 }}>
                       {selectedShow.posterUrl ? (
@@ -3108,7 +3108,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                   {/* Columna Derecha: Mapa de Asientos (solo si es simulada) */}
                   {selectedShow.isSimulated && (
                     <View style={{ 
-                      flex: 1.7, 
+                      flex: isMobile ? undefined : 1.7, 
                       minWidth: isMobile ? "100%" : 360,
                       borderLeftWidth: isMobile ? 0 : 1, 
                       borderLeftColor: COLORS.border, 
