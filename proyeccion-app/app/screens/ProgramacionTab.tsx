@@ -201,6 +201,8 @@ function mapApiSessionsToWeeklyRows(sessions: any[]): WeeklyMovieRow[] {
           miercoles: [],
         },
       };
+    } else if (!groupMap[groupKey].calificacion) {
+      groupMap[groupKey].calificacion = session.rating || session.calificacion || session.tags?.[0]?.label || "";
     }
 
     let dtStr = session.sessionDateTime || "";

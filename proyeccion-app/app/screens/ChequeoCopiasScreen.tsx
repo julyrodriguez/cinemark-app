@@ -737,6 +737,8 @@ export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: b
               calificacion: rating,
               salas: new Set<number>(),
             };
+          } else if (!newMoviesMap[compName].calificacion) {
+            newMoviesMap[compName].calificacion = session.rating || session.calificacion || session.tags?.[0]?.label || "";
           }
           const salaNum = Number(session.theaterRoom);
           if (!isNaN(salaNum)) {
