@@ -28,6 +28,15 @@ import { mockShowtimesData } from "./mockShowtimes";
 import { getRoomLayout, SeatInfo, RoomLayout, FirestoreSalaLayout } from "./ControlSalasScreen";
 import { getCineConfig } from "../../lib/cineConfig";
 
+function isMarketingTag(tag: string): boolean {
+  if (!tag) return true;
+  const t = tag.toUpperCase().trim();
+  return t.includes("CONTENIDO ALTERNATIVO") || 
+         t.includes("CON RESTRICCIONES") || 
+         t.includes("SIN PROMOCIONES") ||
+         t === "";
+}
+
 // Types
 interface DailyShow {
   sala: number;
@@ -1322,8 +1331,12 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
           // Extract a clean rating from tags or default empty
           let rating = "";
           for (const s of group) {
-            rating = s.rating || s.calificacion || s.tags?.[0]?.label || "";
-            if (rating) break;
+            const r = s.rating || s.calificacion || s.tags?.[0]?.label || "";
+            if (r) {
+              if (!rating || (isMarketingTag(rating) && !isMarketingTag(r))) {
+                rating = r;
+              }
+            }
           }
 
           list.push({
@@ -1531,8 +1544,12 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
               show.posterUrl = matchingSessions[0].posterUrl;
               let sessionRating = "";
               for (const s of matchingSessions) {
-                sessionRating = s.rating || s.calificacion || s.tags?.[0]?.label || "";
-                if (sessionRating) break;
+                const r = s.rating || s.calificacion || s.tags?.[0]?.label || "";
+                if (r) {
+                  if (!sessionRating || (isMarketingTag(sessionRating) && !isMarketingTag(r))) {
+                    sessionRating = r;
+                  }
+                }
               }
               if (sessionRating) {
                 show.calificacion = sessionRating;

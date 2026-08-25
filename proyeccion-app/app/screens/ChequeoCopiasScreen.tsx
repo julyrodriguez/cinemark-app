@@ -37,6 +37,15 @@ import {
   LOGO_B64,
 } from "../../lib/programacion/copias_images";
 
+function isMarketingTag(tag: string): boolean {
+  if (!tag) return true;
+  const t = tag.toUpperCase().trim();
+  return t.includes("CONTENIDO ALTERNATIVO") || 
+         t.includes("CON RESTRICCIONES") || 
+         t.includes("SIN PROMOCIONES") ||
+         t === "";
+}
+
 // 6 framing patterns SVGs representing projection framing formats
 export const FRAMING_SVGS: Record<string, string> = {
   framing_1: `
@@ -731,14 +740,17 @@ export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: b
           const movieTitle = `${session.movieName} ${formatStr} ${langStr}`.toUpperCase();
           const compName = cleanTitleForComparison(movieTitle);
 
+          const currentRating = session.rating || session.calificacion || session.tags?.[0]?.label || "";
           if (!newMoviesMap[compName]) {
-            const rating = session.rating || session.calificacion || session.tags?.[0]?.label || "";
             newMoviesMap[compName] = {
-              calificacion: rating,
+              calificacion: currentRating,
               salas: new Set<number>(),
             };
-          } else if (!newMoviesMap[compName].calificacion) {
-            newMoviesMap[compName].calificacion = session.rating || session.calificacion || session.tags?.[0]?.label || "";
+          } else {
+            const existing = newMoviesMap[compName].calificacion;
+            if (!existing || (isMarketingTag(existing) && !isMarketingTag(currentRating))) {
+              newMoviesMap[compName].calificacion = currentRating;
+            }
           }
           const salaNum = Number(session.theaterRoom);
           if (!isNaN(salaNum)) {

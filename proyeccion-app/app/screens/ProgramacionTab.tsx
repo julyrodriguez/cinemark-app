@@ -164,6 +164,15 @@ function formatWeekRange(weekStart: string): string {
   return `Semana del ${startD}/${startM} al ${endD}/${endM}`;
 }
 
+function isMarketingTag(tag: string): boolean {
+  if (!tag) return true;
+  const t = tag.toUpperCase().trim();
+  return t.includes("CONTENIDO ALTERNATIVO") || 
+         t.includes("CON RESTRICCIONES") || 
+         t.includes("SIN PROMOCIONES") ||
+         t === "";
+}
+
 function mapApiSessionsToWeeklyRows(sessions: any[]): WeeklyMovieRow[] {
   const groupMap: Record<string, {
     sala: number;
@@ -185,12 +194,13 @@ function mapApiSessionsToWeeklyRows(sessions: any[]): WeeklyMovieRow[] {
 
     const pelicula = `${session.movieName} ${formatStr} ${langStr}`.toUpperCase();
     const groupKey = `${salaNum}_${pelicula}`;
+    const currentRating = session.rating || session.calificacion || session.tags?.[0]?.label || "";
 
     if (!groupMap[groupKey]) {
       groupMap[groupKey] = {
         sala: salaNum,
         pelicula,
-        calificacion: session.rating || session.calificacion || session.tags?.[0]?.label || "",
+        calificacion: currentRating,
         horariosPorDia: {
           jueves: [],
           viernes: [],
@@ -201,8 +211,11 @@ function mapApiSessionsToWeeklyRows(sessions: any[]): WeeklyMovieRow[] {
           miercoles: [],
         },
       };
-    } else if (!groupMap[groupKey].calificacion) {
-      groupMap[groupKey].calificacion = session.rating || session.calificacion || session.tags?.[0]?.label || "";
+    } else {
+      const existing = groupMap[groupKey].calificacion;
+      if (!existing || (isMarketingTag(existing) && !isMarketingTag(currentRating))) {
+        groupMap[groupKey].calificacion = currentRating;
+      }
     }
 
     let dtStr = session.sessionDateTime || "";
