@@ -121,8 +121,164 @@ function downloadArrayBufferOnWeb(buffer: ArrayBuffer, fileName: string) {
   URL.revokeObjectURL(url);
 }
 
+// Get start of movie week (Thursday) for a given date in yyyy-mm-dd
+function getMovieWeekStart(date: Date): string {
+  const localDate = new Date(date.getTime() - (3 * 60 * 60 * 1000));
+  if (localDate.getUTCHours() < 6) {
+    localDate.setTime(localDate.getTime() - 24 * 60 * 60 * 1000);
+  }
+  const dayNum = localDate.getUTCDay();
+  const daysToSubtract = dayNum <= 3 ? dayNum + 3 : dayNum - 4;
+  const thurDate = new Date(localDate.getTime() - daysToSubtract * 24 * 60 * 60 * 1000);
+  const yyyy = thurDate.getUTCFullYear();
+  const mm = String(thurDate.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(thurDate.getUTCDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+// Get start of movie week (Thursday) for the current date
+function getMovieWeekStartForNow(): string {
+  const localDate = new Date(Date.now() - (3 * 60 * 60 * 1000));
+  if (localDate.getUTCHours() < 6) {
+    localDate.setTime(localDate.getTime() - 24 * 60 * 60 * 1000);
+  }
+  const dayNum = localDate.getUTCDay();
+  const daysToSubtract = dayNum <= 3 ? dayNum + 3 : dayNum - 4;
+  const thurDate = new Date(localDate.getTime() - daysToSubtract * 24 * 60 * 60 * 1000);
+  const yyyy = thurDate.getUTCFullYear();
+  const mm = String(thurDate.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(thurDate.getUTCDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+// Format week start date to range label, e.g., "Semana del 25/6 a 01/7"
+function formatWeekRange(weekStart: string): string {
+  if (!weekStart) return "";
+  const [y, m, d] = weekStart.split("-").map(Number);
+  const start = new Date(Date.UTC(y, m - 1, d));
+  const end = new Date(start.getTime() + 6 * 24 * 60 * 60 * 1000);
+  const startD = start.getUTCDate();
+  const startM = start.getUTCMonth() + 1;
+  const endD = end.getUTCDate();
+  const endM = end.getUTCMonth() + 1;
+  return `Semana del ${startD}/${startM} al ${endD}/${endM}`;
+}
+
+function mapApiSessionsToWeeklyRows(sessions: any[]): WeeklyMovieRow[] {
+  const groupMap: Record<string, {
+    sala: number;
+    pelicula: string;
+    calificacion: string;
+    horariosPorDia: Record<WeekdayKey, string[]>;
+  }> = {};
+
+  sessions.forEach((session: any) => {
+    const salaNum = Number(session.theaterRoom);
+    if (isNaN(salaNum)) return;
+
+    const formatStr = (session.sessionFormat || "").toUpperCase().includes("3D") ? "3D" : "2D";
+    const langName = (session.language?.name || session.language || "").toUpperCase();
+    let langStr = "CAS";
+    if (langName.includes("SUB") || langName.includes("ING") || langName.includes("ORIG")) {
+      langStr = "SUB";
+    }
+
+    const pelicula = `${session.movieName} ${formatStr} ${langStr}`.toUpperCase();
+    const groupKey = `${salaNum}_${pelicula}`;
+
+    if (!groupMap[groupKey]) {
+      groupMap[groupKey] = {
+        sala: salaNum,
+        pelicula,
+        calificacion: session.tags?.[0]?.label || "",
+        horariosPorDia: {
+          jueves: [],
+          viernes: [],
+          sabado: [],
+          domingo: [],
+          lunes: [],
+          martes: [],
+          miercoles: [],
+        },
+      };
+    }
+
+    let dtStr = session.sessionDateTime || "";
+    if (dtStr && !dtStr.includes("T") && dtStr.includes(" ")) {
+      dtStr = dtStr.replace(" ", "T");
+    }
+    const utcDate = new Date(dtStr);
+    const arDate = new Date(utcDate.getTime());
+    if (arDate.getUTCHours() < 6) {
+      arDate.setTime(arDate.getTime() - 24 * 60 * 60 * 1000);
+    }
+
+    const dayNum = arDate.getUTCDay();
+    const dayMap: Record<number, WeekdayKey> = {
+      0: "domingo", 1: "lunes", 2: "martes", 3: "miercoles",
+      4: "jueves", 5: "viernes", 6: "sabado"
+    };
+    const sessionDay = dayMap[dayNum];
+
+    const hours = String(arDate.getUTCHours()).padStart(2, '0');
+    const mins = String(arDate.getUTCMinutes()).padStart(2, '0');
+    const inicio = `${hours}:${mins}`;
+
+    const durationMins = (session.runTime || 120) + 15;
+    const endMins = (arDate.getUTCHours() * 60 + arDate.getUTCMinutes() + durationMins) % 1440;
+    const endH = Math.floor(endMins / 60);
+    const endM = endMins % 60;
+    const fin = `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
+
+    const timeRangeStr = `${inicio} - ${fin}`;
+
+    if (!groupMap[groupKey].horariosPorDia[sessionDay].includes(timeRangeStr)) {
+      groupMap[groupKey].horariosPorDia[sessionDay].push(timeRangeStr);
+    }
+  });
+
+  const result = Object.values(groupMap);
+  result.forEach((row) => {
+    (Object.keys(row.horariosPorDia) as WeekdayKey[]).forEach((day) => {
+      row.horariosPorDia[day].sort((a, b) => {
+        const timeA = a.split(" - ")[0];
+        const timeB = b.split(" - ")[0];
+        const minA = Number(timeA.split(":")[0]) * 60 + Number(timeA.split(":")[1]);
+        const minB = Number(timeB.split(":")[0]) * 60 + Number(timeB.split(":")[1]);
+        const adjA = minA < 360 ? minA + 1440 : minA;
+        const adjB = minB < 360 ? minB + 1440 : minB;
+        return adjA - adjB;
+      });
+    });
+  });
+
+  return result.sort((a, b) => {
+    if (a.sala !== b.sala) return a.sala - b.sala;
+    return a.pelicula.localeCompare(b.pelicula);
+  });
+}
+
 export default function ProgramacionTab() {
   const { cineId } = useAuthUser();
+
+  const [sourceMode, setSourceMode] = useState<"file" | "api">("file");
+  const [selectedWeekStart, setSelectedWeekStart] = useState<string>(() => getMovieWeekStartForNow());
+
+  const availableWeeks = useMemo(() => {
+    const list: string[] = [];
+    const currentThur = getMovieWeekStartForNow();
+    const [y, m, d] = currentThur.split('-');
+    const thurDate = new Date(Date.UTC(Number(y), Number(m) - 1, Number(d)));
+
+    for (let i = -4; i < 6; i++) {
+      const nextThur = new Date(thurDate.getTime() + i * 7 * 24 * 60 * 60 * 1000);
+      const yyyy = nextThur.getUTCFullYear();
+      const mm = String(nextThur.getUTCMonth() + 1).padStart(2, '0');
+      const dd = String(nextThur.getUTCDate()).padStart(2, '0');
+      list.push(`${yyyy}-${mm}-${dd}`);
+    }
+    return list;
+  }, []);
 
   const [weeklyUri, setWeeklyUri] = useState<string | null>(null);
   const [weeklyName, setWeeklyName] = useState<string | null>(null);
@@ -163,7 +319,7 @@ export default function ProgramacionTab() {
 
   // Estado para las filas parseadas (si se carga un archivo y se quiere guardar)
   const [loadedWeeklyRows, setLoadedWeeklyRows] = useState<any[] | null>(null);
-  const [loadedWeeklyType, setLoadedWeeklyType] = useState<"excel" | "pdf" | null>(null);
+  const [loadedWeeklyType, setLoadedWeeklyType] = useState<"excel" | "pdf" | "api" | null>(null);
 
   // Estados para el Weekly guardado en Firestore
   const [savedWeekly, setSavedWeekly] = useState<{
@@ -298,6 +454,53 @@ export default function ProgramacionTab() {
       }
     } catch (error) {
       Alert.alert("Error", "No se pudo procesar el archivo seleccionado.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleLoadFromApi() {
+    if (!cineId) return;
+    try {
+      setLoading(true);
+      setStatusText("Obteniendo showtimes desde la API...");
+
+      const docRef = doc(db, CINES_COLLECTION, cineId, "showtimes", selectedWeekStart);
+      const snap = await getDoc(docRef);
+
+      if (!snap.exists()) {
+        Alert.alert(
+          "Sin datos",
+          `No hay showtimes guardados para la semana ${selectedWeekStart}. Por favor sincronizá la programación primero en la sección correspondiente.`
+        );
+        return;
+      }
+
+      const sessions = snap.data()?.sessions || [];
+      if (sessions.length === 0) {
+        Alert.alert("Sin datos", `La programación para la semana ${selectedWeekStart} está vacía.`);
+        return;
+      }
+
+      setStatusText("Procesando programación de la API...");
+      const rows = mapApiSessionsToWeeklyRows(sessions);
+
+      if (rows && rows.length > 0) {
+        setLoadedWeeklyRows(rows);
+        setLoadedWeeklyType("api");
+        setFechaInicioSemana(selectedWeekStart);
+        setWeeklyName(`API Programación ${selectedWeekStart}`);
+        setWeeklyUri("api");
+        setUseSavedWeekly(false);
+        setSummary(null);
+        setStatusText(`Programación API cargada correctamente. Se detectaron ${rows.length} películas.`);
+      } else {
+        setLoadedWeeklyRows(null);
+        setStatusText("No se encontraron sesiones válidas en la programación.");
+      }
+    } catch (err) {
+      console.error(err);
+      Alert.alert("Error", "Ocurrió un error al cargar la programación desde la API.");
     } finally {
       setLoading(false);
     }
@@ -623,67 +826,185 @@ export default function ProgramacionTab() {
       </Pressable>
 
       <View style={s.card}>
-        {/* SECCIÓN 1: ARCHIVO */}
+        {/* SECCIÓN 1: ORIGEN DE DATOS */}
         <View style={s.section}>
-          <Text style={s.sectionLabel}>Archivo Fuente</Text>
+          <Text style={s.sectionLabel}>Origen de Datos</Text>
 
-          {/* Cartel naranja de información PDF */}
-          <View style={s.pdfInfoBanner}>
-            <Text style={s.pdfInfoBannerText}>
-              💡 NUEVO: ¡Ahora también podés cargar el archivo PDF semanal de Vista (`sessionByScreen.pdf`)! Además, ahora el reporte se guarda automáticamente al generar el Excel para no tener que volver a cargarlo si no hay cambios.
-            </Text>
-          </View>
-
-          <View style={{ position: "relative" }}>
+          {/* Selector de origen */}
+          <View style={s.tabContainer}>
             <Pressable
-              style={[s.filePicker, !!weeklyName && s.filePickerActive, { paddingRight: weeklyName ? 48 : 12 }]}
-              onPress={pickWeeklyFile}
+              style={[s.tabButton, sourceMode === "file" && s.tabButtonActive]}
+              onPress={() => setSourceMode("file")}
             >
-              <View style={s.filePickerIcon}>
-                <Text style={{ fontSize: 20 }}>
-                  {weeklyName?.toLowerCase().endsWith(".pdf") ? "📄" : "📊"}
-                </Text>
-              </View>
-              <View style={s.filePickerInfo}>
-                <Text style={s.filePickerText}>
-                  {weeklyName || "Seleccionar Archivo Semanal (Excel o PDF)"}
-                </Text>
-                <Text style={s.filePickerSubtext}>
-                  {weeklyName ? "Archivo cargado" : "Formatos .xlsx, .xls, .pdf"}
-                </Text>
-              </View>
+              <MaterialCommunityIcons
+                name="file-document-outline"
+                size={16}
+                color={sourceMode === "file" ? COLORS.primary : COLORS.muted}
+                style={{ marginRight: 6 }}
+              />
+              <Text style={[s.tabButtonText, sourceMode === "file" && s.tabButtonTextActive]}>
+                Archivo (PDF/Excel)
+              </Text>
             </Pressable>
-
-            {/* Botón X para sacar el archivo cargado */}
-            {!!weeklyUri && (
-              <Pressable
-                style={s.clearFileButton}
-                onPress={(e) => {
-                  e.stopPropagation();
-                  setWeeklyUri(null);
-                  setWeeklyName(null);
-                  setLoadedWeeklyRows(null);
-                  setLoadedWeeklyType(null);
-                  setStatusText("");
-                }}
-              >
-                <Text style={s.clearFileButtonText}>✕</Text>
-              </Pressable>
-            )}
+            <Pressable
+              style={[s.tabButton, sourceMode === "api" && s.tabButtonActive]}
+              onPress={() => setSourceMode("api")}
+            >
+              <MaterialCommunityIcons
+                name="api"
+                size={16}
+                color={sourceMode === "api" ? COLORS.primary : COLORS.muted}
+                style={{ marginRight: 6 }}
+              />
+              <Text style={[s.tabButtonText, sourceMode === "api" && s.tabButtonTextActive]}>
+                Programación API
+              </Text>
+            </Pressable>
           </View>
+
+          {sourceMode === "file" ? (
+            <>
+              {/* Cartel naranja de información PDF */}
+              <View style={s.pdfInfoBanner}>
+                <Text style={s.pdfInfoBannerText}>
+                  💡 NUEVO: ¡Ahora también podés cargar el archivo PDF semanal de Vista (`sessionByScreen.pdf`)! Además, ahora el reporte se guarda automáticamente al generar el Excel para no tener que volver a cargarlo si no hay cambios.
+                </Text>
+              </View>
+
+              <View style={{ position: "relative" }}>
+                <Pressable
+                  style={[s.filePicker, !!weeklyName && s.filePickerActive, { paddingRight: weeklyName ? 48 : 12 }]}
+                  onPress={pickWeeklyFile}
+                >
+                  <View style={s.filePickerIcon}>
+                    <Text style={{ fontSize: 20 }}>
+                      {weeklyName?.toLowerCase().endsWith(".pdf") ? "📄" : "📊"}
+                    </Text>
+                  </View>
+                  <View style={s.filePickerInfo}>
+                    <Text style={s.filePickerText}>
+                      {weeklyName || "Seleccionar Archivo Semanal (Excel o PDF)"}
+                    </Text>
+                    <Text style={s.filePickerSubtext}>
+                      {weeklyName ? "Archivo cargado" : "Formatos .xlsx, .xls, .pdf"}
+                    </Text>
+                  </View>
+                </Pressable>
+
+                {/* Botón X para sacar el archivo cargado */}
+                {!!weeklyUri && weeklyUri !== "api" && (
+                  <Pressable
+                    style={s.clearFileButton}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      setWeeklyUri(null);
+                      setWeeklyName(null);
+                      setLoadedWeeklyRows(null);
+                      setLoadedWeeklyType(null);
+                      setStatusText("");
+                    }}
+                  >
+                    <Text style={s.clearFileButtonText}>✕</Text>
+                  </Pressable>
+                )}
+              </View>
+            </>
+          ) : (
+            <View style={{ gap: 12 }}>
+              <Text style={s.miniLabel}>Seleccionar Semana de Programación:</Text>
+              {(() => {
+                const currentIndex = availableWeeks.indexOf(selectedWeekStart);
+                if (currentIndex === -1) return null;
+                const canGoPrev = currentIndex > 0;
+                const canGoNext = currentIndex < availableWeeks.length - 1;
+                const currentWeek = getMovieWeekStartForNow();
+                const isCurrent = selectedWeekStart === currentWeek;
+                
+                let weekLabel = formatWeekRange(selectedWeekStart);
+                if (isCurrent) {
+                  weekLabel += " (Actual)";
+                } else if (selectedWeekStart > currentWeek) {
+                  weekLabel += " (Preventa)";
+                } else if (selectedWeekStart < currentWeek) {
+                  weekLabel += " (Pasada)";
+                }
+                
+                return (
+                  <View style={s.singleWeekSelectorContainer}>
+                    <Pressable
+                      disabled={!canGoPrev}
+                      onPress={() => setSelectedWeekStart(availableWeeks[currentIndex - 1])}
+                      style={[s.arrowButton, !canGoPrev && s.arrowButtonDisabled]}
+                    >
+                      <Text style={{ fontSize: 14, fontWeight: "bold", color: canGoPrev ? COLORS.text : COLORS.muted }}>◀</Text>
+                    </Pressable>
+                    
+                    <View style={s.singleWeekLabelContainer}>
+                      <Text style={s.singleWeekLabelText}>{weekLabel}</Text>
+                    </View>
+        
+                    <Pressable
+                      disabled={!canGoNext}
+                      onPress={() => setSelectedWeekStart(availableWeeks[currentIndex + 1])}
+                      style={[s.arrowButton, !canGoNext && s.arrowButtonDisabled]}
+                    >
+                      <Text style={{ fontSize: 14, fontWeight: "bold", color: canGoNext ? COLORS.text : COLORS.muted }}>▶</Text>
+                    </Pressable>
+                  </View>
+                );
+              })()}
+
+              <Pressable
+                style={[s.compactSaveButton, loading && { opacity: 0.7 }]}
+                onPress={handleLoadFromApi}
+                disabled={loading}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={s.compactSaveButtonText}>📡 CARGAR DESDE API</Text>
+                )}
+              </Pressable>
+            </View>
+          )}
 
           {/* Card compacto verde colocado abajo de donde cargas el reporte */}
           {loadedWeeklyRows && (
             <View style={s.compactSuccessCard}>
               <View style={{ flex: 1, gap: 2 }}>
-                <Text style={s.compactSuccessTitle}>📁 Reporte semanal detectado ({loadedWeeklyType?.toUpperCase()})</Text>
+                <Text style={s.compactSuccessTitle}>
+                  📁 Reporte semanal detectado ({loadedWeeklyType === "api" ? "API" : loadedWeeklyType?.toUpperCase()})
+                </Text>
                 <Text style={s.compactSuccessText}>
-                  Se extrajeron {loadedWeeklyRows.length} películas del reporte cargado.
+                  Se extrajeron {loadedWeeklyRows.length} películas de la programación.
                 </Text>
                 <Text style={s.compactSuccessTime}>
                   Cargado: {dayjs().format("DD/MM/YYYY HH:mm")} hs
                 </Text>
               </View>
+
+              {/* Botón X para sacar el reporte API si queremos */}
+              {weeklyUri === "api" && (
+                <Pressable
+                  style={{
+                    backgroundColor: "rgba(255,255,255,0.2)",
+                    borderRadius: 6,
+                    paddingHorizontal: 8,
+                    paddingVertical: 4,
+                    alignSelf: "flex-start",
+                    marginTop: 4
+                  }}
+                  onPress={() => {
+                    setWeeklyUri(null);
+                    setWeeklyName(null);
+                    setLoadedWeeklyRows(null);
+                    setLoadedWeeklyType(null);
+                    setStatusText("");
+                  }}
+                >
+                  <Text style={{ color: "#FFF", fontSize: 10, fontWeight: "bold" }}>✕ Limpiar API</Text>
+                </Pressable>
+              )}
             </View>
           )}
         </View>
@@ -1282,5 +1603,70 @@ const s = StyleSheet.create({
     fontSize: 10,
     fontWeight: "700",
     color: COLORS.muted,
+  },
+  tabContainer: {
+    flexDirection: "row",
+    backgroundColor: COLORS.bg,
+    borderRadius: 12,
+    padding: 4,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  tabButton: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 8,
+    flexDirection: "row",
+  },
+  tabButtonActive: {
+    backgroundColor: COLORS.card,
+    ...THEME.shadow.soft,
+  },
+  tabButtonText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: COLORS.muted,
+  },
+  tabButtonTextActive: {
+    color: COLORS.primary,
+  },
+  singleWeekSelectorContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.card,
+    marginTop: 6,
+    gap: 12,
+  },
+  singleWeekLabelContainer: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: COLORS.bg,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    minWidth: 220,
+    alignItems: "center",
+  },
+  singleWeekLabelText: {
+    fontSize: 12,
+    color: COLORS.text,
+    fontWeight: "bold",
+  },
+  arrowButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    backgroundColor: COLORS.bg,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  arrowButtonDisabled: {
+    opacity: 0.4,
   },
 });
