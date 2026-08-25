@@ -121,7 +121,7 @@ export default function MarketingTab() {
   const [eventos, setEventos] = useState<EventoForPrint[]>([]);
   const [loadingEventos, setLoadingEventos] = useState(true);
 
-  const [sourceMode, setSourceMode] = useState<"excel" | "programacion">("excel");
+  const [sourceMode, setSourceMode] = useState<"excel" | "programacion">("programacion");
   const [selectedWeekStart, setSelectedWeekStart] = useState<string>(() => getMovieWeekStartForNow());
   const [statusText, setStatusText] = useState("");
   const [loading, setLoading] = useState(false);
@@ -516,6 +516,13 @@ export default function MarketingTab() {
 
       {/* TARJETA PRINCIPAL */}
       <View style={s.card}>
+        {/* Cartel naranja de información */}
+        <View style={s.apiInfoBanner}>
+          <Text style={s.apiInfoBannerText}>
+            💡 NUEVO: ¡Ahora podés comparar la programación semanal directamente desde la API sin necesidad de subir archivos Excel! Seleccioná la pestaña "Programación (API)", elegí la semana a analizar y hacé clic en "Comparar Programación".
+          </Text>
+        </View>
+
         {/* Selector de origen (Excel vs Programación) */}
         <View style={s.tabContainer}>
           <Pressable
@@ -597,8 +604,8 @@ export default function MarketingTab() {
         ) : (
           <View style={{ paddingVertical: 8 }}>
             <Text style={s.sectionLabel}>Seleccionar Semana Cinematográfica</Text>
-            <Text style={[s.filePickerSubtext, { marginBottom: 12 }]}>
-              Se comparará la programación de la semana seleccionada (semana actual) contra la semana anterior en base a la API sincronizada.
+            <Text style={[s.filePickerSubtext, { marginBottom: 12, lineHeight: 16 }]}>
+              Se comparará la programación de la semana seleccionada (por ejemplo, la próxima semana/estrenos) contra la de su semana anterior (la semana actual) para detectar automáticamente películas nuevas, salidas de cartelera y cambios de sala.
             </Text>
             {(() => {
               const currentIndex = availableWeeks.indexOf(selectedWeekStart);
@@ -1476,5 +1483,20 @@ const s = StyleSheet.create({
   eventoSalaAc: {
     color: "#c26200",
     fontWeight: "800",
+  },
+  apiInfoBanner: {
+    backgroundColor: MKT.warningBg,
+    borderColor: Platform.OS === "web" ? "var(--warning-border, #ead9a5)" : "#ead9a5",
+    borderWidth: 1.2,
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 12,
+  },
+  apiInfoBannerText: {
+    color: MKT.warning,
+    fontSize: 11.5,
+    fontWeight: "800",
+    textAlign: "center",
+    lineHeight: 16,
   },
 });
