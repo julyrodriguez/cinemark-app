@@ -190,7 +190,7 @@ function mapApiSessionsToWeeklyRows(sessions: any[]): WeeklyMovieRow[] {
       groupMap[groupKey] = {
         sala: salaNum,
         pelicula,
-        calificacion: session.tags?.[0]?.label || "",
+        calificacion: session.rating || session.calificacion || session.tags?.[0]?.label || "",
         horariosPorDia: {
           jueves: [],
           viernes: [],

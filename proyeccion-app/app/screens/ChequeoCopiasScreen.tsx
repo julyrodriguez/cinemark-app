@@ -732,7 +732,7 @@ export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: b
           const compName = cleanTitleForComparison(movieTitle);
 
           if (!newMoviesMap[compName]) {
-            const rating = session.tags?.[0]?.label || "";
+            const rating = session.rating || session.calificacion || session.tags?.[0]?.label || "";
             newMoviesMap[compName] = {
               calificacion: rating,
               salas: new Set<number>(),

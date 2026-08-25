@@ -1320,7 +1320,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
           const dboxSold = dboxCapacity - dboxAvailable;
 
           // Extract a clean rating from tags or default empty
-          const rating = first.tags?.[0]?.label || "";
+          const rating = first.rating || first.calificacion || first.tags?.[0]?.label || "";
 
           list.push({
             sala: Number(first.theaterRoom),
@@ -1525,6 +1525,10 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
               show.runTime = matchingSessions[0].runTime;
               show.filmPersons = matchingSessions[0].filmPersons;
               show.posterUrl = matchingSessions[0].posterUrl;
+              const sessionRating = matchingSessions[0].rating || matchingSessions[0].calificacion || matchingSessions[0].tags?.[0]?.label || "";
+              if (sessionRating) {
+                show.calificacion = sessionRating;
+              }
 
               show.capacity = totalCapacity;
               show.availableSeats = totalAvailable;
