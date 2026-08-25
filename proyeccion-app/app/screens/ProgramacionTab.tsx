@@ -832,6 +832,13 @@ export default function ProgramacionTab() {
         <View style={s.section}>
           <Text style={s.sectionLabel}>Origen de Datos</Text>
 
+          {/* Cartel naranja de información */}
+          <View style={[s.pdfInfoBanner, { marginBottom: 12 }]}>
+            <Text style={s.pdfInfoBannerText}>
+              💡 NUEVO: ¡Ahora podés importar la programación semanal directamente desde la API sin necesidad de subir archivos PDF o Excel! Seleccioná la pestaña "Programación API", elegí la semana y listo.
+            </Text>
+          </View>
+
           {/* Selector de origen */}
           <View style={s.tabContainer}>
             <Pressable
@@ -866,12 +873,6 @@ export default function ProgramacionTab() {
 
           {sourceMode === "file" ? (
             <>
-              {/* Cartel naranja de información PDF */}
-              <View style={s.pdfInfoBanner}>
-                <Text style={s.pdfInfoBannerText}>
-                  💡 NUEVO: ¡Ahora también podés cargar el archivo PDF semanal de Vista (`sessionByScreen.pdf`)! Además, ahora el reporte se guarda automáticamente al generar el Excel para no tener que volver a cargarlo si no hay cambios.
-                </Text>
-              </View>
 
               <View style={{ position: "relative" }}>
                 <Pressable
