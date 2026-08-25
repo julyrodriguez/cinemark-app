@@ -97,7 +97,7 @@ export default function TrailersSemanalesScreen({ readOnly = false }: { readOnly
   const [trlsName, setTrlsName] = useState<string | null>(null);
   const [trlsData, setTrlsData] = useState<TrlMovie[] | null>(null);
 
-  const [sourceMode, setSourceMode] = useState<"pdf" | "programacion">("pdf");
+  const [sourceMode, setSourceMode] = useState<"pdf" | "programacion">("programacion");
   const [dbSubSource, setDbSubSource] = useState<"servicios" | "api">("api");
   const [selectedWeekStart, setSelectedWeekStart] = useState<string>(() => getMovieWeekStartForNow());
   const [dbWeekly, setDbWeekly] = useState<{
@@ -1152,6 +1152,13 @@ export default function TrailersSemanalesScreen({ readOnly = false }: { readOnly
         <View style={s.section}>
           <Text style={s.sectionLabel}>1. Programación Semanal</Text>
 
+          {/* Cartel naranja de información */}
+          <View style={s.apiInfoBanner}>
+            <Text style={s.apiInfoBannerText}>
+              💡 NUEVO: ¡Ahora podés emparejar los trailers directamente con la programación de la API sin necesidad de subir archivos PDF! Seleccioná la pestaña "🖥️ Usar Programación Guardada" para usar los datos sincronizados.
+            </Text>
+          </View>
+
           <View style={s.tabContainer}>
             <Pressable
               style={[s.tabButton, sourceMode === "pdf" && s.tabButtonActive]}
@@ -1926,6 +1933,21 @@ const s = StyleSheet.create({
   fallbackBannerText: {
     color: MKT.warning,
     fontSize: 11,
+    fontWeight: "800",
+    textAlign: "center",
+    lineHeight: 16,
+  },
+  apiInfoBanner: {
+    backgroundColor: MKT.warningBg,
+    borderColor: Platform.OS === "web" ? "var(--warning-border, #ead9a5)" : "#ead9a5",
+    borderWidth: 1.2,
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 12,
+  },
+  apiInfoBannerText: {
+    color: MKT.warning,
+    fontSize: 11.5,
     fontWeight: "800",
     textAlign: "center",
     lineHeight: 16,

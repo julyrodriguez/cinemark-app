@@ -350,7 +350,7 @@ export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: b
   const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
   const [comparisonDone, setComparisonDone] = useState(false);
 
-  const [sourceMode, setSourceMode] = useState<"pdf" | "programacion">("pdf");
+  const [sourceMode, setSourceMode] = useState<"pdf" | "programacion">("programacion");
   const [selectedWeekStart, setSelectedWeekStart] = useState<string>(() => getMovieWeekStartForNow());
 
   const availableWeeks = useMemo(() => {
@@ -1198,8 +1198,15 @@ export default function ChequeoCopiasScreen({ readOnly = false }: { readOnly?: b
         <Text style={s.cardSubtitle}>
           {sourceMode === "pdf"
             ? "Subí los PDFs de la semana vieja (anterior) y semana nueva (siguiente) para calcular qué películas son nuevos estrenos."
-            : "Seleccioná la semana y la fuente para calcular qué películas son nuevos estrenos a partir de la base de datos."}
+            : "Se comparará la programación de la semana seleccionada (por ejemplo, la próxima semana/estrenos) contra la de su semana anterior (la semana actual) para detectar automáticamente los nuevos estrenos a partir de la base de datos."}
         </Text>
+
+        {/* Cartel naranja de información */}
+        <View style={s.apiInfoBanner}>
+          <Text style={s.apiInfoBannerText}>
+            💡 NUEVO: ¡Ahora podés realizar el chequeo de copias directamente desde la API sin necesidad de subir archivos PDF! Seleccioná la pestaña "🖥️ Usar Programación Guardada", elegí la semana a analizar y listo.
+          </Text>
+        </View>
 
         {/* Source selector (PDF vs Programación) */}
         <View style={s.tabContainer}>
@@ -2252,6 +2259,21 @@ const s = StyleSheet.create({
   fallbackBannerText: {
     color: MKT.warning,
     fontSize: 11,
+    fontWeight: "800",
+    textAlign: "center",
+    lineHeight: 16,
+  },
+  apiInfoBanner: {
+    backgroundColor: MKT.warningBg,
+    borderColor: Platform.OS === "web" ? "var(--warning-border, #ead9a5)" : "#ead9a5",
+    borderWidth: 1.2,
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 12,
+  },
+  apiInfoBannerText: {
+    color: MKT.warning,
+    fontSize: 11.5,
     fontWeight: "800",
     textAlign: "center",
     lineHeight: 16,
