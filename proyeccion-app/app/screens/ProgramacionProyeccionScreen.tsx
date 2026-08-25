@@ -1339,9 +1339,18 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
             }
           }
 
+          const is3d = formats.some(f => f.toUpperCase().includes("3D"));
+          const formatStr = is3d ? "3D" : "2D";
+          const langName = (first.language?.name || first.language || "").toUpperCase();
+          let langStr = "CAS";
+          if (langName.includes("SUB") || langName.includes("ING") || langName.includes("ORIG")) {
+            langStr = "SUB";
+          }
+          const peliculaFormatted = `${first.movieName} ${formatStr} ${langStr}`.toUpperCase();
+
           list.push({
             sala: Number(first.theaterRoom),
-            pelicula: first.movieName,
+            pelicula: peliculaFormatted,
             calificacion: rating,
             inicio,
             fin,
