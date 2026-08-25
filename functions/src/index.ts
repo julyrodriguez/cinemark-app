@@ -1817,9 +1817,23 @@ async function syncShowtimesForCine(cineId: string, theaterId: string, skipSeatM
       // Merge: preserve history, update new status.
       // IMPORTANTE: si la sesión nueva no trae occupiedSeats (no era de hoy),
       // preservar los occupiedSeats que ya estaban guardados en Firestore.
+      const newSessionKeys = new Set(newSessions.map((s: any) => `${s.sessionId}_${s.theaterRoom}`));
+      const nowTime = Date.now();
+      const marginMs = 15 * 60 * 1000; // 15 minutes margin
+
       const mergedMap = new Map<string, any>();
       existingSessions.forEach(s => {
         const key = `${s.sessionId}_${s.theaterRoom}`;
+        
+        // Si la sesión no está en el nuevo conjunto de sesiones
+        if (!newSessionKeys.has(key)) {
+          const sessionTime = new Date(s.sessionDateTime).getTime();
+          // Y es una sesión del futuro (con margen de 15 minutos), se elimina (omitimos agregarla)
+          if (sessionTime > nowTime - marginMs) {
+            return;
+          }
+        }
+        
         mergedMap.set(key, s);
       });
       newSessions.forEach(s => {
