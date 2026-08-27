@@ -59,6 +59,7 @@ type Evento = {
   desayuno?: boolean;
   combo?: boolean;
   createdAt?: any;
+  duracion?: number;
 };
 
 const PAGE = 10;
@@ -184,6 +185,7 @@ export default function EventosScreen() {
           desayuno: !!data.desayuno,
           combo: !!data.combo,
           diaHora,
+          duracion: data.duracion !== undefined && data.duracion !== null ? Number(data.duracion) : undefined,
         } as Evento;
       });
 
@@ -227,6 +229,7 @@ export default function EventosScreen() {
           desayuno: !!data.desayuno,
           combo: !!data.combo,
           diaHora,
+          duracion: data.duracion !== undefined && data.duracion !== null ? Number(data.duracion) : undefined,
         } as Evento;
       });
 
@@ -578,6 +581,17 @@ export default function EventosScreen() {
                   <Text style={styles.itemTitle} numberOfLines={2}>
                     {item.pelicula}
                   </Text>
+
+                  {item.duracion ? (
+                    <View style={styles.durationRow}>
+                      <Text style={styles.durationText}>
+                        ⏱️ Duración: {item.duracion} min
+                      </Text>
+                      <View style={styles.newBadge}>
+                        <Text style={styles.newBadgeText}>¡NUEVO!</Text>
+                      </View>
+                    </View>
+                  ) : null}
 
                   <View style={styles.statusWrap}>
                     {item.kdm ? (
@@ -1271,6 +1285,30 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     flexShrink: 1,
     textAlign: "left",
+  },
+  durationRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 4,
+  },
+  durationText: {
+    color: COLORS.muted,
+    fontSize: THEME.fontSize.sm,
+    fontWeight: "600",
+  },
+  newBadge: {
+    backgroundColor: COLORS.betaBadgeBg,
+    borderColor: COLORS.betaBorder,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  newBadgeText: {
+    color: COLORS.betaText,
+    fontSize: 10,
+    fontWeight: "800",
   },
 
   statusWrap: {
