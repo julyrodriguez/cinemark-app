@@ -67,6 +67,15 @@ const PAGE = 10;
 export default function EventosScreen() {
   const { cineId, loading: sessionLoading } = useAuthUser();
 
+  const [blink, setBlink] = useState(true);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setBlink((prev) => !prev);
+    }, 700);
+    return () => clearInterval(interval);
+  }, []);
+
   const [eventos, setEventos] = useState<Evento[]>([]);
   const [loading, setLoading] = useState(true);
   const [hasMore, setHasMore] = useState(true);
@@ -539,6 +548,22 @@ export default function EventosScreen() {
     }
   };
 
+  const renderHeader = () => {
+    return (
+      <View style={styles.announcementCard}>
+        <View style={styles.announcementHeader}>
+          <View style={[styles.announcementBadge, { opacity: blink ? 1 : 0.4 }]}>
+            <Text style={styles.announcementBadgeText}>¡NUEVO!</Text>
+          </View>
+          <Text style={styles.announcementTitle}>Duración de Eventos</Text>
+        </View>
+        <Text style={styles.announcementText}>
+          Ahora podés configurar la duración en minutos de cada evento al crearlo o editarlo. La duración se verá reflejada en la pantalla de programación de proyección.
+        </Text>
+      </View>
+    );
+  };
+
   if (loading || salasLoading) {
     return (
       <View style={styles.center}>
@@ -554,6 +579,7 @@ export default function EventosScreen() {
         data={eventos}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
+        ListHeaderComponent={renderHeader}
         renderItem={({ item }) => {
           const d =
             item.diaHora instanceof Date ? item.diaHora : toDate(item.diaHora);
@@ -1309,6 +1335,43 @@ const styles = StyleSheet.create({
     color: COLORS.betaText,
     fontSize: 10,
     fontWeight: "800",
+  },
+  announcementCard: {
+    backgroundColor: COLORS.betaBg,
+    borderColor: COLORS.betaBorder,
+    borderWidth: 1.5,
+    borderRadius: THEME.radius.md,
+    padding: THEME.spacing.md,
+    marginBottom: 8,
+    ...THEME.shadow.soft,
+  },
+  announcementHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 6,
+  },
+  announcementBadge: {
+    backgroundColor: COLORS.danger,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  announcementBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 0.5,
+  },
+  announcementTitle: {
+    color: COLORS.text,
+    fontSize: THEME.fontSize.md,
+    fontWeight: "800",
+  },
+  announcementText: {
+    color: COLORS.text,
+    fontSize: THEME.fontSize.sm,
+    lineHeight: 18,
   },
 
   statusWrap: {
