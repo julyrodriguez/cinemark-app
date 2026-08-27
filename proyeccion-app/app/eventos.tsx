@@ -558,7 +558,7 @@ export default function EventosScreen() {
           <Text style={styles.announcementTitle}>Duración de Eventos</Text>
         </View>
         <Text style={styles.announcementText}>
-          Ahora podés configurar la duración en minutos de cada evento al crearlo o editarlo. La duración se verá reflejada en la pantalla de programación de proyección.
+          Ahora podés configurar la duración en minutos de cada evento al crearlo o editarlo. La duración se verá reflejada en la pantalla de programación.
         </Text>
       </View>
     );
