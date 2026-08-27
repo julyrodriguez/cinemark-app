@@ -39,6 +39,7 @@ export function mapSnapToEvento(s: any): Evento {
     timestamp:
       data.timestamp ??
       (diaHora instanceof Date ? diaHora.getTime() : Date.now()),
+    duracion: data.duracion !== undefined && data.duracion !== null ? Number(data.duracion) : undefined,
   };
 }
 
@@ -95,7 +96,7 @@ export async function borrarEvento(id: string, cineId: string) {
 export async function actualizarEvento(
   id: string,
   patch: Partial<
-    Pick<Evento, "sala" | "kdm" | "dcp" | "desayuno" | "combo" | "diaHora">
+    Pick<Evento, "sala" | "kdm" | "dcp" | "desayuno" | "combo" | "diaHora" | "duracion">
   >,
   cineId: string
 ) {
@@ -108,6 +109,7 @@ export async function actualizarEvento(
   if (patch.dcp !== undefined) data.dcp = !!patch.dcp;
   if (patch.desayuno !== undefined) data.desayuno = !!patch.desayuno;
   if (patch.combo !== undefined) data.combo = !!patch.combo;
+  if (patch.duracion !== undefined) data.duracion = patch.duracion !== undefined && patch.duracion !== null ? Number(patch.duracion) : null;
 
   if (patch.diaHora !== undefined) {
     data.diaHora = Timestamp.fromDate(patch.diaHora);

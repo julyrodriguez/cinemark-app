@@ -26,6 +26,7 @@ export type Evento = {
   desayuno?: boolean;
   combo?: boolean;
   timestamp?: number;
+  duracion?: number;
 };
 
 export interface Credito extends BaseDoc {

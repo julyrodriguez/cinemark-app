@@ -1668,10 +1668,14 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
         const eventDayKey = getCinematicWeekdayKey(eventDate);
         if (eventDayKey !== selectedDay) return;
 
+        const duration = evt.duracion !== undefined && evt.duracion !== null && Number(evt.duracion) > 0 
+          ? Number(evt.duracion) 
+          : 75; // 75 min default
+
         const startHours = String(eventDate.getHours()).padStart(2, '0');
         const startMins = String(eventDate.getMinutes()).padStart(2, '0');
         const inicio = `${startHours}:${startMins}`;
-        const fin = addMinutesToTimeStr(inicio, 75); // Duración de 1 hora y 15 minutos (75 min)
+        const fin = addMinutesToTimeStr(inicio, duration);
 
         list.push({
           sala: Number(evt.sala),

@@ -26,8 +26,10 @@ import {
   orderBy,
   query,
   setDoc,
+  onSnapshot,
 } from "@/lib/dbService";
 import dayjs from "dayjs";
+import { toDate } from "@/shared/utils";
 
 import { db, CINES_COLLECTION } from "../../lib/firebaseConfig";
 import { useAuthUser } from "../../lib/useAuthUser";
@@ -273,6 +275,80 @@ function mapApiSessionsToWeeklyRows(sessions: any[]): WeeklyMovieRow[] {
   });
 }
 
+
+
+function getCinematicWeekdayKey(date: Date): WeekdayKey {
+  let d = dayjs(date);
+  if (d.hour() < 6) {
+    d = d.subtract(1, "day");
+  }
+  const dayNum = d.day();
+  const map: Record<number, WeekdayKey> = {
+    0: "domingo",
+    1: "lunes",
+    2: "martes",
+    3: "miercoles",
+    4: "jueves",
+    5: "viernes",
+    6: "sabado",
+  };
+  return map[dayNum];
+}
+
+function addMinutesToTimeStr(timeStr: string, minsToAdd: number): string {
+  if (!timeStr) return "";
+  const [h, m] = timeStr.split(":").map(Number);
+  const totalMins = (h * 60 + m + minsToAdd) % 1440;
+  const newH = Math.floor(totalMins / 60);
+  const newM = totalMins % 60;
+  return `${String(newH).padStart(2, "0")}:${String(newM).padStart(2, "0")}`;
+}
+
+function buildEventWeeklyRows(eventos: any[], weekStart: string): WeeklyMovieRow[] {
+  const rowsMap: Record<string, WeeklyMovieRow> = {};
+
+  eventos.forEach((evt) => {
+    if (!evt.sala || evt.sala.trim() === "") return;
+    if (evt.duracion === undefined || evt.duracion === null || String(evt.duracion).trim() === "") return;
+
+    const eventDate = toDate(evt.diaHora);
+    const eventWeekStart = getMovieWeekStart(eventDate);
+    if (eventWeekStart !== weekStart) return;
+
+    const eventDayKey = getCinematicWeekdayKey(eventDate);
+    const startHours = String(eventDate.getHours()).padStart(2, '0');
+    const startMins = String(eventDate.getMinutes()).padStart(2, '0');
+    const inicio = `${startHours}:${startMins}`;
+    const duration = Number(evt.duracion);
+    const fin = addMinutesToTimeStr(inicio, duration);
+
+    const timeRangeStr = `${inicio} - ${fin}`;
+    const peliculaName = `[EVENTO] ${evt.pelicula || "EVENTO"}`.toUpperCase();
+    const key = `${evt.sala}_${peliculaName}`;
+
+    if (!rowsMap[key]) {
+      rowsMap[key] = {
+        sala: Number(evt.sala),
+        pelicula: peliculaName,
+        calificacion: "",
+        horariosPorDia: {
+          jueves: [],
+          viernes: [],
+          sabado: [],
+          domingo: [],
+          lunes: [],
+          martes: [],
+          miercoles: [],
+        },
+      };
+    }
+
+    rowsMap[key].horariosPorDia[eventDayKey].push(timeRangeStr);
+  });
+
+  return Object.values(rowsMap);
+}
+
 export default function ProgramacionTab() {
   const { cineId } = useAuthUser();
 
@@ -298,6 +374,7 @@ export default function ProgramacionTab() {
   const [weeklyUri, setWeeklyUri] = useState<string | null>(null);
   const [weeklyName, setWeeklyName] = useState<string | null>(null);
   const [selectedDay, setSelectedDay] = useState<WeekdayKey>("jueves");
+  const [eventos, setEventos] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [statusText, setStatusText] = useState("");
   const [showManual, setShowManual] = useState(false);
@@ -372,6 +449,30 @@ export default function ProgramacionTab() {
     loadLatestSavedWeekly();
   }, [cineId]);
 
+  useEffect(() => {
+    if (!cineId) return;
+
+    const ref = collection(db, CINES_COLLECTION, cineId, "eventos");
+    const unsubscribe = onSnapshot(
+      ref,
+      (snapshot: any) => {
+        const list: any[] = [];
+        snapshot.forEach((docSnap: any) => {
+          list.push({
+            id: docSnap.id,
+            ...docSnap.data(),
+          });
+        });
+        setEventos(list);
+      },
+      (error: any) => {
+        console.error("[ProgramacionTab] Error loading eventos:", error);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [cineId]);
+
 
 
   const [summary, setSummary] = useState<{
@@ -398,8 +499,10 @@ export default function ProgramacionTab() {
   // Extract daily programming data for preview (matches Excel generation exactly)
   const previewData = useMemo(() => {
     const rowsToUse = useSavedWeekly ? (savedWeekly?.weeklyRows || []) : (loadedWeeklyRows || []);
-    return buildDailyProgramming(rowsToUse, selectedDay, WEEKDAY_LABELS[selectedDay]);
-  }, [useSavedWeekly, savedWeekly, loadedWeeklyRows, selectedDay]);
+    const weekStart = useSavedWeekly ? (savedWeekly?.startDate || fechaInicioSemana) : fechaInicioSemana;
+    const eventRows = buildEventWeeklyRows(eventos, weekStart);
+    return buildDailyProgramming([...rowsToUse, ...eventRows], selectedDay, WEEKDAY_LABELS[selectedDay]);
+  }, [useSavedWeekly, savedWeekly, loadedWeeklyRows, selectedDay, eventos, fechaInicioSemana]);
 
   async function pickWeeklyFile() {
     try {
@@ -571,8 +674,10 @@ export default function ProgramacionTab() {
         return;
       }
 
+      const weekStartStr = startDateToSave || (startDateToUse instanceof Date ? dayjs(startDateToUse).format("YYYY-MM-DD") : startDateToUse) || fechaInicioSemana;
+      const eventRows = buildEventWeeklyRows(eventos, weekStartStr);
       const generated = await generateProgramacionWorkbook({
-        weeklyRows,
+        weeklyRows: [...weeklyRows, ...eventRows],
         day: selectedDay,
         dateLabel: dateLabelToUse,
         floorConfig: useFloors ? {
@@ -701,8 +806,10 @@ export default function ProgramacionTab() {
         return;
       }
 
+      const weekStartStr = startDateToSave || (startDateToUse instanceof Date ? dayjs(startDateToUse).format("YYYY-MM-DD") : startDateToUse) || fechaInicioSemana;
+      const eventRows = buildEventWeeklyRows(eventos, weekStartStr);
       const generated = await generateWeeklyProgramacionWorkbook({
-        weeklyRows,
+        weeklyRows: [...weeklyRows, ...eventRows],
         startDate: startDateToUse,
         floorConfig: useFloors ? {
           active: true,

@@ -263,6 +263,7 @@ export default function EventosScreen() {
   const [createVisible, setCreateVisible] = useState(false);
   const [cPelicula, setCPelicula] = useState("");
   const [cSala, setCSala] = useState("");
+  const [cDuracion, setCDuracion] = useState("");
   const [cIsMultiSelect, setCIsMultiSelect] = useState(false);
   const [cFechaHora, setCFechaHora] = useState<Date>(todayAt(11));
   const [cKdm, setCKdm] = useState(false);
@@ -278,6 +279,7 @@ export default function EventosScreen() {
     const base = todayAt(11);
     setCPelicula("");
     setCSala("");
+    setCDuracion("");
     setCIsMultiSelect(false);
     setCFechaHora(base);
     setCFechaWeb(formatDateInput(base));
@@ -347,6 +349,11 @@ export default function EventosScreen() {
       }
     }
 
+    if (cDuracion.trim() && isNaN(Number(cDuracion))) {
+      setCreateError("La duración debe ser un número de minutos.");
+      return;
+    }
+
     if (!cineId) {
       setCreateError("Sesión no lista. Reintentá en unos segundos.");
       return;
@@ -363,6 +370,7 @@ export default function EventosScreen() {
           dcp: cDcp,
           desayuno: cDesayuno,
           combo: cCombo,
+          duracion: cDuracion.trim() ? Number(cDuracion) : undefined,
         },
         cineId
       );
@@ -397,6 +405,7 @@ export default function EventosScreen() {
   const [editVisible, setEditVisible] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [editSala, setEditSala] = useState("");
+  const [editDuracion, setEditDuracion] = useState("");
   const [editIsMultiSelect, setEditIsMultiSelect] = useState(false);
   const [editKdm, setEditKdm] = useState(false);
   const [editDcp, setEditDcp] = useState(false);
@@ -414,6 +423,7 @@ export default function EventosScreen() {
     setEditId(item.id);
     const roomStr = String(item.sala ?? "");
     setEditSala(roomStr);
+    setEditDuracion(item.duracion !== undefined && item.duracion !== null ? String(item.duracion) : "");
     setEditIsMultiSelect(roomStr.includes(","));
     setEditKdm(!!item.kdm);
     setEditDcp(!!item.dcp);
@@ -499,6 +509,11 @@ export default function EventosScreen() {
       }
     }
 
+    if (editDuracion.trim() && isNaN(Number(editDuracion))) {
+      setEditError("La duración debe ser un número de minutos.");
+      return;
+    }
+
     setSaving(true);
     try {
       await updateDoc(doc(db, CINES_COLLECTION, cineId, "eventos", editId), {
@@ -509,6 +524,7 @@ export default function EventosScreen() {
         combo: editCombo,
         diaHora: Timestamp.fromDate(editFechaHora),
         timestamp: editFechaHora.getTime(),
+        duracion: editDuracion.trim() ? Number(editDuracion) : null,
       });
 
       cerrarEdicion();
@@ -746,12 +762,22 @@ export default function EventosScreen() {
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Nuevo evento</Text>
 
-            <Text style={styles.label}>Película</Text>
+             <Text style={styles.label}>Película</Text>
             <TextInput
               value={cPelicula}
               onChangeText={setCPelicula}
               placeholder="Ej: Batman"
               placeholderTextColor={COLORS.muted}
+              style={styles.input}
+            />
+
+            <Text style={styles.label}>Duración (minutos, opcional)</Text>
+            <TextInput
+              value={cDuracion}
+              onChangeText={setCDuracion}
+              placeholder="Ej: 75"
+              placeholderTextColor={COLORS.muted}
+              keyboardType="numeric"
               style={styles.input}
             />
 
@@ -950,6 +976,16 @@ export default function EventosScreen() {
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Editar evento</Text>
+
+            <Text style={styles.label}>Duración (minutos, opcional)</Text>
+            <TextInput
+              value={editDuracion}
+              onChangeText={setEditDuracion}
+              placeholder="Ej: 75"
+              placeholderTextColor={COLORS.muted}
+              keyboardType="numeric"
+              style={styles.input}
+            />
 
             <View style={styles.labelRow}>
               <Text style={styles.labelNoMargin}>Sala (1–{salasCount} o AC)</Text>
