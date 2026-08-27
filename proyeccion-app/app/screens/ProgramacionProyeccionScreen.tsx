@@ -1348,8 +1348,6 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
             const fin = `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
 
             // Merge normal and dbox seats
-            let totalCapacity = 0;
-            let totalAvailable = 0;
             let formats: string[] = [];
             let isPremiere = false;
 
@@ -1360,8 +1358,6 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
             let dboxAvailable = 0;
 
             group.forEach((s) => {
-              totalCapacity += s.occupation.capacity;
-              totalAvailable += s.occupation.availableSeats;
               formats.push(s.sessionFormat);
               if (s.premiere) isPremiere = true;
 
@@ -1375,9 +1371,11 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
               }
             });
 
-            const totalSold = totalCapacity - totalAvailable;
-            const normalSold = normalCapacity - normalAvailable;
-            const dboxSold = dboxCapacity - dboxAvailable;
+            const normalSold = Math.max(0, normalCapacity - normalAvailable);
+            const dboxSold = Math.max(0, dboxCapacity - dboxAvailable);
+            const totalSold = normalSold + dboxSold;
+            const totalCapacity = normalCapacity > 0 ? normalCapacity : dboxCapacity;
+            const totalAvailable = Math.max(0, totalCapacity - totalSold);
 
             // Extract a clean rating from tags or default empty
             let rating = "";
@@ -1554,8 +1552,6 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                     
                     const matchingSessions = sessionsBySessionId[bestSessionId];
                     
-                    let totalCapacity = 0;
-                    let totalAvailable = 0;
                     let formats: string[] = [];
                     let isPremiere = false;
 
@@ -1566,8 +1562,6 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                     let dboxAvailable = 0;
 
                     matchingSessions.forEach((s) => {
-                      totalCapacity += s.occupation.capacity;
-                      totalAvailable += s.occupation.availableSeats;
                       formats.push(s.sessionFormat);
                       if (s.premiere) isPremiere = true;
 
@@ -1581,9 +1575,11 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                       }
                     });
 
-                    const totalSold = totalCapacity - totalAvailable;
-                    const normalSold = normalCapacity - normalAvailable;
-                    const dboxSold = dboxCapacity - dboxAvailable;
+                    const normalSold = Math.max(0, normalCapacity - normalAvailable);
+                    const dboxSold = Math.max(0, dboxCapacity - dboxAvailable);
+                    const totalSold = normalSold + dboxSold;
+                    const totalCapacity = normalCapacity > 0 ? normalCapacity : dboxCapacity;
+                    const totalAvailable = Math.max(0, totalCapacity - totalSold);
 
                     show.isSimulated = true;
                     show.sessionId = matchingSessions[0].sessionId;
