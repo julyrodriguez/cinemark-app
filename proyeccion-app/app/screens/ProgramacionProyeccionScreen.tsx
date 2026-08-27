@@ -1671,7 +1671,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
         const startHours = String(eventDate.getHours()).padStart(2, '0');
         const startMins = String(eventDate.getMinutes()).padStart(2, '0');
         const inicio = `${startHours}:${startMins}`;
-        const fin = addMinutesToTimeStr(inicio, 30); // Duración de 30 minutos
+        const fin = addMinutesToTimeStr(inicio, 75); // Duración de 1 hora y 15 minutos (75 min)
 
         list.push({
           sala: Number(evt.sala),
@@ -3204,7 +3204,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                             <Text style={styles.detailLabel}>Detalles del Evento</Text>
                             <Text style={styles.detailValue}>
                               • Horario: <Text style={styles.detailHighlight}>{selectedShow.inicio} hs - {selectedShow.fin} hs</Text>{"\n"}
-                              • Duración: <Text style={styles.detailHighlight}>30 minutos</Text>{"\n"}
+                              • Duración: <Text style={styles.detailHighlight}>1 hora y 15 minutos</Text>{"\n"}
                               {selectedShow.desayuno ? "☕ Incluye Desayuno\n" : ""}
                               {selectedShow.combo ? "🍿 Incluye Combo\n" : ""}
                             </Text>
