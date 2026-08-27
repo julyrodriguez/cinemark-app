@@ -15,13 +15,14 @@ import {
   Image,
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { doc, onSnapshot, getDoc } from "@/lib/dbService";
+import { doc, onSnapshot, getDoc, collection } from "@/lib/dbService";
 import { db, CINES_COLLECTION, functions } from "../../lib/firebaseConfig";
 import { httpsCallable } from "@/lib/dbService";
 import { useAuthUser } from "../../lib/useAuthUser";
 import { COLORS, THEME } from "../../lib/theme";
 import { WeekdayKey } from "../../lib/programacion/types";
 import dayjs from "dayjs";
+import { toDate } from "@/shared/utils";
 import * as FileSystem from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import { mockShowtimesData } from "./mockShowtimes";
@@ -73,6 +74,11 @@ interface DailyShow {
   runTime?: number;
   filmPersons?: any[];
   posterUrl?: string;
+
+  // Event Properties
+  isEvent?: boolean;
+  desayuno?: boolean;
+  combo?: boolean;
 }
 
 interface SavedWeekly {
@@ -141,6 +147,26 @@ function getCurrentWeekdayKey(): WeekdayKey {
     now = now.subtract(1, "day");
   }
   const dayNum = now.day(); // 0 = Sunday, 1 = Monday, etc.
+  const map: Record<number, WeekdayKey> = {
+    0: "domingo",
+    1: "lunes",
+    2: "martes",
+    3: "miercoles",
+    4: "jueves",
+    5: "viernes",
+    6: "sabado",
+  };
+  return map[dayNum];
+}
+
+// Helper to get cinematic weekday key for a specific Date
+function getCinematicWeekdayKey(date: Date): WeekdayKey {
+  let d = dayjs(date);
+  // Si es antes de las 6:00 AM, seguimos en el día cinematográfico anterior
+  if (d.hour() < 6) {
+    d = d.subtract(1, "day");
+  }
+  const dayNum = d.day();
   const map: Record<number, WeekdayKey> = {
     0: "domingo",
     1: "lunes",
@@ -244,6 +270,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
       .catch((e) => console.error("Error loading cine config in ProgramacionProyeccionScreen:", e));
   }, [cineId]);
   const [savedWeekly, setSavedWeekly] = useState<SavedWeekly | null>(null);
+  const [eventos, setEventos] = useState<any[]>([]);
   const [selectedDay, setSelectedDay] = useState<WeekdayKey>(getCurrentWeekdayKey());
   const [selectedShow, setSelectedShow] = useState<DailyShow | null>(null);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
@@ -604,6 +631,31 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
     return () => unsubscribe();
   }, [cineId, useApiData]);
+
+  // Subscribe to events saved in database
+  useEffect(() => {
+    if (!cineId) return;
+
+    const ref = collection(db, CINES_COLLECTION, cineId, "eventos");
+    const unsubscribe = onSnapshot(
+      ref,
+      (snapshot: any) => {
+        const list: any[] = [];
+        snapshot.forEach((docSnap: any) => {
+          list.push({
+            id: docSnap.id,
+            ...docSnap.data(),
+          });
+        });
+        setEventos(list);
+      },
+      (error: any) => {
+        console.error("[ProgramacionProyeccionScreen] Error loading eventos:", error);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [cineId]);
 
   // Fetch showtimes from Firestore or fallback to mock data
   const [syncing, setSyncing] = useState(false);
@@ -1237,377 +1289,408 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
   // Build the list of shows for the selected day
   const shows = useMemo(() => {
+    const list: DailyShow[] = [];
+
     if (useApiData) {
       const currentWeek = getMovieWeekStartForNow();
 
       // Case A: If there's no saved weekly programming layout matching the selected week or adjustShowtimes is false.
       if (!hasSavedProgramming || !adjustShowtimes) {
-        if (!apiData || !selectedWeekStart) return [];
+        if (apiData && selectedWeekStart) {
+          // Group API sessions by sessionId (to merge DBOX and normal)
+          const sessionsBySessionId: Record<string, any[]> = {};
+          apiData.forEach((session) => {
+            // Filter by selected week
+            const utcDate = new Date(session.sessionDateTime);
+            const weekStart = getMovieWeekStart(utcDate);
+            if (weekStart !== selectedWeekStart) return;
 
-        // Group API sessions by sessionId (to merge DBOX and normal)
-        const sessionsBySessionId: Record<string, any[]> = {};
-        apiData.forEach((session) => {
-          // Filter by selected week
-          const utcDate = new Date(session.sessionDateTime);
-          const weekStart = getMovieWeekStart(utcDate);
-          if (weekStart !== selectedWeekStart) return;
-
-          // Map UTC sessionDateTime directly (BFF date string represents local time)
-          const arDate = new Date(utcDate.getTime());
-          if (arDate.getUTCHours() < 6) {
-            arDate.setTime(arDate.getTime() - 24 * 60 * 60 * 1000);
-          }
-
-          // Get day key
-          const dayNum = arDate.getUTCDay(); // 0 = Sunday, 1 = Monday, etc.
-          const map: Record<number, WeekdayKey> = {
-            0: "domingo", 1: "lunes", 2: "martes", 3: "miercoles",
-            4: "jueves", 5: "viernes", 6: "sabado"
-          };
-          const sessionDay = map[dayNum];
-
-          // We only care about sessions on the selected day
-          if (sessionDay !== selectedDay) return;
-
-          const sid = session.sessionId;
-          if (!sessionsBySessionId[sid]) {
-            sessionsBySessionId[sid] = [];
-          }
-          sessionsBySessionId[sid].push(session);
-        });
-
-        const list: DailyShow[] = [];
-
-        Object.keys(sessionsBySessionId).forEach((sid) => {
-          const group = sessionsBySessionId[sid];
-          const first = group[0];
-
-          const utcDate = new Date(first.sessionDateTime);
-          const arDate = new Date(utcDate.getTime());
-
-          const hours = String(arDate.getUTCHours()).padStart(2, '0');
-          const mins = String(arDate.getUTCMinutes()).padStart(2, '0');
-          const inicio = `${hours}:${mins}`;
-
-          // Fallback duration 120 mins (using runTime if available from server) + 15 mins of advertising
-          const durationMins = (first.runTime || 120) + 15;
-          const endMins = (arDate.getUTCHours() * 60 + arDate.getUTCMinutes() + durationMins) % 1440;
-          const endH = Math.floor(endMins / 60);
-          const endM = endMins % 60;
-          const fin = `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
-
-          // Merge normal and dbox seats
-          let totalCapacity = 0;
-          let totalAvailable = 0;
-          let formats: string[] = [];
-          let isPremiere = false;
-
-          let hasDbox = false;
-          let normalCapacity = 0;
-          let normalAvailable = 0;
-          let dboxCapacity = 0;
-          let dboxAvailable = 0;
-
-          group.forEach((s) => {
-            totalCapacity += s.occupation.capacity;
-            totalAvailable += s.occupation.availableSeats;
-            formats.push(s.sessionFormat);
-            if (s.premiere) isPremiere = true;
-
-            if (s.sessionFormat.toUpperCase().includes("DBOX")) {
-              hasDbox = true;
-              dboxCapacity += s.occupation.capacity;
-              dboxAvailable += s.occupation.availableSeats;
-            } else {
-              normalCapacity += s.occupation.capacity;
-              normalAvailable += s.occupation.availableSeats;
+            // Map UTC sessionDateTime directly (BFF date string represents local time)
+            const arDate = new Date(utcDate.getTime());
+            if (arDate.getUTCHours() < 6) {
+              arDate.setTime(arDate.getTime() - 24 * 60 * 60 * 1000);
             }
+
+            // Get day key
+            const dayNum = arDate.getUTCDay(); // 0 = Sunday, 1 = Monday, etc.
+            const map: Record<number, WeekdayKey> = {
+              0: "domingo", 1: "lunes", 2: "martes", 3: "miercoles",
+              4: "jueves", 5: "viernes", 6: "sabado"
+            };
+            const sessionDay = map[dayNum];
+
+            // We only care about sessions on the selected day
+            if (sessionDay !== selectedDay) return;
+
+            const sid = session.sessionId;
+            if (!sessionsBySessionId[sid]) {
+              sessionsBySessionId[sid] = [];
+            }
+            sessionsBySessionId[sid].push(session);
           });
 
-          const totalSold = totalCapacity - totalAvailable;
-          const normalSold = normalCapacity - normalAvailable;
-          const dboxSold = dboxCapacity - dboxAvailable;
+          Object.keys(sessionsBySessionId).forEach((sid) => {
+            const group = sessionsBySessionId[sid];
+            const first = group[0];
 
-          // Extract a clean rating from tags or default empty
-          let rating = "";
-          for (const s of group) {
-            const r = s.rating || s.calificacion || s.tags?.[0]?.label || "";
-            if (r) {
-              if (!rating || (isMarketingTag(rating) && !isMarketingTag(r))) {
-                rating = r;
+            const utcDate = new Date(first.sessionDateTime);
+            const arDate = new Date(utcDate.getTime());
+
+            const hours = String(arDate.getUTCHours()).padStart(2, '0');
+            const mins = String(arDate.getUTCMinutes()).padStart(2, '0');
+            const inicio = `${hours}:${mins}`;
+
+            // Fallback duration 120 mins (using runTime if available from server) + 15 mins of advertising
+            const durationMins = (first.runTime || 120) + 15;
+            const endMins = (arDate.getUTCHours() * 60 + arDate.getUTCMinutes() + durationMins) % 1440;
+            const endH = Math.floor(endMins / 60);
+            const endM = endMins % 60;
+            const fin = `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
+
+            // Merge normal and dbox seats
+            let totalCapacity = 0;
+            let totalAvailable = 0;
+            let formats: string[] = [];
+            let isPremiere = false;
+
+            let hasDbox = false;
+            let normalCapacity = 0;
+            let normalAvailable = 0;
+            let dboxCapacity = 0;
+            let dboxAvailable = 0;
+
+            group.forEach((s) => {
+              totalCapacity += s.occupation.capacity;
+              totalAvailable += s.occupation.availableSeats;
+              formats.push(s.sessionFormat);
+              if (s.premiere) isPremiere = true;
+
+              if (s.sessionFormat.toUpperCase().includes("DBOX")) {
+                hasDbox = true;
+                dboxCapacity += s.occupation.capacity;
+                dboxAvailable += s.occupation.availableSeats;
+              } else {
+                normalCapacity += s.occupation.capacity;
+                normalAvailable += s.occupation.availableSeats;
+              }
+            });
+
+            const totalSold = totalCapacity - totalAvailable;
+            const normalSold = normalCapacity - normalAvailable;
+            const dboxSold = dboxCapacity - dboxAvailable;
+
+            // Extract a clean rating from tags or default empty
+            let rating = "";
+            for (const s of group) {
+              const r = s.rating || s.calificacion || s.tags?.[0]?.label || "";
+              if (r) {
+                if (!rating || (isMarketingTag(rating) && !isMarketingTag(r))) {
+                  rating = r;
+                }
               }
             }
-          }
 
-          const is3d = formats.some(f => f.toUpperCase().includes("3D"));
-          const formatStr = is3d ? "3D" : "2D";
-          const langName = (first.language?.name || first.language || "").toUpperCase();
-          let langStr = "CAS";
-          if (langName.includes("SUB") || langName.includes("ING") || langName.includes("ORIG")) {
-            langStr = "SUB";
-          }
-          const peliculaFormatted = `${first.movieName} ${formatStr} ${langStr}`.toUpperCase();
+            const is3d = formats.some(f => f.toUpperCase().includes("3D"));
+            const formatStr = is3d ? "3D" : "2D";
+            const langName = (first.language?.name || first.language || "").toUpperCase();
+            let langStr = "CAS";
+            if (langName.includes("SUB") || langName.includes("ING") || langName.includes("ORIG")) {
+              langStr = "SUB";
+            }
+            const peliculaFormatted = `${first.movieName} ${formatStr} ${langStr}`.toUpperCase();
 
-          list.push({
-            sala: Number(first.theaterRoom),
-            pelicula: peliculaFormatted,
-            calificacion: rating,
-            inicio,
-            fin,
-            sortInicio: timeToMinutes(inicio),
-            sortFin: timeToMinutes(fin),
+            list.push({
+              sala: Number(first.theaterRoom),
+              pelicula: peliculaFormatted,
+              calificacion: rating,
+              inicio,
+              fin,
+              sortInicio: timeToMinutes(inicio),
+              sortFin: timeToMinutes(fin),
 
-            isSimulated: true,
-            sessionId: sid,
-            sessionDateTime: first.sessionDateTime,
-            sessionFormat: Array.from(new Set(formats)).join(" / "),
-            language: first.language.name,
-            premiere: isPremiere,
-            corporateId: first.corporateId,
-            movieId: first.movieId,
-            occupiedSeats: first.occupiedSeats || [],
+              isSimulated: true,
+              sessionId: sid,
+              sessionDateTime: first.sessionDateTime,
+              sessionFormat: Array.from(new Set(formats)).join(" / "),
+              language: first.language.name,
+              premiere: isPremiere,
+              corporateId: first.corporateId,
+              movieId: first.movieId,
+              occupiedSeats: first.occupiedSeats || [],
 
-            capacity: totalCapacity,
-            availableSeats: totalAvailable,
-            soldSeats: totalSold,
+              capacity: totalCapacity,
+              availableSeats: totalAvailable,
+              soldSeats: totalSold,
 
-            hasDbox,
-            normalCapacity,
-            normalAvailable,
-            normalSold,
-            dboxCapacity,
-            dboxAvailable,
-            dboxSold,
+              hasDbox,
+              normalCapacity,
+              normalAvailable,
+              normalSold,
+              dboxCapacity,
+              dboxAvailable,
+              dboxSold,
 
-            runTime: first.runTime,
-            filmPersons: first.filmPersons,
-            posterUrl: first.posterUrl,
+              runTime: first.runTime,
+              filmPersons: first.filmPersons,
+              posterUrl: first.posterUrl,
+            });
           });
-        });
+        }
+      } else {
+        // Case B: Current Week (either static view, or live view enriched with API data).
+        // We use the static PDF/Excel structure as the master timeline layout.
+        if (savedWeekly?.weeklyRows) {
+          // Pre-calculate API mapping for the selected day to speed up lookups
+          const apiLookup: Record<number, any[]> = {};
+          if (useApiData && apiData && selectedWeekStart) {
+            apiData.forEach((session) => {
+              const utcDate = new Date(session.sessionDateTime);
+              const weekStart = getMovieWeekStart(utcDate);
+              if (weekStart !== selectedWeekStart) return;
 
-        return list;
+              const arDate = new Date(utcDate.getTime());
+              if (arDate.getUTCHours() < 6) {
+                arDate.setTime(arDate.getTime() - 24 * 60 * 60 * 1000);
+              }
+              const dayNum = arDate.getUTCDay();
+              const map: Record<number, WeekdayKey> = {
+                0: "domingo", 1: "lunes", 2: "martes", 3: "miercoles",
+                4: "jueves", 5: "viernes", 6: "sabado"
+              };
+              const sessionDay = map[dayNum];
+              if (sessionDay !== selectedDay) return;
+
+              const room = Number(session.theaterRoom);
+              if (!apiLookup[room]) {
+                apiLookup[room] = [];
+              }
+              apiLookup[room].push(session);
+            });
+          }
+
+          savedWeekly.weeklyRows.forEach((row) => {
+            const ranges = row.horariosPorDia?.[selectedDay] ?? [];
+            ranges.forEach((item: string) => {
+              let inicio = "";
+              let fin = "";
+              const match = item.match(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/);
+              if (match) {
+                inicio = match[1];
+                fin = match[2];
+              } else {
+                const timeMatch = item.match(/(\d{1,2}:\d{2})/);
+                if (timeMatch) {
+                  inicio = timeMatch[1];
+                  const [h, m] = inicio.split(":").map(Number);
+                  const endMins = (h * 60 + m + 120) % 1440;
+                  const endH = Math.floor(endMins / 60);
+                  const endM = endMins % 60;
+                  fin = `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
+                }
+              }
+
+              if (inicio && fin) {
+                const show: DailyShow = {
+                  sala: Number(row.sala),
+                  pelicula: row.pelicula,
+                  calificacion: row.calificacion || "",
+                  inicio,
+                  fin,
+                  sortInicio: timeToMinutes(inicio),
+                  sortFin: timeToMinutes(fin),
+                  isSimulated: false,
+                };
+
+                // If in API mode, try to enrich with occupancy details
+                if (useApiData) {
+                  const room = Number(show.sala);
+                  const sessionsInRoom = apiLookup[room] || [];
+                  const showInicioMins = timeToMinutes(show.inicio);
+                  
+                  // Buscar todas las sesiones en la misma sala que comiencen dentro de un rango de 60 minutos
+                  // Agrupamos por sessionId para combinar sesiones normales y DBOX
+                  const sessionsBySessionId: Record<string, any[]> = {};
+                  
+                  sessionsInRoom.forEach((s) => {
+                    const sDate = new Date(s.sessionDateTime);
+                    const sHours = String(sDate.getUTCHours()).padStart(2, "0");
+                    const sMins = String(sDate.getUTCMinutes()).padStart(2, "0");
+                    const sTimeStr = `${sHours}:${sMins}`;
+                    const sTimeMins = timeToMinutes(sTimeStr);
+                    
+                    const diff = Math.abs(sTimeMins - showInicioMins);
+                    const finalDiff = Math.min(diff, 1440 - diff); // Manejar cambio de medianoche
+                    
+                    if (finalDiff <= 90) {
+                      if (!sessionsBySessionId[s.sessionId]) {
+                        sessionsBySessionId[s.sessionId] = [];
+                      }
+                      sessionsBySessionId[s.sessionId].push(s);
+                    }
+                  });
+                  
+                  const sessionIds = Object.keys(sessionsBySessionId);
+                  if (sessionIds.length > 0) {
+                    // Seleccionar la sesión que tenga la menor diferencia de horario
+                    let bestSessionId = sessionIds[0];
+                    let bestDiff = 9999;
+                    
+                    sessionIds.forEach((sid) => {
+                      const s = sessionsBySessionId[sid][0];
+                      const sDate = new Date(s.sessionDateTime);
+                      const sHours = String(sDate.getUTCHours()).padStart(2, "0");
+                      const sMins = String(sDate.getUTCMinutes()).padStart(2, "0");
+                      const sTimeStr = `${sHours}:${sMins}`;
+                      const sTimeMins = timeToMinutes(sTimeStr);
+                      
+                      const diff = Math.abs(sTimeMins - showInicioMins);
+                      const finalDiff = Math.min(diff, 1440 - diff);
+                      
+                      if (finalDiff < bestDiff) {
+                        bestDiff = finalDiff;
+                        bestSessionId = sid;
+                      }
+                    });
+                    
+                    const matchingSessions = sessionsBySessionId[bestSessionId];
+                    
+                    let totalCapacity = 0;
+                    let totalAvailable = 0;
+                    let formats: string[] = [];
+                    let isPremiere = false;
+
+                    let hasDbox = false;
+                    let normalCapacity = 0;
+                    let normalAvailable = 0;
+                    let dboxCapacity = 0;
+                    let dboxAvailable = 0;
+
+                    matchingSessions.forEach((s) => {
+                      totalCapacity += s.occupation.capacity;
+                      totalAvailable += s.occupation.availableSeats;
+                      formats.push(s.sessionFormat);
+                      if (s.premiere) isPremiere = true;
+
+                      if (s.sessionFormat.toUpperCase().includes("DBOX")) {
+                        hasDbox = true;
+                        dboxCapacity += s.occupation.capacity;
+                        dboxAvailable += s.occupation.availableSeats;
+                      } else {
+                        normalCapacity += s.occupation.capacity;
+                        normalAvailable += s.occupation.availableSeats;
+                      }
+                    });
+
+                    const totalSold = totalCapacity - totalAvailable;
+                    const normalSold = normalCapacity - normalAvailable;
+                    const dboxSold = dboxCapacity - dboxAvailable;
+
+                    show.isSimulated = true;
+                    show.sessionId = matchingSessions[0].sessionId;
+                    show.sessionDateTime = matchingSessions[0].sessionDateTime;
+                    show.sessionFormat = Array.from(new Set(formats)).join(" / ");
+                    show.language = matchingSessions[0].language.name;
+                    show.premiere = isPremiere;
+                    show.corporateId = matchingSessions[0].corporateId;
+                    show.movieId = matchingSessions[0].movieId;
+                    show.occupiedSeats = matchingSessions[0].occupiedSeats || [];
+                    show.runTime = matchingSessions[0].runTime;
+                    show.filmPersons = matchingSessions[0].filmPersons;
+                    show.posterUrl = matchingSessions[0].posterUrl;
+                    let sessionRating = "";
+                    for (const s of matchingSessions) {
+                      const r = s.rating || s.calificacion || s.tags?.[0]?.label || "";
+                      if (r) {
+                        if (!sessionRating || (isMarketingTag(sessionRating) && !isMarketingTag(r))) {
+                          sessionRating = r;
+                        }
+                      }
+                    }
+                    if (sessionRating) {
+                      show.calificacion = sessionRating;
+                    }
+
+                    show.capacity = totalCapacity;
+                    show.availableSeats = totalAvailable;
+                    show.soldSeats = totalSold;
+
+                    show.hasDbox = hasDbox;
+                    show.normalCapacity = normalCapacity;
+                    show.normalAvailable = normalAvailable;
+                    show.normalSold = normalSold;
+                    show.dboxCapacity = dboxCapacity;
+                    show.dboxAvailable = dboxAvailable;
+                    show.dboxSold = dboxSold;
+
+                    if (adjustShowtimes) {
+                      const sDate = new Date(matchingSessions[0].sessionDateTime);
+                      const sHours = String(sDate.getUTCHours()).padStart(2, "0");
+                      const sMins = String(sDate.getUTCMinutes()).padStart(2, "0");
+                      const realInicioStr = `${sHours}:${sMins}`;
+
+                      const originalDuration = (timeToMinutes(show.fin) - timeToMinutes(show.inicio) + 1440) % 1440;
+                      show.inicio = realInicioStr;
+                      const newFinMins = (timeToMinutes(realInicioStr) + originalDuration) % 1440;
+                      const endH = Math.floor(newFinMins / 60);
+                      const endM = newFinMins % 60;
+                      show.fin = `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
+                      show.sortInicio = timeToMinutes(show.inicio);
+                      show.sortFin = timeToMinutes(show.fin);
+                    }
+                  } else {
+                    console.warn(`[Matching B] No match for Sala ${room} - Show: ${show.pelicula} (${show.inicio}). Available DB sessions in this room:`, 
+                      sessionsInRoom.map(s => {
+                        const sDate = new Date(s.sessionDateTime);
+                        return `${String(sDate.getUTCHours()).padStart(2, "0")}:${String(sDate.getUTCMinutes()).padStart(2, "0")}`;
+                      })
+                    );
+                  }
+                }
+
+                list.push(show);
+              }
+            });
+          });
+        }
       }
     }
 
-    // Case B: Current Week (either static view, or live view enriched with API data).
-    // We use the static PDF/Excel structure as the master timeline layout.
-    if (!savedWeekly?.weeklyRows) return [];
-    const list: DailyShow[] = [];
+    // Agregar Eventos guardados al día correspondiente a la sala y hora correspondiente
+    if (eventos && eventos.length > 0 && selectedWeekStart) {
+      eventos.forEach((evt) => {
+        if (!evt.sala || evt.sala.trim() === "") return; // Si no tiene sala asignada, no se crea
 
-    // Pre-calculate API mapping for the selected day to speed up lookups
-    const apiLookup: Record<number, any[]> = {};
-    if (useApiData && apiData && selectedWeekStart) {
-      apiData.forEach((session) => {
-        const utcDate = new Date(session.sessionDateTime);
-        const weekStart = getMovieWeekStart(utcDate);
-        if (weekStart !== selectedWeekStart) return;
+        const eventDate = toDate(evt.diaHora);
+        const eventWeekStart = getMovieWeekStart(eventDate);
+        if (eventWeekStart !== selectedWeekStart) return;
 
-        const arDate = new Date(utcDate.getTime());
-        if (arDate.getUTCHours() < 6) {
-          arDate.setTime(arDate.getTime() - 24 * 60 * 60 * 1000);
-        }
-        const dayNum = arDate.getUTCDay();
-        const map: Record<number, WeekdayKey> = {
-          0: "domingo", 1: "lunes", 2: "martes", 3: "miercoles",
-          4: "jueves", 5: "viernes", 6: "sabado"
-        };
-        const sessionDay = map[dayNum];
-        if (sessionDay !== selectedDay) return;
+        // Comprobar si el evento corresponde al día seleccionado cinematográficamente
+        const eventDayKey = getCinematicWeekdayKey(eventDate);
+        if (eventDayKey !== selectedDay) return;
 
-        const room = Number(session.theaterRoom);
-        if (!apiLookup[room]) {
-          apiLookup[room] = [];
-        }
-        apiLookup[room].push(session);
+        const startHours = String(eventDate.getHours()).padStart(2, '0');
+        const startMins = String(eventDate.getMinutes()).padStart(2, '0');
+        const inicio = `${startHours}:${startMins}`;
+        const fin = addMinutesToTimeStr(inicio, 30); // Duración de 30 minutos
+
+        list.push({
+          sala: Number(evt.sala),
+          pelicula: `[EVENTO] ${evt.pelicula || "EVENTO"}`.toUpperCase(),
+          calificacion: "",
+          inicio,
+          fin,
+          sortInicio: timeToMinutes(inicio),
+          sortFin: timeToMinutes(fin),
+          isEvent: true,
+          isSimulated: false,
+          desayuno: !!evt.desayuno,
+          combo: !!evt.combo,
+        } as any);
       });
     }
 
-    savedWeekly.weeklyRows.forEach((row) => {
-      const ranges = row.horariosPorDia?.[selectedDay] ?? [];
-      ranges.forEach((item: string) => {
-        let inicio = "";
-        let fin = "";
-        const match = item.match(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/);
-        if (match) {
-          inicio = match[1];
-          fin = match[2];
-        } else {
-          const timeMatch = item.match(/(\d{1,2}:\d{2})/);
-          if (timeMatch) {
-            inicio = timeMatch[1];
-            const [h, m] = inicio.split(":").map(Number);
-            const endMins = (h * 60 + m + 120) % 1440;
-            const endH = Math.floor(endMins / 60);
-            const endM = endMins % 60;
-            fin = `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
-          }
-        }
-
-        if (inicio && fin) {
-          const show: DailyShow = {
-            sala: Number(row.sala),
-            pelicula: row.pelicula,
-            calificacion: row.calificacion || "",
-            inicio,
-            fin,
-            sortInicio: timeToMinutes(inicio),
-            sortFin: timeToMinutes(fin),
-            isSimulated: false,
-          };
-
-          // If in API mode, try to enrich with occupancy details
-          if (useApiData) {
-            const room = Number(show.sala);
-            const sessionsInRoom = apiLookup[room] || [];
-            const showInicioMins = timeToMinutes(show.inicio);
-            
-            // Buscar todas las sesiones en la misma sala que comiencen dentro de un rango de 60 minutos
-            // Agrupamos por sessionId para combinar sesiones normales y DBOX
-            const sessionsBySessionId: Record<string, any[]> = {};
-            
-            sessionsInRoom.forEach((s) => {
-              const sDate = new Date(s.sessionDateTime);
-              const sHours = String(sDate.getUTCHours()).padStart(2, "0");
-              const sMins = String(sDate.getUTCMinutes()).padStart(2, "0");
-              const sTimeStr = `${sHours}:${sMins}`;
-              const sTimeMins = timeToMinutes(sTimeStr);
-              
-              const diff = Math.abs(sTimeMins - showInicioMins);
-              const finalDiff = Math.min(diff, 1440 - diff); // Manejar cambio de medianoche
-              
-              if (finalDiff <= 90) {
-                if (!sessionsBySessionId[s.sessionId]) {
-                  sessionsBySessionId[s.sessionId] = [];
-                }
-                sessionsBySessionId[s.sessionId].push(s);
-              }
-            });
-            
-            const sessionIds = Object.keys(sessionsBySessionId);
-            if (sessionIds.length > 0) {
-              // Seleccionar la sesión que tenga la menor diferencia de horario
-              let bestSessionId = sessionIds[0];
-              let bestDiff = 9999;
-              
-              sessionIds.forEach((sid) => {
-                const s = sessionsBySessionId[sid][0];
-                const sDate = new Date(s.sessionDateTime);
-                const sHours = String(sDate.getUTCHours()).padStart(2, "0");
-                const sMins = String(sDate.getUTCMinutes()).padStart(2, "0");
-                const sTimeStr = `${sHours}:${sMins}`;
-                const sTimeMins = timeToMinutes(sTimeStr);
-                
-                const diff = Math.abs(sTimeMins - showInicioMins);
-                const finalDiff = Math.min(diff, 1440 - diff);
-                
-                if (finalDiff < bestDiff) {
-                  bestDiff = finalDiff;
-                  bestSessionId = sid;
-                }
-              });
-              
-              const matchingSessions = sessionsBySessionId[bestSessionId];
-              
-              let totalCapacity = 0;
-              let totalAvailable = 0;
-              let formats: string[] = [];
-              let isPremiere = false;
-
-              let hasDbox = false;
-              let normalCapacity = 0;
-              let normalAvailable = 0;
-              let dboxCapacity = 0;
-              let dboxAvailable = 0;
-
-              matchingSessions.forEach((s) => {
-                totalCapacity += s.occupation.capacity;
-                totalAvailable += s.occupation.availableSeats;
-                formats.push(s.sessionFormat);
-                if (s.premiere) isPremiere = true;
-
-                if (s.sessionFormat.toUpperCase().includes("DBOX")) {
-                  hasDbox = true;
-                  dboxCapacity += s.occupation.capacity;
-                  dboxAvailable += s.occupation.availableSeats;
-                } else {
-                  normalCapacity += s.occupation.capacity;
-                  normalAvailable += s.occupation.availableSeats;
-                }
-              });
-
-              const totalSold = totalCapacity - totalAvailable;
-              const normalSold = normalCapacity - normalAvailable;
-              const dboxSold = dboxCapacity - dboxAvailable;
-
-              show.isSimulated = true;
-              show.sessionId = matchingSessions[0].sessionId;
-              show.sessionDateTime = matchingSessions[0].sessionDateTime;
-              show.sessionFormat = Array.from(new Set(formats)).join(" / "),
-              show.language = matchingSessions[0].language.name;
-              show.premiere = isPremiere;
-              show.corporateId = matchingSessions[0].corporateId;
-              show.movieId = matchingSessions[0].movieId;
-              show.occupiedSeats = matchingSessions[0].occupiedSeats || [];
-              show.runTime = matchingSessions[0].runTime;
-              show.filmPersons = matchingSessions[0].filmPersons;
-              show.posterUrl = matchingSessions[0].posterUrl;
-              let sessionRating = "";
-              for (const s of matchingSessions) {
-                const r = s.rating || s.calificacion || s.tags?.[0]?.label || "";
-                if (r) {
-                  if (!sessionRating || (isMarketingTag(sessionRating) && !isMarketingTag(r))) {
-                    sessionRating = r;
-                  }
-                }
-              }
-              if (sessionRating) {
-                show.calificacion = sessionRating;
-              }
-
-              show.capacity = totalCapacity;
-              show.availableSeats = totalAvailable;
-              show.soldSeats = totalSold;
-
-              show.hasDbox = hasDbox;
-              show.normalCapacity = normalCapacity;
-              show.normalAvailable = normalAvailable;
-              show.normalSold = normalSold;
-              show.dboxCapacity = dboxCapacity;
-              show.dboxAvailable = dboxAvailable;
-              show.dboxSold = dboxSold;
-
-              if (adjustShowtimes) {
-                const sDate = new Date(matchingSessions[0].sessionDateTime);
-                const sHours = String(sDate.getUTCHours()).padStart(2, "0");
-                const sMins = String(sDate.getUTCMinutes()).padStart(2, "0");
-                const realInicioStr = `${sHours}:${sMins}`;
-
-                const originalDuration = (timeToMinutes(show.fin) - timeToMinutes(show.inicio) + 1440) % 1440;
-                show.inicio = realInicioStr;
-                const newFinMins = (timeToMinutes(realInicioStr) + originalDuration) % 1440;
-                const endH = Math.floor(newFinMins / 60);
-                const endM = newFinMins % 60;
-                show.fin = `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
-                show.sortInicio = timeToMinutes(show.inicio);
-                show.sortFin = timeToMinutes(show.fin);
-              }
-            } else {
-              console.warn(`[Matching B] No match for Sala ${room} - Show: ${show.pelicula} (${show.inicio}). Available DB sessions in this room:`, 
-                sessionsInRoom.map(s => {
-                  const sDate = new Date(s.sessionDateTime);
-                  return `${String(sDate.getUTCHours()).padStart(2, "0")}:${String(sDate.getUTCMinutes()).padStart(2, "0")}`;
-                })
-              );
-            }
-          }
-
-          list.push(show);
-        }
-      });
-    });
-
     return list;
-  }, [savedWeekly, selectedDay, useApiData, apiData, selectedWeekStart, adjustShowtimes]);
+  }, [savedWeekly, selectedDay, useApiData, apiData, selectedWeekStart, adjustShowtimes, eventos]);
 
   // Compute daily and weekly statistics and operational alerts
   const stats = useMemo(() => {
@@ -2057,8 +2140,9 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
         }}
       >
         {sortedShows.map((show, idx) => {
-          const is3D = /3d/i.test(show.pelicula) || /3d/i.test(show.sessionFormat || "");
-          const movieAccentColor = getMovieColor(show.pelicula);
+          const isEvent = show.isEvent;
+          const is3D = !isEvent && (/3d/i.test(show.pelicula) || /3d/i.test(show.sessionFormat || ""));
+          const movieAccentColor = isEvent ? "#8B5CF6" : getMovieColor(show.pelicula);
           const status = getShowStatus(show);
           const hasEntered = status === "PAST" || status === "PLAYING";
           
@@ -2072,6 +2156,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                 styles.listCard,
                 { borderLeftColor: movieAccentColor },
                 is3D ? { backgroundColor: movieAccentColor } : null,
+                isEvent ? { backgroundColor: "#EDE9FE", borderLeftColor: "#8B5CF6" } : null,
                 hasEntered && {
                   backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F1F5F9)" : "#F1F5F9",
                   borderLeftColor: "#94A3B8",
@@ -2115,20 +2200,37 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                   ⏰ {show.inicio} - {show.fin} hs
                 </Text>
 
-                <View style={styles.listOccupancyContainer}>
-                  <MaterialCommunityIcons 
-                    name="ticket" 
-                    size={14} 
-                    color={hasEntered ? "#94A3B8" : (is3D ? "#FFFFFF" : "#EAB308")} 
-                  />
-                  <Text style={[
-                    styles.listOccupancyText, 
-                    is3D && !hasEntered && { color: "rgba(255, 255, 255, 0.85)" },
-                    hasEntered && { color: "#94A3B8" }
-                  ]}>
-                    Ventas: {show.capacity !== undefined ? `${show.soldSeats} / ${show.capacity}` : "Sin datos"}
-                  </Text>
-                </View>
+                {!show.isEvent && (
+                  <View style={styles.listOccupancyContainer}>
+                    <MaterialCommunityIcons 
+                      name="ticket" 
+                      size={14} 
+                      color={hasEntered ? "#94A3B8" : (is3D ? "#FFFFFF" : "#EAB308")} 
+                    />
+                    <Text style={[
+                      styles.listOccupancyText, 
+                      is3D && !hasEntered && { color: "rgba(255, 255, 255, 0.85)" },
+                      hasEntered && { color: "#94A3B8" }
+                    ]}>
+                      Ventas: {show.capacity !== undefined ? `${show.soldSeats} / ${show.capacity}` : "Sin datos"}
+                    </Text>
+                  </View>
+                )}
+
+                {show.isEvent && (
+                  <View style={{ flexDirection: "row", gap: 6, marginTop: 4 }}>
+                    {show.desayuno && (
+                      <View style={{ backgroundColor: "#D1FAE5", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                        <Text style={{ fontSize: 10, color: "#065F46", fontWeight: "700" }}>☕ Desayuno</Text>
+                      </View>
+                    )}
+                    {show.combo && (
+                      <View style={{ backgroundColor: "#FEF3C7", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                        <Text style={{ fontSize: 10, color: "#92400E", fontWeight: "700" }}>🍿 Combo</Text>
+                      </View>
+                    )}
+                  </View>
+                )}
 
                 {show.isSimulated && (() => {
                   const rate = show.capacity !== undefined && show.capacity > 0 && show.soldSeats !== undefined ? show.soldSeats / show.capacity : 0;
@@ -2801,8 +2903,9 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                       >
                         {showsInSala.map((show, showIdx) => {
                           const { left, width } = getPositionAndWidth(show);
-                          const movieAccentColor = getMovieColor(show.pelicula);
-                          const is3D = /3d/i.test(show.pelicula) || /3d/i.test(show.sessionFormat || "");
+                          const isEvent = show.isEvent;
+                          const movieAccentColor = isEvent ? "#8B5CF6" : getMovieColor(show.pelicula);
+                          const is3D = !isEvent && (/3d/i.test(show.pelicula) || /3d/i.test(show.sessionFormat || ""));
                           const showAds = width > 50; // show ads prefix block if card is wide enough
 
                           const status = getShowStatus(show);
@@ -2842,6 +2945,12 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                                   ? {
                                       backgroundColor: movieAccentColor,
                                       borderColor: movieAccentColor,
+                                    }
+                                  : isEvent
+                                  ? {
+                                      backgroundColor: "#EDE9FE",
+                                      borderColor: "#8B5CF6",
+                                      borderWidth: 1,
                                     }
                                   : {
                                       backgroundColor: COLORS.card,
@@ -2902,6 +3011,12 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                                   >
                                     {show.inicio} - {show.fin}
                                   </Text>
+                                  {show.isEvent && (
+                                    <View style={{ flexDirection: "row", gap: 3, marginLeft: 6 }}>
+                                      {show.desayuno && <Text style={{ fontSize: 10 }}>☕</Text>}
+                                      {show.combo && <Text style={{ fontSize: 10 }}>🍿</Text>}
+                                    </View>
+                                  )}
                                   {show.isSimulated && (() => {
                                     const rate = show.capacity !== undefined && show.capacity > 0 && show.soldSeats !== undefined ? show.soldSeats / show.capacity : 0;
                                     const sold = show.soldSeats ?? 0;
@@ -3082,34 +3197,51 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
                     {/* Resto de Detalles en una lista limpia */}
                     <View style={{ gap: 14 }}>
-                      {/* Cronograma de Proyección */}
-                      <View style={styles.detailRow}>
-                        <MaterialCommunityIcons name="projector" size={22} color={COLORS.muted} style={styles.detailIcon} />
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.detailLabel}>Cronograma de Proyección</Text>
-                          <Text style={styles.detailValueSub}>
-                            • Encendido / Publicidad (15 min): <Text style={styles.detailHighlight}>{selectedShow.inicio} hs</Text>
-                          </Text>
-                          <Text style={styles.detailValueSub}>
-                            • Inicio de Película: <Text style={styles.detailHighlight}>{addMinutesToTimeStr(selectedShow.inicio, 15)} hs</Text>
-                          </Text>
-                          <Text style={styles.detailValueSub}>
-                            • Finalización de Función: <Text style={styles.detailHighlight}>{selectedShow.fin} hs</Text>
-                          </Text>
+                      {selectedShow.isEvent ? (
+                        <View style={styles.detailRow}>
+                          <MaterialCommunityIcons name="information-outline" size={22} color={COLORS.muted} style={styles.detailIcon} />
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.detailLabel}>Detalles del Evento</Text>
+                            <Text style={styles.detailValue}>
+                              • Horario: <Text style={styles.detailHighlight}>{selectedShow.inicio} hs - {selectedShow.fin} hs</Text>{"\n"}
+                              • Duración: <Text style={styles.detailHighlight}>30 minutos</Text>{"\n"}
+                              {selectedShow.desayuno ? "☕ Incluye Desayuno\n" : ""}
+                              {selectedShow.combo ? "🍿 Incluye Combo\n" : ""}
+                            </Text>
+                          </View>
                         </View>
-                      </View>
+                      ) : (
+                        <>
+                          {/* Cronograma de Proyección */}
+                          <View style={styles.detailRow}>
+                            <MaterialCommunityIcons name="projector" size={22} color={COLORS.muted} style={styles.detailIcon} />
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.detailLabel}>Cronograma de Proyección</Text>
+                              <Text style={styles.detailValueSub}>
+                                • Encendido / Publicidad (15 min): <Text style={styles.detailHighlight}>{selectedShow.inicio} hs</Text>
+                              </Text>
+                              <Text style={styles.detailValueSub}>
+                                • Inicio de Película: <Text style={styles.detailHighlight}>{addMinutesToTimeStr(selectedShow.inicio, 15)} hs</Text>
+                              </Text>
+                              <Text style={styles.detailValueSub}>
+                                • Finalización de Función: <Text style={styles.detailHighlight}>{selectedShow.fin} hs</Text>
+                              </Text>
+                            </View>
+                          </View>
 
-                      {/* Duración del Bloque */}
-                      <View style={styles.detailRow}>
-                        <MaterialCommunityIcons name="timer-outline" size={22} color={COLORS.muted} style={styles.detailIcon} />
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.detailLabel}>Duración Total del Bloque</Text>
-                          <Text style={styles.detailValue}>
-                            {getShowDuration(selectedShow)} minutos (incluye publicidad)
-                            {selectedShow.runTime ? `\n(Película: ${selectedShow.runTime} min)` : ""}
-                          </Text>
-                        </View>
-                      </View>
+                          {/* Duración del Bloque */}
+                          <View style={styles.detailRow}>
+                            <MaterialCommunityIcons name="timer-outline" size={22} color={COLORS.muted} style={styles.detailIcon} />
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.detailLabel}>Duración Total del Bloque</Text>
+                              <Text style={styles.detailValue}>
+                                {getShowDuration(selectedShow)} minutos (incluye publicidad)
+                                {selectedShow.runTime ? `\n(Película: ${selectedShow.runTime} min)` : ""}
+                              </Text>
+                            </View>
+                          </View>
+                        </>
+                      )}
 
                       {/* Calificación */}
                       {selectedShow.calificacion ? (
