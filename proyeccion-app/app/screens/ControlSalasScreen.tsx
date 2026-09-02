@@ -561,45 +561,52 @@ export default function ControlSalasScreen() {
           return { texto: item.trim(), urgencia: "medio" as UrgencyLevel };
         }
         return {
-          texto: (item.texto || "").trim(),
-          urgencia: (item.urgencia || "medio") as UrgencyLevel,
+          texto: (item.texto || item.text || item.detalle || "").trim(),
+          urgencia: (item.urgencia || item.urgency || "medio") as UrgencyLevel,
         };
       })
       .filter((item) => item.texto.length > 0);
   }, [selectedSala, report]);
 
   const handleAddNewGeneralItem = async () => {
-    if (!newItemText.trim() || !cineId) return;
+    if (!newItemText.trim()) {
+      Alert.alert("Atención", "Por favor escribí el detalle de la observación antes de guardar.");
+      return;
+    }
+    if (!cineId) return;
+
     const salaKey = String(selectedSala);
     const currentList = [...generalIssuesList];
-    currentList.push({
+    const newEntry: GeneralIssueItem = {
       texto: newItemText.trim(),
       urgencia: newGeneralUrgency,
-    });
+    };
+    currentList.push(newEntry);
 
-    const newGeneralIssues = { ...report?.generalIssues };
+    const newGeneralIssues = { ...(report?.generalIssues || {}) };
     newGeneralIssues[salaKey] = currentList;
 
     setSaving(true);
-    // Optimistic update
+    // Immediate optimistic local update
     setReport((prev) => ({
       ...prev,
       generalIssues: newGeneralIssues,
     }));
+    setNewItemText(""); // Clear input immediately
+    setNewGeneralUrgency("medio");
+
     try {
       const docRef = doc(db, CINES_COLLECTION, cineId, "control_salas", "active");
       const payload: ActiveReport = {
-        ...report,
         updatedAt: new Date().toISOString(),
         updatedBy: userEmail,
+        issues: report?.issues || {},
         generalIssues: newGeneralIssues,
       };
       await setDoc(docRef, payload);
-      setNewItemText(""); // Clear input
-      setNewGeneralUrgency("medio");
     } catch (e) {
       console.error("Error adding general issue:", e);
-      Alert.alert("Error", "No se pudo agregar la observación.");
+      Alert.alert("Error", "No se pudo sincronizar la observación en la nube.");
     } finally {
       setSaving(false);
     }
@@ -610,12 +617,11 @@ export default function ControlSalasScreen() {
     const salaKey = String(selectedSala);
     const currentList = generalIssuesList.filter((_, idx) => idx !== indexToDelete);
 
-    const newGeneralIssues = { ...report?.generalIssues };
-    // Always assign currentList (even if it's an empty array []) to ensure the REST API receives the update
+    const newGeneralIssues = { ...(report?.generalIssues || {}) };
     newGeneralIssues[salaKey] = currentList;
 
     setSaving(true);
-    // Optimistic update
+    // Immediate optimistic local update
     setReport((prev) => ({
       ...prev,
       generalIssues: newGeneralIssues,
@@ -623,9 +629,9 @@ export default function ControlSalasScreen() {
     try {
       const docRef = doc(db, CINES_COLLECTION, cineId, "control_salas", "active");
       const payload: ActiveReport = {
-        ...report,
         updatedAt: new Date().toISOString(),
         updatedBy: userEmail,
+        issues: report?.issues || {},
         generalIssues: newGeneralIssues,
       };
       await setDoc(docRef, payload);
@@ -1872,6 +1878,11 @@ export default function ControlSalasScreen() {
             const isSel = selectedSala === sala.id;
             const salaKey = String(sala.id);
             const damagedCount = Object.keys(report?.issues?.[salaKey] || {}).length;
+            const generalRaw = report?.generalIssues?.[salaKey];
+            const generalCount = Array.isArray(generalRaw)
+              ? generalRaw.filter(Boolean).length
+              : (generalRaw ? 1 : 0);
+            const totalIncidents = damagedCount + generalCount;
 
             return (
               <TouchableOpacity
@@ -1886,9 +1897,9 @@ export default function ControlSalasScreen() {
                 <Text style={[styles.salaTabText, isSel && styles.salaTabTextActive]}>
                   {sala.name}
                 </Text>
-                {damagedCount > 0 && (
+                {totalIncidents > 0 && (
                   <View style={styles.badgeContainer}>
-                    <Text style={styles.badgeText}>{damagedCount}</Text>
+                    <Text style={styles.badgeText}>{totalIncidents}</Text>
                   </View>
                 )}
               </TouchableOpacity>
@@ -1921,6 +1932,12 @@ export default function ControlSalasScreen() {
                 {selectedSalaIssues.length}
               </Text>
             </View>
+            <View style={styles.roomStatusCard}>
+              <Text style={styles.statusLabel}>OBSERVACIONES</Text>
+              <Text style={[styles.statusValue, generalIssuesList.length > 0 && { color: COLORS.warning }]}>
+                {generalIssuesList.length}
+              </Text>
+            </View>
             {saving && (
               <View style={styles.syncingCard}>
                 <ActivityIndicator size="small" color={COLORS.primary} style={{ marginRight: 6 }} />
@@ -1933,15 +1950,31 @@ export default function ControlSalasScreen() {
 
           {/* Detalles Generales de la Sala */}
           <View style={styles.listCard}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 }}>
-              <MaterialCommunityIcons name="clipboard-text-outline" size={20} color={COLORS.primary} />
-              <Text style={[styles.listCardTitle, { marginBottom: 0 }]}>
-                Observaciones Generales (Sala {selectedSala})
-              </Text>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <MaterialCommunityIcons name="clipboard-text-outline" size={20} color={COLORS.primary} />
+                <Text style={[styles.listCardTitle, { marginBottom: 0 }]}>
+                  Observaciones Generales (Sala {selectedSala})
+                </Text>
+              </View>
+              {generalIssuesList.length > 0 && (
+                <View style={{
+                  backgroundColor: COLORS.warningBg,
+                  borderColor: COLORS.warningBorder,
+                  borderWidth: 1,
+                  borderRadius: 12,
+                  paddingHorizontal: 8,
+                  paddingVertical: 2,
+                }}>
+                  <Text style={{ fontSize: 11, fontWeight: "700", color: COLORS.warning }}>
+                    {generalIssuesList.length} {generalIssuesList.length === 1 ? "observación" : "observaciones"}
+                  </Text>
+                </View>
+              )}
             </View>
 
             {generalIssuesList.length > 0 ? (
-              <View style={{ gap: 6, marginBottom: 12, width: "100%" }}>
+              <View style={{ gap: 6, marginBottom: 16, width: "100%" }}>
                 {generalIssuesList.map((item, index) => {
                   const urg = item.urgencia || "medio";
                   let badgeBg = "#FEF9C3";
@@ -1965,7 +1998,7 @@ export default function ControlSalasScreen() {
                         justifyContent: "space-between", 
                         alignItems: "center", 
                         backgroundColor: COLORS.bg, 
-                        paddingVertical: 8,
+                        paddingVertical: 10,
                         paddingHorizontal: 12,
                         borderRadius: THEME.radius.sm, 
                         borderWidth: 1, 
@@ -2011,15 +2044,24 @@ export default function ControlSalasScreen() {
                 })}
               </View>
             ) : (
-              <Text style={{ fontSize: 12, color: COLORS.muted, marginBottom: 12, fontStyle: "italic" }}>
-                Sin observaciones generales. Agregá ítems para reportar fallas de sonido, pantalla, limpieza o clima.
+              <Text style={{ fontSize: 12, color: COLORS.muted, marginBottom: 14, fontStyle: "italic" }}>
+                Sin observaciones generales en esta sala. Escribí abajo cualquier reporte de sonido, pantalla, limpieza o climatización.
               </Text>
             )}
 
             {/* Form to add a new observation item with urgency selector */}
-            <View style={{ flexDirection: "column", gap: 8, width: "100%" }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <Text style={{ fontSize: 11, fontWeight: "700", color: COLORS.muted }}>Urgencia:</Text>
+            <View style={{
+              flexDirection: "column", 
+              gap: 10, 
+              width: "100%",
+              backgroundColor: COLORS.bg,
+              padding: 12,
+              borderRadius: THEME.radius.md,
+              borderWidth: 1,
+              borderColor: COLORS.border,
+            }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <Text style={{ fontSize: 11, fontWeight: "700", color: COLORS.text }}>Urgencia de la observación:</Text>
                 {(["leve", "medio", "grave"] as UrgencyLevel[]).map((level) => {
                   const isSel = newGeneralUrgency === level;
                   let activeBg = "#FEF9C3";
@@ -2039,9 +2081,9 @@ export default function ControlSalasScreen() {
                       key={level}
                       onPress={() => setNewGeneralUrgency(level)}
                       style={{
-                        paddingHorizontal: 10,
-                        paddingVertical: 4,
-                        borderRadius: 4,
+                        paddingHorizontal: 12,
+                        paddingVertical: 5,
+                        borderRadius: 6,
                         borderWidth: 1.5,
                         borderColor: isSel ? activeBorder : COLORS.border,
                         backgroundColor: isSel ? activeBg : COLORS.card,
@@ -2061,28 +2103,31 @@ export default function ControlSalasScreen() {
                 })}
               </View>
 
-              <View style={{ flexDirection: "row", gap: 8, width: "100%" }}>
+              <View style={{ flexDirection: "row", gap: 8, width: "100%", alignItems: "center" }}>
                 <TextInput
                   value={newItemText}
                   onChangeText={setNewItemText}
                   onSubmitEditing={handleAddNewGeneralItem}
-                  placeholder="Nueva observación (ej: parlante con ruido, pantalla sucia...)"
+                  placeholder="Escribí una observación (ej: parlante con ruido, pantalla sucia...)"
                   placeholderTextColor={COLORS.muted}
-                  style={[styles.modalDetailsInput, { flex: 1, paddingVertical: 8, height: 40 }]}
+                  style={[styles.modalDetailsInput, { flex: 1, paddingVertical: 9, height: 42, backgroundColor: COLORS.card }]}
                 />
                 <TouchableOpacity
                   onPress={handleAddNewGeneralItem}
                   style={{ 
                     backgroundColor: COLORS.primary, 
-                    width: 40,
-                    height: 40,
+                    height: 42,
+                    paddingHorizontal: 16,
                     borderRadius: THEME.radius.md, 
+                    flexDirection: "row",
                     justifyContent: "center", 
-                    alignItems: "center" 
+                    alignItems: "center",
+                    gap: 6,
                   }}
                   activeOpacity={0.8}
                 >
-                  <MaterialCommunityIcons name="plus" size={20} color="#FFF" />
+                  <MaterialCommunityIcons name="plus-circle-outline" size={18} color="#FFF" />
+                  <Text style={{ color: "#FFF", fontWeight: "700", fontSize: 13 }}>Guardar</Text>
                 </TouchableOpacity>
               </View>
             </View>
