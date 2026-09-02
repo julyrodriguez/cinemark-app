@@ -38,25 +38,33 @@ const SALAS_INFO = [
   { id: 12, capacity: 277, name: "Sala 12" },
 ];
 
-interface SeatIssue {
+export type UrgencyLevel = "leve" | "medio" | "grave";
+
+export interface SeatIssue {
   respaldo: boolean;
   asiento: boolean;
   apoyabrazos: boolean;
   detalles: string;
+  urgencia?: UrgencyLevel;
 }
 
-interface RoomIssues {
+export interface GeneralIssueItem {
+  texto: string;
+  urgencia: UrgencyLevel;
+}
+
+export interface RoomIssues {
   [seatKey: string]: SeatIssue;
 }
 
-interface ActiveReport {
+export interface ActiveReport {
   updatedAt: string;
   updatedBy: string;
   issues: {
     [salaId: string]: RoomIssues;
   };
   generalIssues?: {
-    [salaId: string]: string[];
+    [salaId: string]: (string | GeneralIssueItem)[];
   };
 }
 
@@ -310,7 +318,9 @@ export default function ControlSalasScreen() {
   const [asientoRoto, setAsientoRoto] = useState(false);
   const [apoyabrazosRoto, setApoyabrazosRoto] = useState(false);
   const [extraDetails, setExtraDetails] = useState("");
+  const [urgencia, setUrgencia] = useState<UrgencyLevel>("medio");
   const [newItemText, setNewItemText] = useState("");
+  const [newGeneralUrgency, setNewGeneralUrgency] = useState<UrgencyLevel>("medio");
 
   // Seating grid configuration editor state
   const [isLayoutEditorMode, setIsLayoutEditorMode] = useState<boolean>(false);
@@ -534,20 +544,33 @@ export default function ControlSalasScreen() {
   };
 
   // Selector to get itemized general issues for the selected room
-  const generalIssuesList = useMemo(() => {
+  const generalIssuesList = useMemo<GeneralIssueItem[]>(() => {
     const salaKey = String(selectedSala);
     const raw: any = report?.generalIssues?.[salaKey];
     if (!raw) return [];
-    if (Array.isArray(raw)) return raw.filter(Boolean);
-    if (typeof raw === "string" && raw.trim()) return [raw.trim()];
-    return [];
+    const list = Array.isArray(raw) ? raw : [raw];
+    return list
+      .filter(Boolean)
+      .map((item) => {
+        if (typeof item === "string") {
+          return { texto: item.trim(), urgencia: "medio" as UrgencyLevel };
+        }
+        return {
+          texto: (item.texto || "").trim(),
+          urgencia: (item.urgencia || "medio") as UrgencyLevel,
+        };
+      })
+      .filter((item) => item.texto.length > 0);
   }, [selectedSala, report]);
 
   const handleAddNewGeneralItem = async () => {
     if (!newItemText.trim() || !cineId) return;
     const salaKey = String(selectedSala);
     const currentList = [...generalIssuesList];
-    currentList.push(newItemText.trim());
+    currentList.push({
+      texto: newItemText.trim(),
+      urgencia: newGeneralUrgency,
+    });
 
     const newGeneralIssues = { ...report?.generalIssues };
     newGeneralIssues[salaKey] = currentList;
@@ -563,6 +586,7 @@ export default function ControlSalasScreen() {
       };
       await setDoc(docRef, payload);
       setNewItemText(""); // Clear input
+      setNewGeneralUrgency("medio");
     } catch (e) {
       console.error("Error adding general issue:", e);
       Alert.alert("Error", "No se pudo agregar la observación.");
@@ -571,10 +595,10 @@ export default function ControlSalasScreen() {
     }
   };
 
-  const handleDeleteGeneralItem = async (itemToDelete: string) => {
+  const handleDeleteGeneralItem = async (indexToDelete: number) => {
     if (!cineId) return;
     const salaKey = String(selectedSala);
-    const currentList = generalIssuesList.filter((item) => item !== itemToDelete);
+    const currentList = generalIssuesList.filter((_, idx) => idx !== indexToDelete);
 
     const newGeneralIssues = { ...report?.generalIssues };
     // Always assign currentList (even if it's an empty array []) to ensure the REST API receives the update
@@ -617,11 +641,13 @@ export default function ControlSalasScreen() {
       setAsientoRoto(existing.asiento);
       setApoyabrazosRoto(existing.apoyabrazos);
       setExtraDetails(existing.detalles || "");
+      setUrgencia(existing.urgencia || "medio");
     } else {
       setRespaldoRoto(false);
       setAsientoRoto(false);
       setApoyabrazosRoto(false);
       setExtraDetails("");
+      setUrgencia("medio");
     }
   };
 
@@ -645,6 +671,7 @@ export default function ControlSalasScreen() {
         asiento: asientoRoto,
         apoyabrazos: apoyabrazosRoto,
         detalles: extraDetails.trim(),
+        urgencia,
       };
     } else {
       delete newReportIssues[salaKey][seatKey];
@@ -875,10 +902,14 @@ export default function ControlSalasScreen() {
   // Generate and export/print HTML report
   const handleExportPdf = async () => {
     let totalDamagedSeats = 0;
+    let countLeve = 0;
+    let countMedio = 0;
+    let countGrave = 0;
+
     const salaReportsList: { 
       salaName: string; 
-      issues: { row: string; num: number; seat: string; desc: string; details: string; isDbox?: boolean }[];
-      generalDetails: string[];
+      issues: { row: string; num: number; seat: string; urgencia: UrgencyLevel; desc: string; details: string; isDbox?: boolean }[];
+      generalDetails: GeneralIssueItem[];
     }[] = [];
 
     salasInfoList.forEach((sInfo) => {
@@ -886,13 +917,21 @@ export default function ControlSalasScreen() {
       const roomIssues = report?.issues?.[salaKey];
       const roomGeneral: any = report?.generalIssues?.[salaKey];
       
-      let generalItems: string[] = [];
+      let generalItems: GeneralIssueItem[] = [];
       if (roomGeneral) {
-        if (Array.isArray(roomGeneral)) {
-          generalItems = roomGeneral.filter(Boolean);
-        } else if (typeof roomGeneral === "string" && roomGeneral.trim()) {
-          generalItems = [roomGeneral.trim()];
-        }
+        const rawList = Array.isArray(roomGeneral) ? roomGeneral : [roomGeneral];
+        generalItems = rawList
+          .filter(Boolean)
+          .map((item) => {
+            if (typeof item === "string") {
+              return { texto: item.trim(), urgencia: "medio" as UrgencyLevel };
+            }
+            return {
+              texto: (item.texto || "").trim(),
+              urgencia: (item.urgencia || "medio") as UrgencyLevel,
+            };
+          })
+          .filter((item) => item.texto.length > 0);
       }
 
       const hasIssues = roomIssues && Object.keys(roomIssues).length > 0;
@@ -916,11 +955,17 @@ export default function ControlSalasScreen() {
                 const rowSeats = layoutObj.seats[row];
                 const seatLayout = rowSeats?.find((s) => s.number === num);
                 const isDbox = seatLayout?.isDbox || false;
+                const seatUrgency: UrgencyLevel = val.urgencia || "medio";
+
+                if (seatUrgency === "leve") countLeve++;
+                else if (seatUrgency === "grave") countGrave++;
+                else countMedio++;
 
                 return {
                   row,
                   num,
                   seat: `Fila ${row} - Butaca ${num}${isDbox ? " (D-BOX)" : ""}`,
+                  urgencia: seatUrgency,
                   desc: parts.length > 0 ? parts.join(", ") : "Detalles manuales",
                   details: val.detalles || "-",
                   isDbox,
@@ -966,9 +1011,14 @@ export default function ControlSalasScreen() {
             
             ${salaRep.generalDetails.length > 0 ? `
               <div class="general-details-box">
-                <strong>Detalles Generales:</strong>
-                <ul style="margin: 4px 0 0 0; padding-left: 12px; font-size: 9px; color: #451a03;">
-                  ${salaRep.generalDetails.map(item => `<li>${item}</li>`).join("")}
+                <strong>Observaciones Generales:</strong>
+                <ul style="margin: 4px 0 0 0; padding-left: 0; font-size: 9px; list-style: none;">
+                  ${salaRep.generalDetails.map(item => `
+                    <li style="margin-bottom: 4px; display: flex; align-items: flex-start; gap: 4px;">
+                      <span class="badge-urgency badge-${item.urgencia}">${item.urgencia.toUpperCase()}</span>
+                      <span style="color: #334155; word-break: break-word;">${item.texto}</span>
+                    </li>
+                  `).join("")}
                 </ul>
               </div>
             ` : ""}
@@ -977,9 +1027,10 @@ export default function ControlSalasScreen() {
               <table>
                 <thead>
                   <tr>
-                    <th style="width: 30%;">Butaca</th>
-                    <th style="width: 35%;">Daño</th>
-                    <th style="width: 35%;">Detalles</th>
+                    <th style="width: 25%;">Butaca</th>
+                    <th style="width: 20%;">Urgencia</th>
+                    <th style="width: 25%;">Daño</th>
+                    <th style="width: 30%;">Detalles</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -991,6 +1042,7 @@ export default function ControlSalasScreen() {
                         <strong>${issue.row}-${issue.num}</strong>
                         ${issue.isDbox ? `<span class="dbox-tag">D-BOX</span>` : ""}
                       </td>
+                      <td><span class="badge-urgency badge-${issue.urgencia}">${issue.urgencia.toUpperCase()}</span></td>
                       <td><span class="badge">${issue.desc}</span></td>
                       <td>${issue.details}</td>
                     </tr>
@@ -1029,7 +1081,7 @@ export default function ControlSalasScreen() {
             .header {
               border-bottom: 2px solid #890404;
               padding-bottom: 6px;
-              margin-bottom: 12px;
+              margin-bottom: 10px;
               display: flex;
               justify-content: space-between;
               align-items: flex-end;
@@ -1056,9 +1108,10 @@ export default function ControlSalasScreen() {
               border: 1px solid #e2e8f0;
               border-radius: 6px;
               padding: 8px 12px;
-              margin-bottom: 16px;
+              margin-bottom: 10px;
               display: flex;
               justify-content: space-between;
+              gap: 8px;
             }
             .summary-item {
               flex: 1;
@@ -1072,6 +1125,34 @@ export default function ControlSalasScreen() {
               font-size: 13px;
               color: #890404;
               margin-top: 2px;
+            }
+            .urgency-guide-card {
+              background-color: #f8fafc;
+              border: 1px solid #cbd5e1;
+              border-radius: 6px;
+              padding: 6px 10px;
+              margin-bottom: 12px;
+            }
+            .urgency-guide-title {
+              font-size: 8.5px;
+              font-weight: bold;
+              color: #475569;
+              text-transform: uppercase;
+              margin-bottom: 4px;
+              letter-spacing: 0.5px;
+            }
+            .urgency-guide-items {
+              display: flex;
+              justify-content: space-between;
+              gap: 8px;
+            }
+            .guide-item {
+              flex: 1;
+              display: flex;
+              align-items: center;
+              gap: 5px;
+              font-size: 8px;
+              color: #334155;
             }
             .rooms-grid {
               display: flex;
@@ -1120,8 +1201,9 @@ export default function ControlSalasScreen() {
               background-color: #f8fafc;
             }
             .badge {
-              background-color: #fee2e2;
-              color: #991b1b;
+              background-color: #f1f5f9;
+              color: #334155;
+              border: 1px solid #cbd5e1;
               padding: 1px 4px;
               border-radius: 3px;
               font-size: 8px;
@@ -1129,6 +1211,31 @@ export default function ControlSalasScreen() {
               display: inline-block;
               word-break: break-word;
               white-space: normal;
+            }
+            .badge-urgency {
+              padding: 2px 5px;
+              border-radius: 3px;
+              font-size: 7.5px;
+              font-weight: 800;
+              display: inline-block;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+              white-space: nowrap;
+            }
+            .badge-leve {
+              background-color: #fef9c3;
+              color: #854d0e;
+              border: 1px solid #fde047;
+            }
+            .badge-medio {
+              background-color: #ffedd5;
+              color: #9a3412;
+              border: 1px solid #fdba74;
+            }
+            .badge-grave {
+              background-color: #fee2e2;
+              color: #991b1b;
+              border: 1px solid #fca5a5;
             }
             .dbox-tag {
               background-color: #f3e8ff;
@@ -1142,24 +1249,21 @@ export default function ControlSalasScreen() {
               vertical-align: middle;
             }
             .general-details-box {
-              background-color: #fef08a;
-              border-left: 3px solid #eab308;
+              background-color: #f8fafc;
+              border-left: 3px solid #890404;
+              border-top: 1px solid #e2e8f0;
+              border-right: 1px solid #e2e8f0;
+              border-bottom: 1px solid #e2e8f0;
               padding: 6px 8px;
               margin-bottom: 8px;
               border-radius: 4px;
             }
             .general-details-box strong {
               font-size: 8px;
-              color: #854d0e;
+              color: #1e293b;
               display: block;
               margin-bottom: 2px;
               text-transform: uppercase;
-            }
-            .general-details-box p {
-              margin: 0;
-              font-size: 9px;
-              color: #451a03;
-              word-break: break-word;
             }
             .footer-sig {
               margin-top: 20px;
@@ -1209,8 +1313,30 @@ export default function ControlSalasScreen() {
               <strong>${totalDamagedSeats}</strong>
             </div>
             <div class="summary-item">
-              <span>Estado General</span>
-              <strong>Revisión Pendiente</strong>
+              <span>Desglose de Urgencia</span>
+              <div style="margin-top: 4px; display: flex; gap: 4px; flex-wrap: wrap;">
+                <span class="badge-urgency badge-leve">Leve: ${countLeve}</span>
+                <span class="badge-urgency badge-medio">Medio: ${countMedio}</span>
+                <span class="badge-urgency badge-grave">Grave: ${countGrave}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="urgency-guide-card">
+            <div class="urgency-guide-title">Guía de Niveles de Urgencia:</div>
+            <div class="urgency-guide-items">
+              <div class="guide-item">
+                <span class="badge-urgency badge-leve">LEVE</span>
+                <span>Daño estético / menor. Butaca utilizable.</span>
+              </div>
+              <div class="guide-item">
+                <span class="badge-urgency badge-medio">MEDIO</span>
+                <span>Daño parcial o desgaste. Requiere atención pronta.</span>
+              </div>
+              <div class="guide-item">
+                <span class="badge-urgency badge-grave">GRAVE</span>
+                <span>Crítico / fuera de servicio. Inhabilitada para venta.</span>
+              </div>
             </div>
           </div>
 
@@ -1287,6 +1413,7 @@ export default function ControlSalasScreen() {
           row,
           num,
           isDbox,
+          urgencia: (val.urgencia || "medio") as UrgencyLevel,
           ...val,
         };
       })
@@ -1316,12 +1443,25 @@ export default function ControlSalasScreen() {
       }
 
       const seatKey = `${seat.row}-${seat.number}`;
-      const hasIssue = !!report?.issues?.[salaKey]?.[seatKey];
+      const issue = report?.issues?.[salaKey]?.[seatKey];
+      const hasIssue = !!issue;
+      const issueUrgency: UrgencyLevel = issue?.urgencia || "medio";
       const isSelected = editingSeat?.row === seat.row && editingSeat?.num === seat.number;
       const isDbox = seat.isDbox;
 
       // In editor mode, we show empty spaces as light dashed boxes so users can see/paint them!
       const isEditorEmpty = isLayoutEditorMode && seat.type === "empty";
+
+      let damagedSeatStyle = null;
+      if (hasIssue) {
+        if (issueUrgency === "leve") {
+          damagedSeatStyle = styles.seatDamagedLeve;
+        } else if (issueUrgency === "grave") {
+          damagedSeatStyle = styles.seatDamagedGrave;
+        } else {
+          damagedSeatStyle = styles.seatDamagedMedio;
+        }
+      }
 
       return (
         <TouchableOpacity
@@ -1329,7 +1469,7 @@ export default function ControlSalasScreen() {
           style={[
             styles.seat,
             isDbox && styles.seatDbox,
-            hasIssue && styles.seatDamaged,
+            hasIssue && damagedSeatStyle,
             isSelected && styles.seatSelected,
             isEditorEmpty && styles.seatEditorEmpty,
           ]}
@@ -1451,10 +1591,20 @@ export default function ControlSalasScreen() {
               <Text style={styles.legendText}>Espacio Vacío</Text>
             </View>
           ) : (
-            <View style={styles.legendItem}>
-              <View style={styles.legendDotDamaged} />
-              <Text style={styles.legendText}>Daño reportado</Text>
-            </View>
+            <>
+              <View style={styles.legendItem}>
+                <View style={[styles.legendDotDamaged, { backgroundColor: "#EAB308" }]} />
+                <Text style={styles.legendText}>Leve</Text>
+              </View>
+              <View style={styles.legendItem}>
+                <View style={[styles.legendDotDamaged, { backgroundColor: "#F97316" }]} />
+                <Text style={styles.legendText}>Medio</Text>
+              </View>
+              <View style={styles.legendItem}>
+                <View style={[styles.legendDotDamaged, { backgroundColor: "#DC2626" }]} />
+                <Text style={styles.legendText}>Grave</Text>
+              </View>
+            </>
           )}
         </View>
 
@@ -1784,46 +1934,73 @@ export default function ControlSalasScreen() {
 
             {generalIssuesList.length > 0 ? (
               <View style={{ gap: 6, marginBottom: 12, width: "100%" }}>
-                {generalIssuesList.map((item, index) => (
-                  <View 
-                    key={index} 
-                    style={{ 
-                      flexDirection: "row", 
-                      justifyContent: "space-between", 
-                      alignItems: "flex-start", 
-                      backgroundColor: COLORS.bg, 
-                      paddingVertical: 8,
-                      paddingHorizontal: 12,
-                      borderRadius: THEME.radius.sm, 
-                      borderWidth: 1, 
-                      borderColor: COLORS.border,
-                      gap: 12,
-                      width: "100%"
-                    }}
-                  >
-                    <View style={{ flex: 1, flexShrink: 1 }}>
-                      <Text 
-                        style={{ 
-                          fontSize: 13, 
-                          color: COLORS.text, 
-                          fontWeight: "500",
-                          flexWrap: "wrap",
-                          // Web wrapping fallback
-                          wordBreak: "break-word",
-                        } as any}
-                      >
-                        • {item}
-                      </Text>
-                    </View>
-                    <TouchableOpacity 
-                      onPress={() => handleDeleteGeneralItem(item)} 
-                      style={{ padding: 4, minWidth: 32, alignItems: "center" }}
-                      activeOpacity={0.7}
+                {generalIssuesList.map((item, index) => {
+                  const urg = item.urgencia || "medio";
+                  let badgeBg = "#FEF9C3";
+                  let badgeBorder = "#FDE047";
+                  let badgeText = "#854D0E";
+                  if (urg === "grave") {
+                    badgeBg = "#FEE2E2";
+                    badgeBorder = "#FCA5A5";
+                    badgeText = "#991B1B";
+                  } else if (urg === "medio") {
+                    badgeBg = "#FFEDD5";
+                    badgeBorder = "#FDBA74";
+                    badgeText = "#9A3412";
+                  }
+
+                  return (
+                    <View 
+                      key={index} 
+                      style={{ 
+                        flexDirection: "row", 
+                        justifyContent: "space-between", 
+                        alignItems: "center", 
+                        backgroundColor: COLORS.bg, 
+                        paddingVertical: 8,
+                        paddingHorizontal: 12,
+                        borderRadius: THEME.radius.sm, 
+                        borderWidth: 1, 
+                        borderColor: COLORS.border,
+                        gap: 12,
+                        width: "100%"
+                      }}
                     >
-                      <MaterialCommunityIcons name="trash-can-outline" size={18} color={COLORS.danger} />
-                    </TouchableOpacity>
-                  </View>
-                ))}
+                      <View style={{ flex: 1, flexShrink: 1, flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <View style={{
+                          backgroundColor: badgeBg,
+                          borderColor: badgeBorder,
+                          borderWidth: 1,
+                          borderRadius: 4,
+                          paddingHorizontal: 6,
+                          paddingVertical: 2,
+                        }}>
+                          <Text style={{ fontSize: 9, fontWeight: "800", color: badgeText, textTransform: "uppercase" }}>
+                            {urg}
+                          </Text>
+                        </View>
+                        <Text 
+                          style={{ 
+                            fontSize: 13, 
+                            color: COLORS.text, 
+                            fontWeight: "500",
+                            flexWrap: "wrap",
+                            wordBreak: "break-word",
+                          } as any}
+                        >
+                          {item.texto}
+                        </Text>
+                      </View>
+                      <TouchableOpacity 
+                        onPress={() => handleDeleteGeneralItem(index)} 
+                        style={{ padding: 4, minWidth: 32, alignItems: "center" }}
+                        activeOpacity={0.7}
+                      >
+                        <MaterialCommunityIcons name="trash-can-outline" size={18} color={COLORS.danger} />
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })}
               </View>
             ) : (
               <Text style={{ fontSize: 12, color: COLORS.muted, marginBottom: 12, fontStyle: "italic" }}>
@@ -1831,30 +2008,75 @@ export default function ControlSalasScreen() {
               </Text>
             )}
 
-            {/* Form to add a new observation item */}
-            <View style={{ flexDirection: "row", gap: 8 }}>
-              <TextInput
-                value={newItemText}
-                onChangeText={setNewItemText}
-                onSubmitEditing={handleAddNewGeneralItem}
-                placeholder="Nueva observación (ej: parlante con ruido, pantalla sucia...)"
-                placeholderTextColor={COLORS.muted}
-                style={[styles.modalDetailsInput, { flex: 1, paddingVertical: 8, height: 40 }]}
-              />
-              <TouchableOpacity
-                onPress={handleAddNewGeneralItem}
-                style={{ 
-                  backgroundColor: COLORS.primary, 
-                  width: 40,
-                  height: 40,
-                  borderRadius: THEME.radius.md, 
-                  justifyContent: "center", 
-                  alignItems: "center" 
-                }}
-                activeOpacity={0.8}
-              >
-                <MaterialCommunityIcons name="plus" size={20} color="#FFF" />
-              </TouchableOpacity>
+            {/* Form to add a new observation item with urgency selector */}
+            <View style={{ flexDirection: "column", gap: 8, width: "100%" }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <Text style={{ fontSize: 11, fontWeight: "700", color: COLORS.muted }}>Urgencia:</Text>
+                {(["leve", "medio", "grave"] as UrgencyLevel[]).map((level) => {
+                  const isSel = newGeneralUrgency === level;
+                  let activeBg = "#FEF9C3";
+                  let activeBorder = "#EAB308";
+                  let activeText = "#854D0E";
+                  if (level === "medio") {
+                    activeBg = "#FFEDD5";
+                    activeBorder = "#F97316";
+                    activeText = "#9A3412";
+                  } else if (level === "grave") {
+                    activeBg = "#FEE2E2";
+                    activeBorder = "#DC2626";
+                    activeText = "#991B1B";
+                  }
+                  return (
+                    <TouchableOpacity
+                      key={level}
+                      onPress={() => setNewGeneralUrgency(level)}
+                      style={{
+                        paddingHorizontal: 10,
+                        paddingVertical: 4,
+                        borderRadius: 4,
+                        borderWidth: 1.5,
+                        borderColor: isSel ? activeBorder : COLORS.border,
+                        backgroundColor: isSel ? activeBg : COLORS.card,
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={{
+                        fontSize: 11,
+                        fontWeight: isSel ? "800" : "600",
+                        color: isSel ? activeText : COLORS.muted,
+                        textTransform: "capitalize",
+                      }}>
+                        {level}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <View style={{ flexDirection: "row", gap: 8, width: "100%" }}>
+                <TextInput
+                  value={newItemText}
+                  onChangeText={setNewItemText}
+                  onSubmitEditing={handleAddNewGeneralItem}
+                  placeholder="Nueva observación (ej: parlante con ruido, pantalla sucia...)"
+                  placeholderTextColor={COLORS.muted}
+                  style={[styles.modalDetailsInput, { flex: 1, paddingVertical: 8, height: 40 }]}
+                />
+                <TouchableOpacity
+                  onPress={handleAddNewGeneralItem}
+                  style={{ 
+                    backgroundColor: COLORS.primary, 
+                    width: 40,
+                    height: 40,
+                    borderRadius: THEME.radius.md, 
+                    justifyContent: "center", 
+                    alignItems: "center" 
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <MaterialCommunityIcons name="plus" size={20} color="#FFF" />
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
 
@@ -1874,60 +2096,86 @@ export default function ControlSalasScreen() {
               </View>
             ) : (
               <View style={styles.issuesList}>
-                {selectedSalaIssues.map((item) => (
-                  <View key={item.key} style={styles.issueItemCard}>
-                    <View style={styles.issueItemHeader}>
-                      <View style={styles.issueItemTitleWrap}>
-                        <MaterialCommunityIcons name="sofa-single" size={18} color={item.isDbox ? COLORS.betaText : COLORS.danger} />
-                        <Text style={styles.issueSeatName}>
-                          Fila {item.row} - Butaca {item.num}
-                          {item.isDbox ? " (D-BOX)" : ""}
-                        </Text>
+                {selectedSalaIssues.map((item) => {
+                  const urg = item.urgencia || "medio";
+                  let urgIconColor = "#F97316";
+                  let urgBadgeStyle = styles.urgencyBadgeMedio;
+                  let urgBadgeTextStyle = styles.urgencyBadgeTextMedio;
+
+                  if (urg === "leve") {
+                    urgIconColor = "#EAB308";
+                    urgBadgeStyle = styles.urgencyBadgeLeve;
+                    urgBadgeTextStyle = styles.urgencyBadgeTextLeve;
+                  } else if (urg === "grave") {
+                    urgIconColor = "#DC2626";
+                    urgBadgeStyle = styles.urgencyBadgeGrave;
+                    urgBadgeTextStyle = styles.urgencyBadgeTextGrave;
+                  }
+
+                  return (
+                    <View key={item.key} style={styles.issueItemCard}>
+                      <View style={styles.issueItemHeader}>
+                        <View style={styles.issueItemTitleWrap}>
+                          <MaterialCommunityIcons 
+                            name="sofa-single" 
+                            size={18} 
+                            color={item.isDbox ? COLORS.betaText : urgIconColor} 
+                          />
+                          <Text style={styles.issueSeatName}>
+                            Fila {item.row} - Butaca {item.num}
+                            {item.isDbox ? " (D-BOX)" : ""}
+                          </Text>
+                          <View style={[styles.urgencyBadge, urgBadgeStyle]}>
+                            <Text style={[styles.urgencyBadgeText, urgBadgeTextStyle]}>
+                              {urg.toUpperCase()}
+                            </Text>
+                          </View>
+                        </View>
+                        <TouchableOpacity
+                          onPress={() => handleClearSeatReport(item.row, item.num)}
+                          style={styles.deleteIssueBtn}
+                          activeOpacity={0.7}
+                        >
+                          <MaterialCommunityIcons name="trash-can-outline" size={18} color={COLORS.danger} />
+                        </TouchableOpacity>
                       </View>
+
+                      <View style={styles.issueBadgesRow}>
+                        {item.respaldo && (
+                          <View style={styles.partBadge}>
+                            <Text style={styles.partBadgeText}>Respaldo</Text>
+                          </View>
+                        )}
+                        {item.asiento && (
+                          <View style={styles.partBadge}>
+                            <Text style={styles.partBadgeText}>Asiento</Text>
+                          </View>
+                        )}
+                        {item.apoyabrazos && (
+                          <View style={styles.partBadge}>
+                            <Text style={styles.partBadgeText}>Apoyabrazos</Text>
+                          </View>
+                        )}
+                      </View>
+
+                      {item.detalles ? (
+                        <View style={styles.issueDetailsWrap}>
+                          <Text style={styles.issueDetailsLabel}>Comentarios:</Text>
+                          <Text style={styles.issueDetailsText}>{item.detalles}</Text>
+                        </View>
+                      ) : null}
+
                       <TouchableOpacity
-                        onPress={() => handleClearSeatReport(item.row, item.num)}
-                        style={styles.deleteIssueBtn}
+                        onPress={() => handleSeatPress(item.row, item.num, item.isDbox)}
+                        style={styles.editIssueBtn}
                         activeOpacity={0.7}
                       >
-                        <MaterialCommunityIcons name="trash-can-outline" size={18} color={COLORS.danger} />
+                        <MaterialCommunityIcons name="pencil-outline" size={14} color={COLORS.primary} />
+                        <Text style={styles.editIssueBtnText}>Editar daños</Text>
                       </TouchableOpacity>
                     </View>
-
-                    <View style={styles.issueBadgesRow}>
-                      {item.respaldo && (
-                        <View style={styles.partBadge}>
-                          <Text style={styles.partBadgeText}>Respaldo</Text>
-                        </View>
-                      )}
-                      {item.asiento && (
-                        <View style={styles.partBadge}>
-                          <Text style={styles.partBadgeText}>Asiento</Text>
-                        </View>
-                      )}
-                      {item.apoyabrazos && (
-                        <View style={styles.partBadge}>
-                          <Text style={styles.partBadgeText}>Apoyabrazos</Text>
-                        </View>
-                      )}
-                    </View>
-
-                    {item.detalles ? (
-                      <View style={styles.issueDetailsWrap}>
-                        <Text style={styles.issueDetailsLabel}>Comentarios:</Text>
-                        <Text style={styles.issueDetailsText}>{item.detalles}</Text>
-                      </View>
-                    ) : null}
-
-                    <TouchableOpacity
-                      onPress={() => handleSeatPress(item.row, item.num, item.isDbox)}
-                      style={styles.editIssueBtn}
-                      activeOpacity={0.7}
-                    >
-                      <MaterialCommunityIcons name="pencil-outline" size={14} color={COLORS.primary} />
-                      <Text style={styles.editIssueBtnText}>Editar daños</Text>
-                    </TouchableOpacity>
-                  </View>
-                ))}
+                  );
+                })}
               </View>
             )}
           </View>
@@ -1962,6 +2210,76 @@ export default function ControlSalasScreen() {
                 {editingSeat.isDbox ? " (Premium D-BOX)" : ""}
               </Text>
               <Text style={styles.modalSubtitle}>Sala {selectedSala}</Text>
+
+              {/* Urgency selection level */}
+              <Text style={styles.modalSectionTitle}>Nivel de Urgencia:</Text>
+              <View style={styles.urgencySelectorRow}>
+                <TouchableOpacity
+                  style={[
+                    styles.urgencyOptionBtn,
+                    urgencia === "leve" && styles.urgencyOptionBtnLeveActive,
+                  ]}
+                  onPress={() => setUrgencia("leve")}
+                  activeOpacity={0.8}
+                >
+                  <MaterialCommunityIcons
+                    name={urgencia === "leve" ? "checkbox-marked-circle" : "checkbox-blank-circle-outline"}
+                    size={18}
+                    color={urgencia === "leve" ? "#854D0E" : "#A1A1AA"}
+                  />
+                  <View style={{ marginLeft: 6, flex: 1 }}>
+                    <Text style={[styles.urgencyOptionText, urgencia === "leve" && styles.urgencyOptionTextLeve]}>
+                      Leve
+                    </Text>
+                    <Text style={styles.urgencyOptionSub}>Menor / Estético</Text>
+                  </View>
+                  <View style={[styles.urgencyDot, { backgroundColor: "#EAB308" }]} />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.urgencyOptionBtn,
+                    urgencia === "medio" && styles.urgencyOptionBtnMedioActive,
+                  ]}
+                  onPress={() => setUrgencia("medio")}
+                  activeOpacity={0.8}
+                >
+                  <MaterialCommunityIcons
+                    name={urgencia === "medio" ? "checkbox-marked-circle" : "checkbox-blank-circle-outline"}
+                    size={18}
+                    color={urgencia === "medio" ? "#9A3412" : "#A1A1AA"}
+                  />
+                  <View style={{ marginLeft: 6, flex: 1 }}>
+                    <Text style={[styles.urgencyOptionText, urgencia === "medio" && styles.urgencyOptionTextMedio]}>
+                      Medio
+                    </Text>
+                    <Text style={styles.urgencyOptionSub}>Atención pronta</Text>
+                  </View>
+                  <View style={[styles.urgencyDot, { backgroundColor: "#F97316" }]} />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.urgencyOptionBtn,
+                    urgencia === "grave" && styles.urgencyOptionBtnGraveActive,
+                  ]}
+                  onPress={() => setUrgencia("grave")}
+                  activeOpacity={0.8}
+                >
+                  <MaterialCommunityIcons
+                    name={urgencia === "grave" ? "checkbox-marked-circle" : "checkbox-blank-circle-outline"}
+                    size={18}
+                    color={urgencia === "grave" ? "#991B1B" : "#A1A1AA"}
+                  />
+                  <View style={{ marginLeft: 6, flex: 1 }}>
+                    <Text style={[styles.urgencyOptionText, urgencia === "grave" && styles.urgencyOptionTextGrave]}>
+                      Grave
+                    </Text>
+                    <Text style={styles.urgencyOptionSub}>Crítico / Rotura</Text>
+                  </View>
+                  <View style={[styles.urgencyDot, { backgroundColor: "#DC2626" }]} />
+                </TouchableOpacity>
+              </View>
 
               <Text style={styles.modalSectionTitle}>Informar Componentes Dañados:</Text>
               <View style={styles.modalCheckboxes}>
@@ -2397,6 +2715,18 @@ const styles = StyleSheet.create({
   seatDamaged: {
     backgroundColor: COLORS.danger,
     borderColor: COLORS.danger,
+  },
+  seatDamagedLeve: {
+    backgroundColor: "#EAB308",
+    borderColor: "#CA8A04",
+  },
+  seatDamagedMedio: {
+    backgroundColor: "#F97316",
+    borderColor: "#EA580C",
+  },
+  seatDamagedGrave: {
+    backgroundColor: "#DC2626",
+    borderColor: "#B91C1C",
   },
   seatSelected: {
     borderColor: "#EAB308",
@@ -2880,5 +3210,92 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: COLORS.primary,
     fontWeight: "700",
+  },
+
+  // Urgency Selector Modal Styles
+  urgencySelectorRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: THEME.spacing.lg,
+  },
+  urgencyOptionBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 8,
+    borderRadius: THEME.radius.md,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.bg,
+  },
+  urgencyOptionBtnLeveActive: {
+    backgroundColor: "#FEF9C3",
+    borderColor: "#EAB308",
+  },
+  urgencyOptionBtnMedioActive: {
+    backgroundColor: "#FFEDD5",
+    borderColor: "#F97316",
+  },
+  urgencyOptionBtnGraveActive: {
+    backgroundColor: "#FEE2E2",
+    borderColor: "#DC2626",
+  },
+  urgencyOptionText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: COLORS.muted,
+  },
+  urgencyOptionTextLeve: {
+    color: "#854D0E",
+  },
+  urgencyOptionTextMedio: {
+    color: "#9A3412",
+  },
+  urgencyOptionTextGrave: {
+    color: "#991B1B",
+  },
+  urgencyOptionSub: {
+    fontSize: 8.5,
+    color: COLORS.muted,
+    marginTop: 1,
+  },
+  urgencyDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+
+  // Urgency Badge Styles
+  urgencyBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+    alignSelf: "center",
+  },
+  urgencyBadgeLeve: {
+    backgroundColor: "#FEF9C3",
+    borderColor: "#FDE047",
+  },
+  urgencyBadgeMedio: {
+    backgroundColor: "#FFEDD5",
+    borderColor: "#FDBA74",
+  },
+  urgencyBadgeGrave: {
+    backgroundColor: "#FEE2E2",
+    borderColor: "#FCA5A5",
+  },
+  urgencyBadgeText: {
+    fontSize: 9,
+    fontWeight: "800",
+  },
+  urgencyBadgeTextLeve: {
+    color: "#854D0E",
+  },
+  urgencyBadgeTextMedio: {
+    color: "#9A3412",
+  },
+  urgencyBadgeTextGrave: {
+    color: "#991B1B",
   },
 });
