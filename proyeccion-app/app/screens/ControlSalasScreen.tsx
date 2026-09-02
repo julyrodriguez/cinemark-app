@@ -526,6 +526,11 @@ export default function ControlSalasScreen() {
   const saveReportToFirebase = async (updatedIssues: { [salaId: string]: RoomIssues }) => {
     if (!cineId) return;
     setSaving(true);
+    // Optimistic update of local report state
+    setReport((prev) => ({
+      ...prev,
+      issues: updatedIssues,
+    }));
     try {
       const docRef = doc(db, CINES_COLLECTION, cineId, "control_salas", "active");
       const payload: ActiveReport = {
@@ -576,6 +581,11 @@ export default function ControlSalasScreen() {
     newGeneralIssues[salaKey] = currentList;
 
     setSaving(true);
+    // Optimistic update
+    setReport((prev) => ({
+      ...prev,
+      generalIssues: newGeneralIssues,
+    }));
     try {
       const docRef = doc(db, CINES_COLLECTION, cineId, "control_salas", "active");
       const payload: ActiveReport = {
@@ -605,6 +615,11 @@ export default function ControlSalasScreen() {
     newGeneralIssues[salaKey] = currentList;
 
     setSaving(true);
+    // Optimistic update
+    setReport((prev) => ({
+      ...prev,
+      generalIssues: newGeneralIssues,
+    }));
     try {
       const docRef = doc(db, CINES_COLLECTION, cineId, "control_salas", "active");
       const payload: ActiveReport = {
@@ -661,24 +676,17 @@ export default function ControlSalasScreen() {
     const newReportIssues = { ...report?.issues };
     if (!newReportIssues[salaKey]) {
       newReportIssues[salaKey] = {};
-    }
-
-    const hasAnyIssue = respaldoRoto || asientoRoto || apoyabrazosRoto || extraDetails.trim().length > 0;
-
-    if (hasAnyIssue) {
-      newReportIssues[salaKey][seatKey] = {
-        respaldo: respaldoRoto,
-        asiento: asientoRoto,
-        apoyabrazos: apoyabrazosRoto,
-        detalles: extraDetails.trim(),
-        urgencia,
-      };
     } else {
-      delete newReportIssues[salaKey][seatKey];
-      if (Object.keys(newReportIssues[salaKey]).length === 0) {
-        delete newReportIssues[salaKey];
-      }
+      newReportIssues[salaKey] = { ...newReportIssues[salaKey] };
     }
+
+    newReportIssues[salaKey][seatKey] = {
+      respaldo: respaldoRoto,
+      asiento: asientoRoto,
+      apoyabrazos: apoyabrazosRoto,
+      detalles: extraDetails.trim(),
+      urgencia,
+    };
 
     setEditingSeat(null);
     await saveReportToFirebase(newReportIssues);
@@ -2347,12 +2355,34 @@ export default function ControlSalasScreen() {
 
               <View style={styles.modalActions}>
                 <TouchableOpacity
-                  style={[styles.modalBtn, styles.modalBtnCancel, { marginRight: 12 }]}
+                  style={[styles.modalBtn, styles.modalBtnCancel, { marginRight: 8 }]}
                   onPress={() => setEditingSeat(null)}
                   activeOpacity={0.7}
                 >
                   <Text style={styles.modalBtnCancelText}>Cancelar</Text>
                 </TouchableOpacity>
+
+                {!!report?.issues?.[String(selectedSala)]?.[`${editingSeat.row}-${editingSeat.num}`] && (
+                  <TouchableOpacity
+                    style={[
+                      styles.modalBtn,
+                      {
+                        backgroundColor: "transparent",
+                        borderWidth: 1,
+                        borderColor: COLORS.danger,
+                        marginRight: 8,
+                      },
+                    ]}
+                    onPress={() => {
+                      const { row, num } = editingSeat;
+                      setEditingSeat(null);
+                      handleClearSeatReport(row, num);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={{ color: COLORS.danger, fontWeight: "700", fontSize: 13 }}>Desmarcar</Text>
+                  </TouchableOpacity>
+                )}
 
                 <TouchableOpacity
                   style={[styles.modalBtn, styles.modalBtnPrimary]}
