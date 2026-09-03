@@ -554,6 +554,11 @@ export default function ControlSalasScreen() {
     const raw: any = report?.generalIssues?.[salaKey];
     if (!raw) return [];
     const list = Array.isArray(raw) ? raw : [raw];
+    const urgencyOrder: Record<UrgencyLevel, number> = {
+      grave: 1,
+      medio: 2,
+      leve: 3,
+    };
     return list
       .filter(Boolean)
       .map((item) => {
@@ -565,7 +570,8 @@ export default function ControlSalasScreen() {
           urgencia: (item.urgencia || item.urgency || "medio") as UrgencyLevel,
         };
       })
-      .filter((item) => item.texto.length > 0);
+      .filter((item) => item.texto.length > 0)
+      .sort((a, b) => (urgencyOrder[a.urgencia] ?? 2) - (urgencyOrder[b.urgencia] ?? 2));
   }, [selectedSala, report]);
 
   const handleAddNewGeneralItem = async () => {
@@ -934,6 +940,11 @@ export default function ControlSalasScreen() {
       let generalItems: GeneralIssueItem[] = [];
       if (roomGeneral) {
         const rawList = Array.isArray(roomGeneral) ? roomGeneral : [roomGeneral];
+        const urgencyOrder: Record<UrgencyLevel, number> = {
+          grave: 1,
+          medio: 2,
+          leve: 3,
+        };
         generalItems = rawList
           .filter(Boolean)
           .map((item) => {
@@ -945,7 +956,8 @@ export default function ControlSalasScreen() {
               urgencia: (item.urgencia || "medio") as UrgencyLevel,
             };
           })
-          .filter((item) => item.texto.length > 0);
+          .filter((item) => item.texto.length > 0)
+          .sort((a, b) => (urgencyOrder[a.urgencia] ?? 2) - (urgencyOrder[b.urgencia] ?? 2));
       }
 
       const hasIssues = roomIssues && Object.keys(roomIssues).length > 0;
@@ -1329,9 +1341,9 @@ export default function ControlSalasScreen() {
             <div class="summary-item">
               <span>Desglose de Urgencia</span>
               <div style="margin-top: 4px; display: flex; gap: 4px; flex-wrap: wrap;">
-                <span class="badge-urgency badge-leve">Leve: ${countLeve}</span>
-                <span class="badge-urgency badge-medio">Medio: ${countMedio}</span>
                 <span class="badge-urgency badge-grave">Grave: ${countGrave}</span>
+                <span class="badge-urgency badge-medio">Medio: ${countMedio}</span>
+                <span class="badge-urgency badge-leve">Leve: ${countLeve}</span>
               </div>
             </div>
           </div>
@@ -1340,16 +1352,16 @@ export default function ControlSalasScreen() {
             <div class="urgency-guide-title">Guía de Niveles de Urgencia:</div>
             <div class="urgency-guide-items">
               <div class="guide-item">
-                <span class="badge-urgency badge-leve">LEVE</span>
-                <span>Daño estético / menor. Butaca utilizable.</span>
+                <span class="badge-urgency badge-grave">GRAVE</span>
+                <span>Atención inmediata</span>
               </div>
               <div class="guide-item">
                 <span class="badge-urgency badge-medio">MEDIO</span>
-                <span>Daño parcial o desgaste. Requiere atención pronta.</span>
+                <span>Requiere atención pronta</span>
               </div>
               <div class="guide-item">
-                <span class="badge-urgency badge-grave">GRAVE</span>
-                <span>Crítico / fuera de servicio. Inhabilitada para venta.</span>
+                <span class="badge-urgency badge-leve">LEVE</span>
+                <span>Atención programada / Monitoreo</span>
               </div>
             </div>
           </div>
