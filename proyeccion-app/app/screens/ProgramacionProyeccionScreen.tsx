@@ -28,6 +28,7 @@ import * as Sharing from "expo-sharing";
 import { mockShowtimesData } from "./mockShowtimes";
 import { getRoomLayout, SeatInfo, RoomLayout, FirestoreSalaLayout } from "./ControlSalasScreen";
 import { getCineConfig } from "../../lib/cineConfig";
+import { findMatchingCredito, calculateCreditoClockTime } from "../../lib/programacion/creditosMatcher";
 
 function isMarketingTag(tag: string): boolean {
   if (!tag) return true;
@@ -47,6 +48,10 @@ interface DailyShow {
   fin: string;
   sortInicio: number;
   sortFin: number;
+
+  // Credits info
+  creditosHoraReloj?: string;
+  horaCreditoOriginal?: string;
 
   // API / Simulation Mode Properties
   isSimulated?: boolean;
@@ -651,6 +656,33 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
       },
       (error: any) => {
         console.error("[ProgramacionProyeccionScreen] Error loading eventos:", error);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [cineId]);
+
+  // Subscribe to creditos saved in database
+  const [creditosList, setCreditosList] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!cineId) return;
+
+    const ref = collection(db, CINES_COLLECTION, cineId, "creditos");
+    const unsubscribe = onSnapshot(
+      ref,
+      (snapshot: any) => {
+        const list: any[] = [];
+        snapshot.forEach((docSnap: any) => {
+          list.push({
+            id: docSnap.id,
+            ...docSnap.data(),
+          });
+        });
+        setCreditosList(list);
+      },
+      (error: any) => {
+        console.error("[ProgramacionProyeccionScreen] Error loading creditos:", error);
       }
     );
 
@@ -1685,12 +1717,21 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
           isSimulated: false,
           desayuno: !!evt.desayuno,
           combo: !!evt.combo,
-        } as any);
+    // Vincular Créditos a cada película de la función
+    if (creditosList && creditosList.length > 0) {
+      list.forEach((show) => {
+        if (!show.isEvent) {
+          const matched = findMatchingCredito(show.pelicula, creditosList);
+          if (matched && matched.horaCredito) {
+            show.creditosHoraReloj = calculateCreditoClockTime(show.inicio, show.fin, matched.horaCredito);
+            show.horaCreditoOriginal = matched.horaCredito;
+          }
+        }
       });
     }
 
     return list;
-  }, [savedWeekly, selectedDay, useApiData, apiData, selectedWeekStart, adjustShowtimes, eventos]);
+  }, [savedWeekly, selectedDay, useApiData, apiData, selectedWeekStart, adjustShowtimes, eventos, creditosList]);
 
   // Compute daily and weekly statistics and operational alerts
   const stats = useMemo(() => {
@@ -3223,6 +3264,12 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                               <Text style={styles.detailValueSub}>
                                 • Inicio de Película: <Text style={styles.detailHighlight}>{addMinutesToTimeStr(selectedShow.inicio, 15)} hs</Text>
                               </Text>
+                              {selectedShow.creditosHoraReloj ? (
+                                <Text style={styles.detailValueSub}>
+                                  • Inicio de Créditos: <Text style={[styles.detailHighlight, { color: "#D97706" }]}>{selectedShow.creditosHoraReloj} hs</Text>
+                                  {selectedShow.horaCreditoOriginal ? ` (a las ${selectedShow.horaCreditoOriginal} de peli)` : ""}
+                                </Text>
+                              ) : null}
                               <Text style={styles.detailValueSub}>
                                 • Finalización de Función: <Text style={styles.detailHighlight}>{selectedShow.fin} hs</Text>
                               </Text>

@@ -34,6 +34,8 @@ export type DailyShow = {
   fin: string;
   sortInicio: number;
   sortFin: number;
+  creditosHoraReloj?: string;
+  horaCreditoOriginal?: string;
 };
 
 export type ProgramacionBuildResult = {
@@ -41,6 +43,7 @@ export type ProgramacionBuildResult = {
   entrada: DailyShow[];
   salida: DailyShow[];
   cambioSalaKeys: Set<string>;
+  includeCreditos?: boolean;
 };
 
 export type FloorRange = {
@@ -59,4 +62,6 @@ export type GenerateProgramacionParams = {
   day: WeekdayKey;
   dateLabel?: string;
   floorConfig?: FloorConfig;
+  includeCreditos?: boolean;
+  creditosList?: Array<{ pelicula: string; horaCredito: string }>;
 };

@@ -13,6 +13,11 @@ import {
   FloorConfig,
 } from "./types";
 import { extractDateFromText } from "./pdf";
+import {
+  CreditoItem,
+  findMatchingCredito,
+  calculateCreditoClockTime,
+} from "./creditosMatcher";
 
 const DAY_COLUMN_CANDIDATES: Record<WeekdayKey, number[]> = {
   jueves: [1],
@@ -355,12 +360,18 @@ export async function parseWeeklyProgrammingExcel(
 export function buildDailyProgramming(
   weeklyRows: WeeklyMovieRow[],
   day: WeekdayKey,
-  dateLabel: string
+  dateLabel: string,
+  creditosList?: CreditoItem[],
+  includeCreditos?: boolean
 ): ProgramacionBuildResult {
   const allShows: DailyShow[] = [];
 
   for (const movie of weeklyRows) {
     const ranges = movie.horariosPorDia[day] ?? [];
+    const matchedCredito =
+      creditosList && creditosList.length > 0
+        ? findMatchingCredito(movie.pelicula, creditosList)
+        : null;
 
     for (const item of ranges) {
       const normalized = item.replace(/[–—]/g, "-").replace(/\./g, ":");
@@ -375,6 +386,11 @@ export function buildDailyProgramming(
         continue;
       }
 
+      let creditosHoraReloj = "";
+      if (matchedCredito && matchedCredito.horaCredito) {
+        creditosHoraReloj = calculateCreditoClockTime(inicio, fin, matchedCredito.horaCredito);
+      }
+
       allShows.push({
         sala: movie.sala,
         pelicula: movie.pelicula,
@@ -383,6 +399,8 @@ export function buildDailyProgramming(
         fin,
         sortInicio: timeToMinutesForLateNight(inicio),
         sortFin: timeToMinutesForLateNight(fin),
+        creditosHoraReloj: creditosHoraReloj || "",
+        horaCreditoOriginal: matchedCredito?.horaCredito || "",
       });
     }
   }
@@ -431,53 +449,104 @@ export function buildDailyProgramming(
     entrada,
     salida,
     cambioSalaKeys,
+    includeCreditos: !!includeCreditos,
   };
 }
 
-function createBaseRows(dateLabel: string, legendStartRow: number, hideLegend = false, skipDateRow = false): any[][] {
+function createBaseRows(
+  dateLabel: string,
+  legendStartRow: number,
+  hideLegend = false,
+  skipDateRow = false,
+  includeCreditos = false
+): any[][] {
   const rows: any[][] = [];
   let currentIdx = 0;
 
-  if (!skipDateRow) {
-    rows[currentIdx++] = [upper(dateLabel), "", "", "", "", "", "", "", upper(dateLabel), "", "", "", "", "", ""];
-  }
+  if (includeCreditos) {
+    if (!skipDateRow) {
+      rows[currentIdx++] = [
+        upper(dateLabel), "", "", "", "", "", "", "",
+        "",
+        upper(dateLabel), "", "", "", "", "", "", ""
+      ];
+    }
 
-  rows[currentIdx++] = ["ENTRADA", "", "", "", "", "SALIDA", "", "", "ENTRADA", "", "", "", "", "SALIDA", ""];
-  rows[currentIdx++] = [
-    "INICIO", "SALA", "H", "PELÍCULA", "CALIF", "SALA", "FIN", "",
-    "INICIO", "SALA", "H", "PELÍCULA", "CALIF", "SALA", "FIN",
-  ];
+    rows[currentIdx++] = [
+      "ENTRADA", "", "", "", "", "SALIDA", "", "",
+      "",
+      "ENTRADA", "", "", "", "", "SALIDA", "", ""
+    ];
+    rows[currentIdx++] = [
+      "INICIO", "SALA", "H", "PELÍCULA", "CALIF", "SALA", "CRÉDITOS", "FIN", "",
+      "INICIO", "SALA", "H", "PELÍCULA", "CALIF", "SALA", "CRÉDITOS", "FIN",
+    ];
 
-  const totalRows = legendStartRow + (hideLegend ? 0 : 2);
-  for (let i = currentIdx; i < totalRows; i++) {
-    rows[i] = ["", "", "", "", "", "", "", "", "", "", "", "", "", "", ""];
-  }
+    const totalRows = legendStartRow + (hideLegend ? 0 : 2);
+    for (let i = currentIdx; i < totalRows; i++) {
+      rows[i] = ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""];
+    }
 
-  if (!hideLegend) {
-    rows[legendStartRow - 1] = ["PELÍCULAS 3D", "", "", "", "", "", "", "", "PELÍCULAS 3D", "", "", "", "", "", ""];
-    rows[legendStartRow] = ["CAMBIO DE POSTER", "", "", "", "", "", "", "", "CAMBIO DE POSTER", "", "", "", "", "", ""];
+    if (!hideLegend) {
+      rows[legendStartRow - 1] = [
+        "PELÍCULAS 3D", "", "", "", "", "", "", "",
+        "",
+        "PELÍCULAS 3D", "", "", "", "", "", "", ""
+      ];
+      rows[legendStartRow] = [
+        "CAMBIO DE POSTER", "", "", "", "", "", "", "",
+        "",
+        "CAMBIO DE POSTER", "", "", "", "", "", "", ""
+      ];
 
-    const legend1 = "G = Audiencia General (ATP)  |  SP = Supervisión Parental Sugerida (ATPR)  |  R-13 = Restringida menores de 13 años";
-    const legend2 = "R-17 = Restringida menores de 17 años  |  C = Solo apta mayores de 18 años";
+      const legend1 = "G = Audiencia General (ATP)  |  SP = Supervisión Parental Sugerida (ATPR)  |  R-13 = Restringida menores de 13 años";
+      const legend2 = "R-17 = Restringida menores de 17 años  |  C = Solo apta mayores de 18 años";
 
-    rows[legendStartRow + 1] = [legend1, "", "", "", "", "", "", "", legend1, "", "", "", "", "", ""];
-    rows[legendStartRow + 2] = [legend2, "", "", "", "", "", "", "", legend2, "", "", "", "", "", ""];
+      rows[legendStartRow + 1] = [legend1, "", "", "", "", "", "", "", "", legend1, "", "", "", "", "", "", ""];
+      rows[legendStartRow + 2] = [legend2, "", "", "", "", "", "", "", "", legend2, "", "", "", "", "", "", ""];
+    }
+  } else {
+    if (!skipDateRow) {
+      rows[currentIdx++] = [upper(dateLabel), "", "", "", "", "", "", "", upper(dateLabel), "", "", "", "", "", ""];
+    }
+
+    rows[currentIdx++] = ["ENTRADA", "", "", "", "", "SALIDA", "", "", "ENTRADA", "", "", "", "", "SALIDA", ""];
+    rows[currentIdx++] = [
+      "INICIO", "SALA", "H", "PELÍCULA", "CALIF", "SALA", "FIN", "",
+      "INICIO", "SALA", "H", "PELÍCULA", "CALIF", "SALA", "FIN",
+    ];
+
+    const totalRows = legendStartRow + (hideLegend ? 0 : 2);
+    for (let i = currentIdx; i < totalRows; i++) {
+      rows[i] = ["", "", "", "", "", "", "", "", "", "", "", "", "", "", ""];
+    }
+
+    if (!hideLegend) {
+      rows[legendStartRow - 1] = ["PELÍCULAS 3D", "", "", "", "", "", "", "", "PELÍCULAS 3D", "", "", "", "", "", ""];
+      rows[legendStartRow] = ["CAMBIO DE POSTER", "", "", "", "", "", "", "", "CAMBIO DE POSTER", "", "", "", "", "", ""];
+
+      const legend1 = "G = Audiencia General (ATP)  |  SP = Supervisión Parental Sugerida (ATPR)  |  R-13 = Restringida menores de 13 años";
+      const legend2 = "R-17 = Restringida menores de 17 años  |  C = Solo apta mayores de 18 años";
+
+      rows[legendStartRow + 1] = [legend1, "", "", "", "", "", "", "", legend1, "", "", "", "", "", ""];
+      rows[legendStartRow + 2] = [legend2, "", "", "", "", "", "", "", legend2, "", "", "", "", "", ""];
+    }
   }
 
   return rows;
 }
 
-function applyPrintOptions(ws: XLSX.WorkSheet, lastRow: number) {
-  const range = `A1:O${lastRow}`;
+function applyPrintOptions(ws: XLSX.WorkSheet, lastRow: number, includeCreditos = false) {
+  const lastCol = includeCreditos ? "Q" : "O";
+  const range = `A1:${lastCol}${lastRow}`;
   ws["!ref"] = range;
   ws["!printArea"] = range;
-
 
   ws["!pageSetup"] = {
     orientation: "landscape",
     paperSize: 9, // A4
-    fitToWidth: 1, // Ajustar al ancho de la página
-    fitToHeight: 1, // Ajustar al alto de la página
+    fitToWidth: 1,
+    fitToHeight: 1,
   };
 
   ws["!margins"] = {
@@ -490,49 +559,90 @@ function applyPrintOptions(ws: XLSX.WorkSheet, lastRow: number) {
   };
 }
 
-function createBaseSheet(dateLabel: string, legendStartRow: number): XLSX.WorkSheet {
-  const rows = createBaseRows(dateLabel, legendStartRow);
+function createBaseSheet(dateLabel: string, legendStartRow: number, includeCreditos = false): XLSX.WorkSheet {
+  const rows = createBaseRows(dateLabel, legendStartRow, false, false, includeCreditos);
   const ws = XLSX.utils.aoa_to_sheet(rows);
 
   const totalRowsCount = rows.length;
-  applyPrintOptions(ws, totalRowsCount);
+  applyPrintOptions(ws, totalRowsCount, includeCreditos);
 
-  ws["!cols"] = [
-    { wch: 12 }, // A INICIO
-    { wch: 9 },  // B SALA
-    { wch: 3 },  // C HAB.
-    { wch: 62 }, // D PELICULA
-    { wch: 10 }, // E CALIF
-    { wch: 9 },  // F SALA (SALIDA)
-    { wch: 12 }, // G FIN
-    { wch: 3 },  // H separador
-    { wch: 12 }, // I INICIO
-    { wch: 9 },  // J SALA
-    { wch: 3 },  // K HAB.
-    { wch: 62 }, // L PELICULA
-    { wch: 10 }, // M CALIF
-    { wch: 9 },  // N SALA (SALIDA)
-    { wch: 12 }, // O FIN
-  ];
+  if (includeCreditos) {
+    ws["!cols"] = [
+      { wch: 11 }, // A INICIO
+      { wch: 8 },  // B SALA
+      { wch: 3 },  // C HAB.
+      { wch: 54 }, // D PELICULA
+      { wch: 9 },  // E CALIF
+      { wch: 8 },  // F SALA (SALIDA)
+      { wch: 12 }, // G CRÉDITOS (SALIDA)
+      { wch: 10 }, // H FIN
+      { wch: 3 },  // I separador
+      { wch: 11 }, // J INICIO
+      { wch: 8 },  // K SALA
+      { wch: 3 },  // L HAB.
+      { wch: 54 }, // M PELICULA
+      { wch: 9 },  // N CALIF
+      { wch: 8 },  // O SALA (SALIDA)
+      { wch: 12 }, // P CRÉDITOS (SALIDA)
+      { wch: 10 }, // Q FIN
+    ];
 
-  ws["!merges"] = [
-    { s: { r: 0, c: 0 }, e: { r: 0, c: 6 } },
-    { s: { r: 0, c: 8 }, e: { r: 0, c: 14 } },
+    ws["!merges"] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 7 } },
+      { s: { r: 0, c: 9 }, e: { r: 0, c: 16 } },
 
-    { s: { r: 1, c: 0 }, e: { r: 1, c: 4 } },
-    { s: { r: 1, c: 5 }, e: { r: 1, c: 6 } },
-    { s: { r: 1, c: 8 }, e: { r: 1, c: 12 } },
-    { s: { r: 1, c: 13 }, e: { r: 1, c: 14 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 4 } },
+      { s: { r: 1, c: 5 }, e: { r: 1, c: 7 } },
+      { s: { r: 1, c: 9 }, e: { r: 1, c: 13 } },
+      { s: { r: 1, c: 14 }, e: { r: 1, c: 16 } },
 
-    { s: { r: legendStartRow - 1, c: 0 }, e: { r: legendStartRow - 1, c: 6 } },
-    { s: { r: legendStartRow - 1, c: 8 }, e: { r: legendStartRow - 1, c: 14 } },
-    { s: { r: legendStartRow, c: 0 }, e: { r: legendStartRow, c: 6 } },
-    { s: { r: legendStartRow, c: 8 }, e: { r: legendStartRow, c: 14 } },
-    { s: { r: legendStartRow + 1, c: 0 }, e: { r: legendStartRow + 1, c: 6 } },
-    { s: { r: legendStartRow + 1, c: 8 }, e: { r: legendStartRow + 1, c: 14 } },
-    { s: { r: legendStartRow + 2, c: 0 }, e: { r: legendStartRow + 2, c: 6 } },
-    { s: { r: legendStartRow + 2, c: 8 }, e: { r: legendStartRow + 2, c: 14 } },
-  ];
+      { s: { r: legendStartRow - 1, c: 0 }, e: { r: legendStartRow - 1, c: 7 } },
+      { s: { r: legendStartRow - 1, c: 9 }, e: { r: legendStartRow - 1, c: 16 } },
+      { s: { r: legendStartRow, c: 0 }, e: { r: legendStartRow, c: 7 } },
+      { s: { r: legendStartRow, c: 9 }, e: { r: legendStartRow, c: 16 } },
+      { s: { r: legendStartRow + 1, c: 0 }, e: { r: legendStartRow + 1, c: 7 } },
+      { s: { r: legendStartRow + 1, c: 9 }, e: { r: legendStartRow + 1, c: 16 } },
+      { s: { r: legendStartRow + 2, c: 0 }, e: { r: legendStartRow + 2, c: 7 } },
+      { s: { r: legendStartRow + 2, c: 9 }, e: { r: legendStartRow + 2, c: 16 } },
+    ];
+  } else {
+    ws["!cols"] = [
+      { wch: 12 }, // A INICIO
+      { wch: 9 },  // B SALA
+      { wch: 3 },  // C HAB.
+      { wch: 62 }, // D PELICULA
+      { wch: 10 }, // E CALIF
+      { wch: 9 },  // F SALA (SALIDA)
+      { wch: 12 }, // G FIN
+      { wch: 3 },  // H separador
+      { wch: 12 }, // I INICIO
+      { wch: 9 },  // J SALA
+      { wch: 3 },  // K HAB.
+      { wch: 62 }, // L PELICULA
+      { wch: 10 }, // M CALIF
+      { wch: 9 },  // N SALA (SALIDA)
+      { wch: 12 }, // O FIN
+    ];
+
+    ws["!merges"] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 6 } },
+      { s: { r: 0, c: 8 }, e: { r: 0, c: 14 } },
+
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 4 } },
+      { s: { r: 1, c: 5 }, e: { r: 1, c: 6 } },
+      { s: { r: 1, c: 8 }, e: { r: 1, c: 12 } },
+      { s: { r: 1, c: 13 }, e: { r: 1, c: 14 } },
+
+      { s: { r: legendStartRow - 1, c: 0 }, e: { r: legendStartRow - 1, c: 6 } },
+      { s: { r: legendStartRow - 1, c: 8 }, e: { r: legendStartRow - 1, c: 14 } },
+      { s: { r: legendStartRow, c: 0 }, e: { r: legendStartRow, c: 6 } },
+      { s: { r: legendStartRow, c: 8 }, e: { r: legendStartRow, c: 14 } },
+      { s: { r: legendStartRow + 1, c: 0 }, e: { r: legendStartRow + 1, c: 6 } },
+      { s: { r: legendStartRow + 1, c: 8 }, e: { r: legendStartRow + 1, c: 14 } },
+      { s: { r: legendStartRow + 2, c: 0 }, e: { r: legendStartRow + 2, c: 6 } },
+      { s: { r: legendStartRow + 2, c: 8 }, e: { r: legendStartRow + 2, c: 14 } },
+    ];
+  }
 
   return ws;
 }
@@ -548,6 +658,7 @@ function applyHalfStyles(
     pelicula: string;
     calif: string;
     salaSalida: string;
+    creditos?: string;
     fin: string;
   },
   rowOffset = 0,
@@ -555,6 +666,8 @@ function applyHalfStyles(
   skipDateRow = false
 ) {
   const off = rowOffset;
+  const hasCreditos = !!startCols.creditos;
+
   const topDateStyle = centeredStyle({
     fill: { patternType: "solid", fgColor: { rgb: COLOR_LIGHT_GRAY } },
     font: { bold: true, sz: 14, name: "Calibri", color: { rgb: COLOR_BLACK } },
@@ -607,6 +720,12 @@ function applyHalfStyles(
     })
   );
 
+  const subHeaderSalidaCreditos = centeredStyle({
+    fill: { patternType: "solid", fgColor: { rgb: COLOR_SUBHEADER } },
+    font: { bold: true, sz: 12, name: "Calibri", color: { rgb: COLOR_BLACK } },
+    border: defaultBorder(COLOR_BLACK),
+  });
+
   const subHeaderSalidaFin = centeredStyle({
     fill: { patternType: "solid", fgColor: { rgb: COLOR_SUBHEADER } },
     font: { bold: true, sz: 12, name: "Calibri", color: { rgb: COLOR_BLACK } },
@@ -641,6 +760,11 @@ function applyHalfStyles(
       border: defaultBorder(),
     })
   );
+
+  const normalSalidaCreditos = centeredStyle({
+    font: { sz: 12, name: "Calibri", color: { rgb: COLOR_BLACK } },
+    border: defaultBorder(),
+  });
 
   const normalSalidaFin = centeredStyle({
     font: { sz: 12, name: "Calibri", color: { rgb: COLOR_BLACK } },
@@ -721,25 +845,52 @@ function applyHalfStyles(
   const row2 = 2 + off;
   const row3 = 3 + off;
 
+  const headerCols = hasCreditos
+    ? [
+        startCols.inicio,
+        startCols.salaEntrada,
+        startCols.hab,
+        startCols.pelicula,
+        startCols.calif,
+        startCols.salaSalida,
+        startCols.creditos!,
+        startCols.fin,
+      ]
+    : [
+        startCols.inicio,
+        startCols.salaEntrada,
+        startCols.hab,
+        startCols.pelicula,
+        startCols.calif,
+        startCols.salaSalida,
+        startCols.fin,
+      ];
+
   if (!skipDateRow) {
-    styleRange(ws, [startCols.inicio, startCols.salaEntrada, startCols.hab, startCols.pelicula, startCols.calif, startCols.salaSalida, startCols.fin], row1, topDateStyle);
-    styleRange(ws, [startCols.inicio, startCols.salaEntrada, startCols.hab, startCols.pelicula, startCols.calif, startCols.salaSalida, startCols.fin], row2, blockHeader);
+    styleRange(ws, headerCols, row1, topDateStyle);
+    styleRange(ws, headerCols, row2, blockHeader);
     setCellStyle(ws, `${startCols.inicio}${row3}`, subHeaderInicio);
     setCellStyle(ws, `${startCols.salaEntrada}${row3}`, subHeaderSala);
     setCellStyle(ws, `${startCols.hab}${row3}`, subHeaderHab);
     setCellStyle(ws, `${startCols.pelicula}${row3}`, subHeaderPelicula);
     setCellStyle(ws, `${startCols.calif}${row3}`, subHeaderCalif);
     setCellStyle(ws, `${startCols.salaSalida}${row3}`, subHeaderSalidaSala);
+    if (hasCreditos) {
+      setCellStyle(ws, `${startCols.creditos}${row3}`, subHeaderSalidaCreditos);
+    }
     setCellStyle(ws, `${startCols.fin}${row3}`, subHeaderSalidaFin);
   } else {
     // ENTRADA header is row1, subheaders is row2
-    styleRange(ws, [startCols.inicio, startCols.salaEntrada, startCols.hab, startCols.pelicula, startCols.calif, startCols.salaSalida, startCols.fin], row1, blockHeader);
+    styleRange(ws, headerCols, row1, blockHeader);
     setCellStyle(ws, `${startCols.inicio}${row2}`, subHeaderInicio);
     setCellStyle(ws, `${startCols.salaEntrada}${row2}`, subHeaderSala);
     setCellStyle(ws, `${startCols.hab}${row2}`, subHeaderHab);
     setCellStyle(ws, `${startCols.pelicula}${row2}`, subHeaderPelicula);
     setCellStyle(ws, `${startCols.calif}${row2}`, subHeaderCalif);
     setCellStyle(ws, `${startCols.salaSalida}${row2}`, subHeaderSalidaSala);
+    if (hasCreditos) {
+      setCellStyle(ws, `${startCols.creditos}${row2}`, subHeaderSalidaCreditos);
+    }
     setCellStyle(ws, `${startCols.fin}${row2}`, subHeaderSalidaFin);
   }
 
@@ -753,6 +904,9 @@ function applyHalfStyles(
     setCellStyle(ws, `${startCols.pelicula}${row}`, movieNormal);
     setCellStyle(ws, `${startCols.calif}${row}`, normalCalif);
     setCellStyle(ws, `${startCols.salaSalida}${row}`, normalSalidaSala);
+    if (hasCreditos) {
+      setCellStyle(ws, `${startCols.creditos}${row}`, normalSalidaCreditos);
+    }
     setCellStyle(ws, `${startCols.fin}${row}`, normalSalidaFin);
   }
 
@@ -784,26 +938,29 @@ function applyHalfStyles(
     const row = dataStartExcelRow + idx;
     if (is3DMovie(item.pelicula)) {
       setCellStyle(ws, `${startCols.salaSalida}${row}`, generic3DSalidaSala);
+      if (hasCreditos) {
+        setCellStyle(ws, `${startCols.creditos}${row}`, generic3D);
+      }
       setCellStyle(ws, `${startCols.fin}${row}`, generic3D);
     }
   });
 
   if (!hideLegend) {
-    styleRange(ws, [startCols.inicio, startCols.salaEntrada, startCols.hab, startCols.pelicula, startCols.calif, startCols.salaSalida, startCols.fin], legendStartRow + off, legend3DStyle);
-    styleRange(ws, [startCols.inicio, startCols.salaEntrada, startCols.hab, startCols.pelicula, startCols.calif, startCols.salaSalida, startCols.fin], legendStartRow + 1 + off, legendPosterStyle);
+    styleRange(ws, headerCols, legendStartRow + off, legend3DStyle);
+    styleRange(ws, headerCols, legendStartRow + 1 + off, legendPosterStyle);
 
     const legend1Style = centeredStyle({ fontSize: 9, bold: true });
     const legend2Style = centeredStyle({ fontSize: 9, bold: true });
 
-    styleRange(ws, [startCols.inicio, startCols.salaEntrada, startCols.hab, startCols.pelicula, startCols.calif, startCols.salaSalida, startCols.fin], legendStartRow + 2 + off, legend1Style);
-    styleRange(ws, [startCols.inicio, startCols.salaEntrada, startCols.hab, startCols.pelicula, startCols.calif, startCols.salaSalida, startCols.fin], legendStartRow + 3 + off, legend2Style);
+    styleRange(ws, headerCols, legendStartRow + 2 + off, legend1Style);
+    styleRange(ws, headerCols, legendStartRow + 3 + off, legend2Style);
   }
 }
 
-function clearAreaSeparatorColumn(ws: XLSX.WorkSheet, startRow: number, endRow: number) {
+function clearAreaSeparatorColumn(ws: XLSX.WorkSheet, startRow: number, endRow: number, col = "H") {
   for (let row = startRow; row <= endRow; row++) {
-    ws[`H${row}`] = { t: "s", v: "" };
-    setCellStyle(ws, `H${row}`, {
+    ws[`${col}${row}`] = { t: "s", v: "" };
+    setCellStyle(ws, `${col}${row}`, {
       fill: { patternType: "solid", fgColor: { rgb: COLOR_WHITE } },
       border: defaultBorder(),
     });
@@ -817,6 +974,7 @@ function fillPrograArea(
   hideLegend = false,
   skipDateRow = false
 ) {
+  const includeCreditos = !!data.includeCreditos;
   const dataRows = Math.max(data.entrada.length, data.salida.length, 1);
   const legendStartRow = dataRows + (skipDateRow ? 3 : 4);
 
@@ -828,13 +986,16 @@ function fillPrograArea(
     translateCalificacion(item.calificacion),
   ]);
 
-  const salidaRows = data.salida.map((item) => [item.sala, upper(item.fin)]);
+  const salidaRows = includeCreditos
+    ? data.salida.map((item) => [item.sala, item.creditosHoraReloj || "-", upper(item.fin)])
+    : data.salida.map((item) => [item.sala, upper(item.fin)]);
 
   const dataStartRow = (skipDateRow ? 3 : 4) + rowOffset;
   const originEntrada1 = `A${dataStartRow}`;
-  const originEntrada2 = `I${dataStartRow}`;
   const originSalida1 = `F${dataStartRow}`;
-  const originSalida2 = `N${dataStartRow}`;
+
+  const originEntrada2 = includeCreditos ? `J${dataStartRow}` : `I${dataStartRow}`;
+  const originSalida2 = includeCreditos ? `O${dataStartRow}` : `N${dataStartRow}`;
 
   if (entradaRows.length) {
     XLSX.utils.sheet_add_aoa(ws, entradaRows, { origin: originEntrada1 });
@@ -846,30 +1007,54 @@ function fillPrograArea(
     XLSX.utils.sheet_add_aoa(ws, salidaRows, { origin: originSalida2 });
   }
 
-  const columns1 = {
-    inicio: "A",
-    salaEntrada: "B",
-    hab: "C",
-    pelicula: "D",
-    calif: "E",
-    salaSalida: "F",
-    fin: "G",
-  };
-  const columns2 = {
-    inicio: "I",
-    salaEntrada: "J",
-    hab: "K",
-    pelicula: "L",
-    calif: "M",
-    salaSalida: "N",
-    fin: "O",
-  };
+  const columns1 = includeCreditos
+    ? {
+        inicio: "A",
+        salaEntrada: "B",
+        hab: "C",
+        pelicula: "D",
+        calif: "E",
+        salaSalida: "F",
+        creditos: "G",
+        fin: "H",
+      }
+    : {
+        inicio: "A",
+        salaEntrada: "B",
+        hab: "C",
+        pelicula: "D",
+        calif: "E",
+        salaSalida: "F",
+        fin: "G",
+      };
+
+  const columns2 = includeCreditos
+    ? {
+        inicio: "J",
+        salaEntrada: "K",
+        hab: "L",
+        pelicula: "M",
+        calif: "N",
+        salaSalida: "O",
+        creditos: "P",
+        fin: "Q",
+      }
+    : {
+        inicio: "I",
+        salaEntrada: "J",
+        hab: "K",
+        pelicula: "L",
+        calif: "M",
+        salaSalida: "N",
+        fin: "O",
+      };
 
   applyHalfStyles(ws, data, legendStartRow, columns1, rowOffset, hideLegend, skipDateRow);
   applyHalfStyles(ws, data, legendStartRow, columns2, rowOffset, hideLegend, skipDateRow);
 
   const clearEndRow = (hideLegend ? dataRows + (skipDateRow ? 2 : 3) : legendStartRow + 3) + rowOffset;
-  clearAreaSeparatorColumn(ws, 1 + rowOffset, clearEndRow);
+  const separatorCol = includeCreditos ? "I" : "H";
+  clearAreaSeparatorColumn(ws, 1 + rowOffset, clearEndRow, separatorCol);
 }
 
 export async function generateProgramacionWorkbook(params: GenerateProgramacionParams): Promise<{
@@ -878,15 +1063,15 @@ export async function generateProgramacionWorkbook(params: GenerateProgramacionP
   data: ProgramacionBuildResult;
   webArrayBuffer?: ArrayBuffer;
 }> {
-  const { weeklyRows, day, floorConfig, dateLabel } = params;
+  const { weeklyRows, day, floorConfig, dateLabel, includeCreditos, creditosList } = params;
   const finalDateLabel = dateLabel || WEEKDAY_LABELS[day];
 
-  const data = buildDailyProgramming(weeklyRows, day, finalDateLabel);
+  const data = buildDailyProgramming(weeklyRows, day, finalDateLabel, creditosList, includeCreditos);
 
   const dataRowsFull = Math.max(data.entrada.length, data.salida.length, 1);
   const legendStartRowFull = dataRowsFull + 4;
 
-  const ws = createBaseSheet(finalDateLabel, legendStartRowFull);
+  const ws = createBaseSheet(finalDateLabel, legendStartRowFull, !!includeCreditos);
   setDefaultRowHeights(ws, legendStartRowFull + 10, 17);
 
   const lastRowSheet1 = legendStartRowFull + 3;
@@ -895,7 +1080,11 @@ export async function generateProgramacionWorkbook(params: GenerateProgramacionP
   const wb = XLSX.utils.book_new();
 
   if (floorConfig && floorConfig.active) {
-    const floorWs = XLSX.utils.aoa_to_sheet([["", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]]);
+    const floorWs = XLSX.utils.aoa_to_sheet([
+      includeCreditos
+        ? ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]
+        : ["", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]
+    ]);
     floorWs["!cols"] = ws["!cols"];
     floorWs["!merges"] = [];
 
@@ -922,16 +1111,23 @@ export async function generateProgramacionWorkbook(params: GenerateProgramacionP
       };
 
       const floorRowsCount = Math.max(floorEntrada.length, floorSalida.length, 1);
-      const baseRows = createBaseRows(floorData.dateLabel, floorRowsCount + 4, true, true);
+      const baseRows = createBaseRows(floorData.dateLabel, floorRowsCount + 4, true, true, !!includeCreditos);
 
       XLSX.utils.sheet_add_aoa(floorWs, baseRows, { origin: `A${currentRowOffset + 1}` });
 
-      const floorMerges = [
-        { s: { r: currentRowOffset, c: 0 }, e: { r: currentRowOffset, c: 4 } },
-        { s: { r: currentRowOffset, c: 5 }, e: { r: currentRowOffset, c: 6 } },
-        { s: { r: currentRowOffset, c: 8 }, e: { r: currentRowOffset, c: 12 } },
-        { s: { r: currentRowOffset, c: 13 }, e: { r: currentRowOffset, c: 14 } },
-      ];
+      const floorMerges = includeCreditos
+        ? [
+            { s: { r: currentRowOffset, c: 0 }, e: { r: currentRowOffset, c: 4 } },
+            { s: { r: currentRowOffset, c: 5 }, e: { r: currentRowOffset, c: 7 } },
+            { s: { r: currentRowOffset, c: 9 }, e: { r: currentRowOffset, c: 13 } },
+            { s: { r: currentRowOffset, c: 14 }, e: { r: currentRowOffset, c: 16 } },
+          ]
+        : [
+            { s: { r: currentRowOffset, c: 0 }, e: { r: currentRowOffset, c: 4 } },
+            { s: { r: currentRowOffset, c: 5 }, e: { r: currentRowOffset, c: 6 } },
+            { s: { r: currentRowOffset, c: 8 }, e: { r: currentRowOffset, c: 12 } },
+            { s: { r: currentRowOffset, c: 13 }, e: { r: currentRowOffset, c: 14 } },
+          ];
       floorWs["!merges"]!.push(...floorMerges);
 
       fillPrograArea(floorWs, floorData, currentRowOffset, true, true);
@@ -949,19 +1145,19 @@ export async function generateProgramacionWorkbook(params: GenerateProgramacionP
     const lastRowSheet2 = currentRowOffset;
     finalMaxRow = Math.max(lastRowSheet1, lastRowSheet2);
 
-    // Ajustamos ref para que Excel reconozca el nuevo largo sincronizado
-    ws["!ref"] = `A1:O${finalMaxRow}`;
-    floorWs["!ref"] = `A1:O${finalMaxRow}`;
+    const lastCol = includeCreditos ? "Q" : "O";
+    ws["!ref"] = `A1:${lastCol}${finalMaxRow}`;
+    floorWs["!ref"] = `A1:${lastCol}${finalMaxRow}`;
 
-    applyPrintOptions(ws, finalMaxRow);
-    applyPrintOptions(floorWs, finalMaxRow);
+    applyPrintOptions(ws, finalMaxRow, !!includeCreditos);
+    applyPrintOptions(floorWs, finalMaxRow, !!includeCreditos);
 
     fillPrograArea(ws, data, 0, false);
 
     XLSX.utils.book_append_sheet(wb, ws, "PROGRA");
     XLSX.utils.book_append_sheet(wb, floorWs, "PISOS");
   } else {
-    applyPrintOptions(ws, lastRowSheet1);
+    applyPrintOptions(ws, lastRowSheet1, !!includeCreditos);
     fillPrograArea(ws, data, 0, false);
     XLSX.utils.book_append_sheet(wb, ws, "PROGRA");
   }
@@ -973,7 +1169,9 @@ export async function generateProgramacionWorkbook(params: GenerateProgramacionP
     .replace(/[^\w\s-]/g, "")
     .replace(/\s+/g, "-");
 
-  const fileName = `programacion-${safeDate}.xlsx`;
+  const fileName = includeCreditos
+    ? `programacion-con-creditos-${safeDate}.xlsx`
+    : `programacion-${safeDate}.xlsx`;
 
   if (Platform.OS === "web") {
     const webArrayBuffer = XLSX.write(wb, {
@@ -1011,17 +1209,18 @@ export async function generateWeeklyProgramacionWorkbook(params: {
   weeklyRows: WeeklyMovieRow[];
   startDate: Date | null;
   floorConfig?: FloorConfig;
+  includeCreditos?: boolean;
+  creditosList?: CreditoItem[];
 }): Promise<{
   uri?: string;
   fileName: string;
   webArrayBuffer?: ArrayBuffer;
 }> {
-  const { weeklyRows, startDate, floorConfig } = params;
+  const { weeklyRows, startDate, floorConfig, includeCreditos, creditosList } = params;
 
   const wb = XLSX.utils.book_new();
   const daysOrdered: WeekdayKey[] = ["jueves", "viernes", "sabado", "domingo", "lunes", "martes", "miercoles"];
 
-  // Re-define MONTH_LABELS_ES and DAY_OFFSETS for date formatting
   const MONTH_LABELS_ES = [
     "enero", "febrero", "marzo", "abril", "mayo", "junio",
     "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
@@ -1050,22 +1249,25 @@ export async function generateWeeklyProgramacionWorkbook(params: {
 
   for (const day of daysOrdered) {
     const finalDateLabel = getDayDateLabel(day);
-    const data = buildDailyProgramming(weeklyRows, day, finalDateLabel);
+    const data = buildDailyProgramming(weeklyRows, day, finalDateLabel, creditosList, includeCreditos);
 
     const dataRowsFull = Math.max(data.entrada.length, data.salida.length, 1);
     const legendStartRowFull = dataRowsFull + 4;
 
-    const ws = createBaseSheet(finalDateLabel, legendStartRowFull);
+    const ws = createBaseSheet(finalDateLabel, legendStartRowFull, !!includeCreditos);
     setDefaultRowHeights(ws, legendStartRowFull + 10, 17);
 
     const lastRowSheet1 = legendStartRowFull + 3;
     let finalMaxRow = lastRowSheet1;
 
-    // Determine sheet names (upper case day names, and handle floors if config is active)
     const sheetNameBase = WEEKDAY_LABELS[day].toUpperCase();
 
     if (floorConfig && floorConfig.active) {
-      const floorWs = XLSX.utils.aoa_to_sheet([["", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]]);
+      const floorWs = XLSX.utils.aoa_to_sheet([
+        includeCreditos
+          ? ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]
+          : ["", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]
+      ]);
       floorWs["!cols"] = ws["!cols"];
       floorWs["!merges"] = [];
 
@@ -1092,16 +1294,23 @@ export async function generateWeeklyProgramacionWorkbook(params: {
         };
 
         const floorRowsCount = Math.max(floorEntrada.length, floorSalida.length, 1);
-        const baseRows = createBaseRows(floorData.dateLabel, floorRowsCount + 4, true, true);
+        const baseRows = createBaseRows(floorData.dateLabel, floorRowsCount + 4, true, true, !!includeCreditos);
 
         XLSX.utils.sheet_add_aoa(floorWs, baseRows, { origin: `A${currentRowOffset + 1}` });
 
-        const floorMerges = [
-          { s: { r: currentRowOffset, c: 0 }, e: { r: currentRowOffset, c: 4 } },
-          { s: { r: currentRowOffset, c: 5 }, e: { r: currentRowOffset, c: 6 } },
-          { s: { r: currentRowOffset, c: 8 }, e: { r: currentRowOffset, c: 12 } },
-          { s: { r: currentRowOffset, c: 13 }, e: { r: currentRowOffset, c: 14 } },
-        ];
+        const floorMerges = includeCreditos
+          ? [
+              { s: { r: currentRowOffset, c: 0 }, e: { r: currentRowOffset, c: 4 } },
+              { s: { r: currentRowOffset, c: 5 }, e: { r: currentRowOffset, c: 7 } },
+              { s: { r: currentRowOffset, c: 9 }, e: { r: currentRowOffset, c: 13 } },
+              { s: { r: currentRowOffset, c: 14 }, e: { r: currentRowOffset, c: 16 } },
+            ]
+          : [
+              { s: { r: currentRowOffset, c: 0 }, e: { r: currentRowOffset, c: 4 } },
+              { s: { r: currentRowOffset, c: 5 }, e: { r: currentRowOffset, c: 6 } },
+              { s: { r: currentRowOffset, c: 8 }, e: { r: currentRowOffset, c: 12 } },
+              { s: { r: currentRowOffset, c: 13 }, e: { r: currentRowOffset, c: 14 } },
+            ];
         floorWs["!merges"]!.push(...floorMerges);
 
         fillPrograArea(floorWs, floorData, currentRowOffset, true, true);
@@ -1119,19 +1328,19 @@ export async function generateWeeklyProgramacionWorkbook(params: {
       const lastRowSheet2 = currentRowOffset;
       finalMaxRow = Math.max(lastRowSheet1, lastRowSheet2);
 
-      ws["!ref"] = `A1:O${finalMaxRow}`;
-      floorWs["!ref"] = `A1:O${finalMaxRow}`;
+      const lastCol = includeCreditos ? "Q" : "O";
+      ws["!ref"] = `A1:${lastCol}${finalMaxRow}`;
+      floorWs["!ref"] = `A1:${lastCol}${finalMaxRow}`;
 
-      applyPrintOptions(ws, finalMaxRow);
-      applyPrintOptions(floorWs, finalMaxRow);
+      applyPrintOptions(ws, finalMaxRow, !!includeCreditos);
+      applyPrintOptions(floorWs, finalMaxRow, !!includeCreditos);
 
       fillPrograArea(ws, data, 0, false);
 
       XLSX.utils.book_append_sheet(wb, ws, sheetNameBase);
-      // Limit to 31 chars (e.g. "JUEVES PISOS")
       XLSX.utils.book_append_sheet(wb, floorWs, `${sheetNameBase.substring(0, 25)} PISOS`);
     } else {
-      applyPrintOptions(ws, lastRowSheet1);
+      applyPrintOptions(ws, lastRowSheet1, !!includeCreditos);
       fillPrograArea(ws, data, 0, false);
       XLSX.utils.book_append_sheet(wb, ws, sheetNameBase);
     }
@@ -1145,7 +1354,9 @@ export async function generateWeeklyProgramacionWorkbook(params: {
     const yyyy = sd.getFullYear();
     formattedDate = `${dd}-${mm}-${yyyy}`;
   }
-  const fileName = `programacion-semanal-${formattedDate}.xlsx`;
+  const fileName = includeCreditos
+    ? `programacion-semanal-con-creditos-${formattedDate}.xlsx`
+    : `programacion-semanal-${formattedDate}.xlsx`;
 
   if (Platform.OS === "web") {
     const webArrayBuffer = XLSX.write(wb, {

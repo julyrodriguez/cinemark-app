@@ -10,6 +10,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -470,10 +471,32 @@ export default function ProgramacionTab() {
       }
     );
 
+  const [creditosList, setCreditosList] = useState<any[]>([]);
+  const [includeCreditos, setIncludeCreditos] = useState(false);
+
+  useEffect(() => {
+    if (!cineId) return;
+
+    const ref = collection(db, CINES_COLLECTION, cineId, "creditos");
+    const unsubscribe = onSnapshot(
+      ref,
+      (snapshot: any) => {
+        const list: any[] = [];
+        snapshot.forEach((docSnap: any) => {
+          list.push({
+            id: docSnap.id,
+            ...docSnap.data(),
+          });
+        });
+        setCreditosList(list);
+      },
+      (error: any) => {
+        console.error("[ProgramacionTab] Error loading creditos:", error);
+      }
+    );
+
     return () => unsubscribe();
   }, [cineId]);
-
-
 
   const [summary, setSummary] = useState<{
     entrada: number;
@@ -501,8 +524,14 @@ export default function ProgramacionTab() {
     const rowsToUse = useSavedWeekly ? (savedWeekly?.weeklyRows || []) : (loadedWeeklyRows || []);
     const weekStart = useSavedWeekly ? (savedWeekly?.startDate || fechaInicioSemana) : fechaInicioSemana;
     const eventRows = buildEventWeeklyRows(eventos, weekStart);
-    return buildDailyProgramming([...rowsToUse, ...eventRows], selectedDay, WEEKDAY_LABELS[selectedDay]);
-  }, [useSavedWeekly, savedWeekly, loadedWeeklyRows, selectedDay, eventos, fechaInicioSemana]);
+    return buildDailyProgramming(
+      [...rowsToUse, ...eventRows],
+      selectedDay,
+      WEEKDAY_LABELS[selectedDay],
+      creditosList,
+      includeCreditos
+    );
+  }, [useSavedWeekly, savedWeekly, loadedWeeklyRows, selectedDay, eventos, fechaInicioSemana, creditosList, includeCreditos]);
 
   async function pickWeeklyFile() {
     try {
@@ -687,12 +716,17 @@ export default function ProgramacionTab() {
             from: parseInt(r.from.toString(), 10) || 0,
             to: parseInt(r.to.toString(), 10) || 0
           }))
-        } : undefined
+        } : undefined,
+        includeCreditos,
+        creditosList,
       });
 
       let finalFileName = generated.fileName;
       if (startDateToUse) {
         finalFileName = buildFileName(startDateToUse, selectedDay);
+        if (includeCreditos) {
+          finalFileName = finalFileName.replace("Programacion ", "Programacion con Creditos ");
+        }
       }
 
       setSummary({
@@ -818,7 +852,9 @@ export default function ProgramacionTab() {
             from: parseInt(r.from.toString(), 10) || 0,
             to: parseInt(r.to.toString(), 10) || 0
           }))
-        } : undefined
+        } : undefined,
+        includeCreditos,
+        creditosList,
       });
 
       // Si guardamos automáticamente, corremos la misma lógica que handleSaveWeeklyToDb
@@ -1287,6 +1323,58 @@ export default function ProgramacionTab() {
         </Pressable>
       )}
 
+      {/* OPCIÓN: IMPRIMIR CON CRÉDITOS */}
+      <View
+        style={[
+          s.card,
+          {
+            marginTop: 12,
+            paddingVertical: 12,
+            paddingHorizontal: 16,
+            backgroundColor: includeCreditos ? "#FFFBEB" : COLORS.card,
+            borderColor: includeCreditos ? "#F59E0B" : COLORS.border,
+            borderWidth: 1,
+            borderRadius: 12,
+          },
+        ]}
+      >
+        <View style={s.rowBetween}>
+          <View style={{ flexDirection: "row", alignItems: "center", flex: 1, paddingRight: 12 }}>
+            <View
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 18,
+                backgroundColor: includeCreditos ? "#FDE68A" : "#F3F4F6",
+                alignItems: "center",
+                justifyContent: "center",
+                marginRight: 12,
+              }}
+            >
+              <MaterialCommunityIcons
+                name="movie-open-star-outline"
+                size={20}
+                color={includeCreditos ? "#B45309" : COLORS.muted}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 13, fontWeight: "bold", color: COLORS.text }}>
+                Imprimir con Créditos
+              </Text>
+              <Text style={{ fontSize: 11, color: COLORS.muted, marginTop: 2 }}>
+                Agrega la columna de créditos con la hora reloj calculada a la sección de salida
+              </Text>
+            </View>
+          </View>
+          <Switch
+            value={includeCreditos}
+            onValueChange={setIncludeCreditos}
+            trackColor={{ false: COLORS.border, true: "#F59E0B" }}
+            thumbColor="#fff"
+          />
+        </View>
+      </View>
+
       {/* ACCIÓN PRINCIPAL */}
       <View style={s.actionArea}>
         <Pressable
@@ -1298,7 +1386,9 @@ export default function ProgramacionTab() {
             <ActivityIndicator color="#fff" size="small" />
           ) : (
             <>
-              <Text style={s.mainButtonText}>GENERAR EXCEL DÍA</Text>
+              <Text style={s.mainButtonText}>
+                {includeCreditos ? "GENERAR EXCEL CON CRÉDITOS" : "GENERAR EXCEL DÍA"}
+              </Text>
               <Text style={{ color: "rgba(255,255,255,0.6)", fontSize: 10, fontWeight: "600" }}>
                 {selectedDay.toUpperCase()}
               </Text>
@@ -1315,7 +1405,9 @@ export default function ProgramacionTab() {
             <ActivityIndicator color={COLORS.primary} size="small" />
           ) : (
             <>
-              <Text style={s.secondaryButtonText}>DESCARGAR SEMANA COMPLETA</Text>
+              <Text style={s.secondaryButtonText}>
+                {includeCreditos ? "DESCARGAR SEMANA CON CRÉDITOS" : "DESCARGAR SEMANA COMPLETA"}
+              </Text>
               <Text style={{ color: COLORS.muted, fontSize: 10, fontWeight: "600" }}>
                 JUEVES A MIÉRCOLES
               </Text>
@@ -1387,17 +1479,27 @@ export default function ProgramacionTab() {
                       <Text style={[s.previewColumnHeaderText, { color: COLORS.danger }]}>SALIDAS (EGRESOS)</Text>
                     </View>
                     <View style={s.previewTableHeaderRow}>
-                      <Text style={[s.previewTableHeaderText, { width: 50, textAlign: "center" }]}>SALA</Text>
-                      <Text style={[s.previewTableHeaderText, { width: 50, textAlign: "center" }]}>FIN</Text>
+                      <Text style={[s.previewTableHeaderText, { width: 45, textAlign: "center" }]}>SALA</Text>
+                      {includeCreditos && (
+                        <Text style={[s.previewTableHeaderText, { width: 55, textAlign: "center", color: "#B45309" }]}>CRÉDITOS</Text>
+                      )}
+                      <Text style={[s.previewTableHeaderText, { width: 45, textAlign: "center" }]}>FIN</Text>
                       <Text style={[s.previewTableHeaderText, { flex: 1, paddingLeft: 8 }]}>PELÍCULA</Text>
                     </View>
                     <ScrollView style={{ maxHeight: 350 }} nestedScrollEnabled>
                       {previewData.salida.map((show, idx) => (
                         <View key={`out-${idx}`} style={s.previewItemRow}>
-                          <View style={[s.previewCellSala, { width: 50, alignItems: "center" }]}>
+                          <View style={[s.previewCellSala, { width: 45, alignItems: "center" }]}>
                             <Text style={s.previewSalaValText}>{show.sala}</Text>
                           </View>
-                          <View style={[s.previewCellTime, { width: 50, alignItems: "center", backgroundColor: COLORS.dangerSoft, borderColor: COLORS.danger }]}>
+                          {includeCreditos && (
+                            <View style={[s.previewCellTime, { width: 55, alignItems: "center", backgroundColor: "#FEF3C7", borderColor: "#F59E0B" }]}>
+                              <Text style={[s.previewTimeValText, { color: "#B45309", fontWeight: "bold" }]}>
+                                {show.creditosHoraReloj || "-"}
+                              </Text>
+                            </View>
+                          )}
+                          <View style={[s.previewCellTime, { width: 45, alignItems: "center", backgroundColor: COLORS.dangerSoft, borderColor: COLORS.danger }]}>
                             <Text style={[s.previewTimeValText, { color: COLORS.danger }]}>{show.fin}</Text>
                           </View>
                           <View style={{ flex: 1, paddingLeft: 8, justifyContent: "center" }}>
