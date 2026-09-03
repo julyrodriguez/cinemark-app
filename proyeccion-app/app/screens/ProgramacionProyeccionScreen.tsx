@@ -1717,6 +1717,10 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
           isSimulated: false,
           desayuno: !!evt.desayuno,
           combo: !!evt.combo,
+        } as any);
+      });
+    }
+
     // Vincular Créditos a cada película de la función
     if (creditosList && creditosList.length > 0) {
       list.forEach((show) => {

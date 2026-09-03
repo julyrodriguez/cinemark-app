@@ -471,6 +471,9 @@ export default function ProgramacionTab() {
       }
     );
 
+    return () => unsubscribe();
+  }, [cineId]);
+
   const [creditosList, setCreditosList] = useState<any[]>([]);
   const [includeCreditos, setIncludeCreditos] = useState(false);
 
