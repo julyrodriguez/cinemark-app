@@ -1376,6 +1376,40 @@ export default function ProgramacionTab() {
             thumbColor="#fff"
           />
         </View>
+
+        {includeCreditos && (
+          <View
+            style={{
+              marginTop: 12,
+              paddingTop: 10,
+              borderTopWidth: 1,
+              borderTopColor: "#FDE68A",
+              flexDirection: "row",
+              alignItems: "flex-start",
+              gap: 8,
+              backgroundColor: "rgba(245, 158, 11, 0.08)",
+              padding: 10,
+              borderRadius: 8,
+            }}
+          >
+            <MaterialCommunityIcons
+              name="information"
+              size={18}
+              color="#D97706"
+              style={{ marginTop: 1 }}
+            />
+            <Text
+              style={{
+                flex: 1,
+                fontSize: 11.5,
+                color: "#92400E",
+                lineHeight: 16,
+              }}
+            >
+              <Text style={{ fontWeight: "bold" }}>Aclaración:</Text> El horario de los créditos tomados para el cálculo corresponde a los que el área de <Text style={{ fontWeight: "bold" }}>Proyección</Text> carga en su sección.
+            </Text>
+          </View>
+        )}
       </View>
 
       {/* ACCIÓN PRINCIPAL */}
@@ -1437,6 +1471,28 @@ export default function ProgramacionTab() {
           
           {showPreview && (
             <View style={{ marginTop: 12 }}>
+              {includeCreditos && (
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 8,
+                    backgroundColor: "#FEF3C7",
+                    borderColor: "#F59E0B",
+                    borderWidth: 1,
+                    borderRadius: 8,
+                    paddingVertical: 8,
+                    paddingHorizontal: 12,
+                    marginBottom: 12,
+                  }}
+                >
+                  <MaterialCommunityIcons name="information" size={16} color="#B45309" />
+                  <Text style={{ fontSize: 11.5, color: "#92400E", flex: 1, lineHeight: 15 }}>
+                    <Text style={{ fontWeight: "bold" }}>Aclaración:</Text> El horario de los créditos tomados para el reporte corresponde a los que el área de <Text style={{ fontWeight: "bold" }}>Proyección</Text> carga en su sección.
+                  </Text>
+                </View>
+              )}
+
               {previewData.entrada.length === 0 && previewData.salida.length === 0 ? (
                 <Text style={{ fontSize: 13, color: COLORS.muted, textAlign: "center", paddingVertical: 20 }}>
                   Sin funciones programadas para este día en el reporte.
