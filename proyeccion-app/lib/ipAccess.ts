@@ -1,11 +1,24 @@
-import { httpsCallable } from "@/lib/dbService";
+import {
+  httpsCallable,
+  isFallbackMode,
+  setFallbackMode,
+  checkServerHealth,
+  getServerStatus,
+} from "@/lib/dbService";
 import { Platform } from "react-native";
 
 import { functions } from "./firebaseConfig";
 
 export type IpAccessStatus =
   | { state: "loading" }
-  | { state: "authorized"; ip: string; cineId: string; nombre?: string | null }
+  | {
+      state: "authorized";
+      ip: string;
+      cineId: string;
+      nombre?: string | null;
+      serverOffline?: boolean;
+      skipped?: boolean;
+    }
   | { state: "not_authorized"; ip: string; cineId: string; nombre?: string | null }
   | { state: "error"; message: string };
 
@@ -50,13 +63,24 @@ export async function checkIpAccess(): Promise<IpAccessStatus> {
     return { state: "authorized", ip: "native", cineId: "native" };
   }
 
-  try {
+  // 1. Si el servidor ya está marcado como offline o en modo fallback, saltear de inmediato
+  if (isFallbackMode() || getServerStatus() === "offline") {
+    console.warn("[checkIpAccess] Servidor detectado como offline. Validación de IP salteada (modo lectura).");
+    return {
+      state: "authorized",
+      ip: "desconectado",
+      cineId: "offline",
+      nombre: null,
+      serverOffline: true,
+      skipped: true,
+    };
+  }
 
+  try {
     const fn = httpsCallable<undefined, CheckIpAccessResponse>(
       functions,
       "checkIpAccess"
     );
-
 
     const promise = fn(undefined);
 
@@ -66,12 +90,20 @@ export async function checkIpAccess(): Promise<IpAccessStatus> {
       "La validación de IP tardó demasiado, vuelva a internarlo nuevamente"
     );
 
-
     const raw = res.data as any;
     const data = raw?.result ?? raw;
 
-
     if (!data?.ip || !data?.cineId) {
+      if (isFallbackMode()) {
+        return {
+          state: "authorized",
+          ip: "desconectado",
+          cineId: "offline",
+          nombre: null,
+          serverOffline: true,
+          skipped: true,
+        };
+      }
       return { state: "error", message: "Respuesta inválida al validar IP." };
     }
 
@@ -89,6 +121,23 @@ export async function checkIpAccess(): Promise<IpAccessStatus> {
           nombre: data.nombre ?? null,
         };
   } catch (e: any) {
+    console.warn("[checkIpAccess] Error al validar IP:", e?.message || e);
+
+    // Si falló la llamada, verificar si el servidor está caído o en fallback
+    const isOffline = isFallbackMode() || !(await checkServerHealth().catch(() => false));
+    if (isOffline) {
+      setFallbackMode(true);
+      console.warn("[checkIpAccess] Servidor apagado confirmado. Check IP salteado para acceso en modo lectura.");
+      return {
+        state: "authorized",
+        ip: "desconectado",
+        cineId: "offline",
+        nombre: null,
+        serverOffline: true,
+        skipped: true,
+      };
+    }
+
     const msg =
       e?.message ||
       (typeof e === "string" ? e : null) ||

@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Platform } from "react-native";
 import {
   collection as firestoreCollection,
@@ -25,11 +26,123 @@ import { db as realFirestoreDb, auth } from "./firebaseConfig";
 // Reemplazar con la URL final del túnel de Cloudflare o la IP de tu servidor
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || "https://api-cinemark.jariel.com.ar/api";
 
+export type ServerStatus = "checking" | "online" | "offline";
+
 // Estado global para rastrear si el servidor local está caído
 let fallbackModeActive = false;
+let serverStatus: ServerStatus = "checking";
+const serverStatusListeners = new Set<(status: ServerStatus) => void>();
 
 export function isFallbackMode() {
   return fallbackModeActive;
+}
+
+export function getServerStatus(): ServerStatus {
+  return serverStatus;
+}
+
+export function setFallbackMode(active: boolean) {
+  fallbackModeActive = active;
+  const newStatus: ServerStatus = active ? "offline" : "online";
+  if (serverStatus !== newStatus) {
+    serverStatus = newStatus;
+    serverStatusListeners.forEach((listener) => {
+      try {
+        listener(newStatus);
+      } catch (err) {
+        console.error("Error en listener de serverStatus:", err);
+      }
+    });
+  }
+}
+
+export function subscribeServerStatus(listener: (status: ServerStatus) => void) {
+  serverStatusListeners.add(listener);
+  // Emitir valor actual inmediatamente
+  listener(serverStatus);
+  return () => {
+    serverStatusListeners.delete(listener);
+  };
+}
+
+let healthCheckPromise: Promise<boolean> | null = null;
+
+export async function checkServerHealth(force = false): Promise<boolean> {
+  if (!force && healthCheckPromise) {
+    return healthCheckPromise;
+  }
+
+  const check = async () => {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000); // 4s timeout
+
+      const res = await fetch(`${API_BASE_URL}/health`, {
+        method: "GET",
+        headers: {
+          "Accept": "application/json",
+        },
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        setFallbackMode(false);
+        return true;
+      } else {
+        console.warn(`[DB Service] /health retornó HTTP ${res.status}. Marcando servidor como offline.`);
+        setFallbackMode(true);
+        return false;
+      }
+    } catch (err: any) {
+      console.warn("[DB Service] Servidor no responde (health check):", err?.message || err);
+      setFallbackMode(true);
+      return false;
+    } finally {
+      healthCheckPromise = null;
+    }
+  };
+
+  healthCheckPromise = check();
+  return healthCheckPromise;
+}
+
+// Hook reactivo para componentes React
+export function useServerStatus() {
+  const [status, setStatus] = useState<ServerStatus>(getServerStatus());
+  const [isChecking, setIsChecking] = useState(false);
+
+  useEffect(() => {
+    const unsub = subscribeServerStatus((newStatus) => {
+      setStatus(newStatus);
+    });
+
+    if (getServerStatus() === "checking") {
+      checkServerHealth();
+    }
+
+    return () => {
+      unsub();
+    };
+  }, []);
+
+  const recheck = async () => {
+    setIsChecking(true);
+    try {
+      await checkServerHealth(true);
+    } finally {
+      setIsChecking(false);
+    }
+  };
+
+  return {
+    status,
+    isOnline: status === "online",
+    isOffline: status === "offline",
+    isChecking,
+    isFallbackMode: fallbackModeActive,
+    recheck,
+  };
 }
 
 // Obtener el ID Token de Firebase Auth actual para autenticar con la API Docker
@@ -363,7 +476,7 @@ export async function getDocs(dbRef: DbRef) {
     };
   } catch (err: any) {
     console.error("[DB Service] Error al conectar con la API local, activando Modo Respaldo:", err.message);
-    fallbackModeActive = true;
+    setFallbackMode(true);
     // Intentar leer de Firestore
     return await firestoreGetDocs(dbRef.firestoreRef);
   }
@@ -420,7 +533,7 @@ export async function getDoc(dbRef: DbRef) {
     } as any;
   } catch (err: any) {
     console.error("[DB Service] Error en getDoc al conectar con la API, usando Firestore:", err.message);
-    fallbackModeActive = true;
+    setFallbackMode(true);
     return await firestoreGetDoc(dbRef.firestoreRef);
   }
 }
@@ -649,11 +762,14 @@ import { httpsCallable as firestoreHttpsCallable } from "firebase/functions";
 
 export { functions } from "./firebaseConfig";
 
-export function httpsCallable(functionsInstance: any, functionName: string) {
-  return async (data: any) => {
+export function httpsCallable<RequestData = any, ResponseData = any>(
+  functionsInstance: any,
+  functionName: string
+): (data?: RequestData) => Promise<{ data: ResponseData }> {
+  return async (data?: RequestData) => {
     if (fallbackModeActive) {
       console.warn(`[DB Service] Servidor offline: Llamando a la Cloud Function de respaldo: ${functionName}`);
-      const realCallable = firestoreHttpsCallable(functionsInstance, functionName);
+      const realCallable = firestoreHttpsCallable<RequestData, ResponseData>(functionsInstance, functionName);
       const res = await realCallable(data);
       return res;
     }
@@ -671,23 +787,46 @@ export function httpsCallable(functionsInstance: any, functionName: string) {
         headers["x-firebase-auth"] = `Bearer ${authToken}`;
       }
 
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
+
       const res = await fetch(`${API_BASE_URL}/functions/${functionName}`, {
         method: "POST",
         headers,
-        body: JSON.stringify(data || {})
+        body: JSON.stringify(data || {}),
+        signal: controller.signal
       });
+      clearTimeout(timeoutId);
 
       if (!res.ok) {
+        // Si es 5xx, el servidor o túnel está caído
+        if (res.status >= 500) {
+          console.warn(`[DB Service] Servidor respondió con HTTP ${res.status}. Activando modo lectura de respaldo.`);
+          setFallbackMode(true);
+        }
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.error || `Error HTTP: ${res.status}`);
       }
 
       const result = await res.json();
-      return result;
+      return { data: (result && result.data !== undefined ? result.data : result) as ResponseData };
     } catch (err: any) {
       console.error(`[DB Service] Falló la llamada a la función ${functionName} en la API:`, err.message);
+
+      const isConnError =
+        err.name === "AbortError" ||
+        err.message?.includes("Network request failed") ||
+        err.message?.includes("Failed to fetch") ||
+        err.message?.includes("NetworkError") ||
+        err.message?.includes("HTTP 5");
+
+      if (isConnError) {
+        console.warn(`[DB Service] Error de conexión detectado. Activando modo lectura.`);
+        setFallbackMode(true);
+      }
+
       console.warn(`[DB Service] Intentando fallback directo a Firebase Cloud Functions para ${functionName}...`);
-      const realCallable = firestoreHttpsCallable(functionsInstance, functionName);
+      const realCallable = firestoreHttpsCallable<RequestData, ResponseData>(functionsInstance, functionName);
       const res = await realCallable(data);
       return res;
     }

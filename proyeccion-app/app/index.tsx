@@ -20,7 +20,13 @@ import NavHeader from "@/components/NavHeader";
 import CineProfileModal from "@/components/cineProfileModal";
 import { IpAccessGate } from "@/components/IpAccessGate";
 import { auth, db, CINES_COLLECTION } from "../lib/firebaseConfig";
-import { doc, onSnapshot } from "@/lib/dbService";
+import {
+  doc,
+  onSnapshot,
+  useServerStatus,
+  isFallbackMode,
+  checkServerHealth
+} from "@/lib/dbService";
 import { authorizeCurrentIp, checkIpAccess } from "../lib/ipAccess";
 import { COLORS, THEME } from "../lib/theme";
 import { useAppLayout } from "../lib/useAppLayout";
@@ -225,10 +231,18 @@ export default function Home() {
     }
   }, []);
 
+  const {
+    status: serverStatus,
+    isOnline: isServerOnline,
+    isOffline: isServerOffline,
+    isChecking: isCheckingServer,
+    recheck: recheckServer,
+  } = useServerStatus();
+
   const [ipCheckState, setIpCheckState] = useState<
     | { state: "idle" }
     | { state: "checking" }
-    | { state: "authorized" }
+    | { state: "authorized"; serverOffline?: boolean; skipped?: boolean }
     | { state: "not_authorized"; ip: string; cineLabel: string }
     | { state: "error"; message: string }
   >({ state: "idle" });
@@ -319,7 +333,11 @@ export default function Home() {
       if (cancelled) return;
 
       if (res.state === "authorized") {
-        setIpCheckState({ state: "authorized" });
+        setIpCheckState({
+          state: "authorized",
+          serverOffline: res.serverOffline,
+          skipped: res.skipped,
+        });
       } else if (res.state === "not_authorized") {
         setIpCheckState({
           state: "not_authorized",
@@ -327,6 +345,17 @@ export default function Home() {
           cineLabel: res.nombre || currentCineLabel,
         });
       } else if (res.state === "error") {
+        // Si falló pero el servidor está apagado/offline, saltear el control de IP y permitir entrar
+        const offline = isFallbackMode() || isServerOffline || !(await checkServerHealth().catch(() => false));
+        if (offline) {
+          console.warn("[index] Servidor offline confirmado tras error de checkIp. Salteando control IP e ingresando en modo lectura.");
+          setIpCheckState({
+            state: "authorized",
+            serverOffline: true,
+            skipped: true,
+          });
+          return;
+        }
         setIpCheckState({ state: "error", message: res.message });
       } else {
         setIpCheckState({
@@ -367,26 +396,53 @@ export default function Home() {
   }, [cineId]);
 
   function renderProjectionLockBanner() {
+    const isOffline = isServerOffline || isFallbackMode();
+
     return (
       <View
         style={[
           styles.lockBanner,
-          isProjectionUnlocked ? styles.lockBannerUnlocked : styles.lockBannerLocked,
+          isOffline
+            ? styles.lockBannerLocked
+            : isProjectionUnlocked
+            ? styles.lockBannerUnlocked
+            : styles.lockBannerLocked,
         ]}
       >
         <View style={styles.lockBannerTextWrap}>
           <MaterialCommunityIcons
-            name={isProjectionUnlocked ? "lock-open-outline" : "lock-outline"}
+            name={
+              isOffline
+                ? "server-network-off"
+                : isProjectionUnlocked
+                ? "lock-open-outline"
+                : "lock-outline"
+            }
             size={20}
-            color={isProjectionUnlocked ? "#15803d" : "#b91c1c"}
+            color={
+              isOffline
+                ? "#b91c1c"
+                : isProjectionUnlocked
+                ? "#15803d"
+                : "#b91c1c"
+            }
           />
           <Text
             style={[
               styles.lockBannerText,
-              { color: isProjectionUnlocked ? "#15803d" : "#b91c1c" },
+              {
+                color:
+                  isOffline
+                    ? "#b91c1c"
+                    : isProjectionUnlocked
+                    ? "#15803d"
+                    : "#b91c1c",
+              },
             ]}
           >
-            {isProjectionUnlocked
+            {isOffline
+              ? "Modo lectura activo (Servidor desconectado). Modificaciones deshabilitadas."
+              : isProjectionUnlocked
               ? "Edición habilitada. Podés realizar modificaciones."
               : "Modo lectura activo. Las modificaciones están deshabilitadas."}
           </Text>
@@ -394,14 +450,28 @@ export default function Home() {
         <TouchableOpacity
           style={[
             styles.lockBannerBtn,
-            { backgroundColor: isProjectionUnlocked ? "#dcfce7" : "#fee2e2" },
+            {
+              backgroundColor: isOffline
+                ? "#fee2e2"
+                : isProjectionUnlocked
+                ? "#dcfce7"
+                : "#fee2e2",
+            },
           ]}
           onPress={
-            isProjectionUnlocked
+            isOffline
+              ? () => {
+                  alert(
+                    "El servidor principal está desconectado. La aplicación opera en modo de solo lectura desde el respaldo de Firebase y las modificaciones están deshabilitadas hasta restablecer la conexión con el servidor."
+                  );
+                }
+              : isProjectionUnlocked
               ? () => setIsProjectionUnlocked(false)
               : () => {
                   if (!proyeccionPin) {
-                    alert("Por favor, configurá el 'Pin proyeccion' en los Ajustes (icono de tuerca abajo a la izquierda) para poder habilitar la edición.");
+                    alert(
+                      "Por favor, configurá el 'Pin proyeccion' en los Ajustes (icono de tuerca abajo a la izquierda) para poder habilitar la edición."
+                    );
                     return;
                   }
                   setUnlockPin("");
@@ -413,11 +483,73 @@ export default function Home() {
           <Text
             style={[
               styles.lockBannerBtnText,
-              { color: isProjectionUnlocked ? "#15803d" : "#b91c1c" },
+              {
+                color:
+                  isOffline
+                    ? "#b91c1c"
+                    : isProjectionUnlocked
+                    ? "#15803d"
+                    : "#b91c1c",
+              },
             ]}
           >
-            {isProjectionUnlocked ? "Bloquear" : "Desbloquear"}
+            {isOffline ? "Solo Lectura" : isProjectionUnlocked ? "Bloquear" : "Desbloquear"}
           </Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  function renderServerOfflineBanner() {
+    const isOffline = isServerOffline || isFallbackMode();
+    if (!isOffline) return null;
+
+    return (
+      <View style={styles.serverOfflineBanner}>
+        <View style={styles.serverOfflineBannerLeft}>
+          <View style={styles.serverOfflineIconWrap}>
+            <MaterialCommunityIcons
+              name="server-network-off"
+              size={24}
+              color="#b91c1c"
+            />
+          </View>
+          <View style={styles.serverOfflineTextWrap}>
+            <View style={styles.serverOfflineTitleRow}>
+              <Text style={styles.serverOfflineTitle}>
+                Servidor desconectado — Modo lectura activo
+              </Text>
+              <View style={styles.serverOfflineTag}>
+                <Text style={styles.serverOfflineTagText}>Control IP salteado</Text>
+              </View>
+            </View>
+            <Text style={styles.serverOfflineSubtitle}>
+              Se detectó que el servidor principal está fuera de línea. Se salteó el control de IP para permitir el ingreso. Los datos se consultan desde la copia de respaldo de Firebase y las modificaciones están deshabilitadas hasta que el servidor vuelva a estar en línea.
+            </Text>
+          </View>
+        </View>
+
+        <TouchableOpacity
+          style={styles.serverOfflineRetryBtn}
+          onPress={recheckServer}
+          disabled={isCheckingServer}
+          activeOpacity={0.7}
+        >
+          {isCheckingServer ? (
+            <ActivityIndicator size="small" color="#b91c1c" />
+          ) : (
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <MaterialCommunityIcons
+                name="reload"
+                size={15}
+                color="#b91c1c"
+                style={{ marginRight: 5 }}
+              />
+              <Text style={styles.serverOfflineRetryText}>
+                Reintentar conexión
+              </Text>
+            </View>
+          )}
         </TouchableOpacity>
       </View>
     );
@@ -582,12 +714,38 @@ export default function Home() {
               size={22}
               color={COLORS.primary}
             />
+            {!isExpanded && (
+              <View
+                style={[
+                  styles.sidebarLogoMiniDot,
+                  { backgroundColor: isServerOnline ? "#22c55e" : "#ef4444" }
+                ]}
+              />
+            )}
           </View>
           {isExpanded && (
             <View style={styles.sidebarHeaderTitles}>
               <Text style={styles.sidebarTitle} numberOfLines={1}>
                 {cineLabel}
               </Text>
+              {/* Cartel / Indicador del estado del servidor debajo de perfil del cine */}
+              <View style={styles.sidebarServerBadge}>
+                <View
+                  style={[
+                    styles.sidebarServerDot,
+                    { backgroundColor: isServerOnline ? "#22c55e" : "#ef4444" }
+                  ]}
+                />
+                <Text
+                  style={[
+                    styles.sidebarServerText,
+                    { color: isServerOnline ? "#15803d" : "#b91c1c" }
+                  ]}
+                  numberOfLines={1}
+                >
+                  {isServerOnline ? "Servidor en línea" : "Servidor desconectado"}
+                </Text>
+              </View>
             </View>
           )}
         </View>
@@ -735,9 +893,17 @@ export default function Home() {
               color={COLORS.text}
             />
             {isExpanded && (
-              <Text style={styles.sidebarFooterText} numberOfLines={1}>
-                Configuración
-              </Text>
+              <View style={styles.sidebarFooterTextWrap}>
+                <Text style={styles.sidebarFooterText} numberOfLines={1}>
+                  Configuración
+                </Text>
+                <View
+                  style={[
+                    styles.sidebarFooterServerDot,
+                    { backgroundColor: isServerOnline ? "#22c55e" : "#ef4444" }
+                  ]}
+                />
+              </View>
             )}
           </TouchableOpacity>
 
@@ -922,7 +1088,7 @@ export default function Home() {
           onToggleTheme={toggleTheme}
         />
 
-
+        {renderServerOfflineBanner()}
 
         <View style={styles.contentOuter}>
           <View
@@ -1613,5 +1779,121 @@ const styles = StyleSheet.create({
   lockBannerBtnText: {
     fontSize: 13,
     fontWeight: "700",
+  },
+
+  // Estilos del indicador de estado del servidor en Sidebar
+  sidebarLogoMiniDot: {
+    position: "absolute",
+    bottom: 2,
+    right: 2,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    borderColor: COLORS.card,
+  },
+  sidebarServerBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 3,
+  },
+  sidebarServerDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    marginRight: 6,
+  },
+  sidebarServerText: {
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  sidebarFooterTextWrap: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  sidebarFooterServerDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    marginLeft: 6,
+  },
+
+  // Banner superior cuando el servidor está desconectado
+  serverOfflineBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#fef2f2",
+    borderWidth: 1,
+    borderColor: "#fca5a5",
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    marginHorizontal: 16,
+    marginTop: 10,
+    marginBottom: 6,
+    gap: 12,
+    flexWrap: "wrap",
+  },
+  serverOfflineBannerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+    minWidth: 260,
+    gap: 12,
+  },
+  serverOfflineIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#fee2e2",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  serverOfflineTextWrap: {
+    flex: 1,
+  },
+  serverOfflineTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+    marginBottom: 2,
+  },
+  serverOfflineTitle: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#b91c1c",
+  },
+  serverOfflineTag: {
+    backgroundColor: "#fecaca",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  serverOfflineTagText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#991b1b",
+  },
+  serverOfflineSubtitle: {
+    fontSize: 12,
+    color: "#991b1b",
+    lineHeight: 17,
+  },
+  serverOfflineRetryBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    backgroundColor: "#fee2e2",
+    borderWidth: 1,
+    borderColor: "#fca5a5",
+  },
+  serverOfflineRetryText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#b91c1c",
   },
 });

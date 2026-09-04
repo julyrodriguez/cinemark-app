@@ -1,3 +1,4 @@
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -11,6 +12,7 @@ import {
 } from "react-native";
 
 import { getCineConfig, saveCineConfig } from "@/lib/cineConfig";
+import { useServerStatus } from "@/lib/dbService";
 import { changeCinemaPassword, updateProyeccionPin } from "@/lib/ipAccess";
 import { COLORS, THEME } from "@/lib/theme";
 import { useAppLayout } from "@/lib/useAppLayout";
@@ -31,6 +33,11 @@ export default function CineProfileModal({
   onClose,
 }: Props) {
   const { isMobile } = useAppLayout();
+  const {
+    isOnline: isServerOnline,
+    isChecking: isCheckingServer,
+    recheck: recheckServer
+  } = useServerStatus();
 
   const [loading, setLoading] = useState(true);
 
@@ -297,6 +304,88 @@ export default function CineProfileModal({
       <View style={s.overlay}>
         <View style={[s.card, isMobile && s.cardMobile]}>
           <Text style={s.title}>Perfil del cine</Text>
+
+          {/* Cartel de estado del servidor */}
+          <View
+            style={[
+              s.serverBanner,
+              isServerOnline ? s.serverBannerOnline : s.serverBannerOffline,
+            ]}
+          >
+            <View style={s.serverBannerHeader}>
+              <View style={s.serverBannerTitleRow}>
+                <View
+                  style={[
+                    s.serverDot,
+                    isServerOnline ? s.serverDotOnline : s.serverDotOffline,
+                  ]}
+                />
+                <MaterialCommunityIcons
+                  name={isServerOnline ? "server-network" : "server-network-off"}
+                  size={18}
+                  color={isServerOnline ? "#15803d" : "#b91c1c"}
+                  style={{ marginRight: 6 }}
+                />
+                <Text
+                  style={[
+                    s.serverBannerTitle,
+                    { color: isServerOnline ? "#15803d" : "#b91c1c" },
+                  ]}
+                >
+                  {isServerOnline
+                    ? "Servidor en línea"
+                    : isCheckingServer
+                    ? "Comprobando servidor..."
+                    : "Servidor desconectado"}
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                style={[
+                  s.serverRecheckBtn,
+                  isServerOnline ? s.serverRecheckBtnOnline : s.serverRecheckBtnOffline,
+                ]}
+                onPress={recheckServer}
+                disabled={isCheckingServer}
+                activeOpacity={0.7}
+              >
+                {isCheckingServer ? (
+                  <ActivityIndicator
+                    size="small"
+                    color={isServerOnline ? "#15803d" : "#b91c1c"}
+                  />
+                ) : (
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <MaterialCommunityIcons
+                      name="reload"
+                      size={14}
+                      color={isServerOnline ? "#15803d" : "#b91c1c"}
+                      style={{ marginRight: 4 }}
+                    />
+                    <Text
+                      style={[
+                        s.serverRecheckBtnText,
+                        { color: isServerOnline ? "#15803d" : "#b91c1c" },
+                      ]}
+                    >
+                      Comprobar
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            </View>
+
+            <Text
+              style={[
+                s.serverBannerDesc,
+                { color: isServerOnline ? "#166534" : "#991b1b" },
+              ]}
+            >
+              {isServerOnline
+                ? "Conexión activa con la API local. Todas las modificaciones se guardan y sincronizan en tiempo real."
+                : "Modo lectura activo. El servidor principal no responde o está apagado. Los datos se leen desde Firebase y las modificaciones están deshabilitadas."}
+            </Text>
+          </View>
 
           {loading ? (
             <View style={s.loadingWrap}>
@@ -676,5 +765,71 @@ const s = StyleSheet.create({
     fontSize: THEME.fontSize.sm,
     fontWeight: "700",
     lineHeight: 20,
+  },
+
+  serverBanner: {
+    borderRadius: THEME.radius.md,
+    borderWidth: 1,
+    padding: THEME.spacing.md,
+    marginBottom: THEME.spacing.md,
+  },
+  serverBannerOnline: {
+    backgroundColor: "#f0fdf4",
+    borderColor: "#86efac",
+  },
+  serverBannerOffline: {
+    backgroundColor: "#fef2f2",
+    borderColor: "#fca5a5",
+  },
+  serverBannerHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 6,
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  serverBannerTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  serverDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 6,
+  },
+  serverDotOnline: {
+    backgroundColor: "#22c55e",
+  },
+  serverDotOffline: {
+    backgroundColor: "#ef4444",
+  },
+  serverBannerTitle: {
+    fontSize: THEME.fontSize.sm,
+    fontWeight: "800",
+  },
+  serverBannerDesc: {
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: "500",
+  },
+  serverRecheckBtn: {
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  serverRecheckBtnOnline: {
+    borderColor: "#86efac",
+    backgroundColor: "#dcfce7",
+  },
+  serverRecheckBtnOffline: {
+    borderColor: "#fca5a5",
+    backgroundColor: "#fee2e2",
+  },
+  serverRecheckBtnText: {
+    fontSize: 12,
+    fontWeight: "700",
   },
 });
