@@ -215,6 +215,9 @@ function toComparableValue(val: any): any {
     const ms = Date.parse(val);
     if (!isNaN(ms)) return ms;
   }
+  if (typeof val === "object" && val._methodName === "serverTimestamp") {
+    return Date.now();
+  }
   return val;
 }
 
