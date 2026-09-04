@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated,
+  Easing,
   Modal,
   Platform,
   ScrollView,
@@ -35,9 +36,10 @@ const DEFAULT_NEWS: NewsItem[] = [
     badgeBg: "rgba(16, 185, 129, 0.14)",
     icon: "printer-check",
     title: "Impresión de Programación con Créditos",
-    message: "¡Ahora se puede imprimir las programaciones con los créditos incluidos!",
+    message:
+      "✨ Nueva función: Ahora podés imprimir y exportar las programaciones completas con los créditos de luces y post-créditos vinculados a cada función.",
     detail:
-      "Al generar la impresión o exportación de la programación de salas, podés activar el interruptor 'Imprimir con Créditos' para incluir los horarios de encendido/apagado de luces y post-créditos vinculados.",
+      "Al generar la impresión o exportación a PDF de la programación semanal/diaria, podés activar el interruptor 'Imprimir con Créditos' para visualizar automáticamente los horarios de encendido/apagado de sala y post-créditos vinculados.",
     ticker: "PRG+CRD ▲",
     date: "Hoy",
   },
@@ -47,10 +49,11 @@ const DEFAULT_NEWS: NewsItem[] = [
     badgeColor: "#3B82F6",
     badgeBg: "rgba(59, 130, 246, 0.14)",
     icon: "server-network",
-    title: "Detección Automática de Servidor",
-    message: "Modo lectura de respaldo automático ante caídas con control de IP salteado",
+    title: "Detección Automática de Servidor y Modo Respaldo",
+    message:
+      "🛡️ Detección de servidor activa: Conmutación inmediata a modo lectura en Firebase con control de acceso por IP salteado ante caídas del servidor.",
     detail:
-      "Si el servidor principal está fuera de línea, la aplicación conmuta automáticamente al respaldo de Firebase, saltea la validación de IP para no bloquear el ingreso y te permite operar en modo solo lectura.",
+      "Si el servidor principal está fuera de línea o apagado, la aplicación no bloquea el acceso: activa automáticamente el modo lectura de respaldo sobre Firestore y saltea la validación de IP para que puedas consultar toda la información sin interrupciones.",
     ticker: "SRV:AUTO ●",
     date: "Nuevo",
   },
@@ -60,10 +63,11 @@ const DEFAULT_NEWS: NewsItem[] = [
     badgeColor: "#8B5CF6",
     badgeBg: "rgba(139, 92, 246, 0.14)",
     icon: "trending-up",
-    title: "Cálculo Reloj y Exportación Excel",
-    message: "Exportación a Excel estilizada, cálculo reloj preciso y control de salas",
+    title: "Cálculo Reloj, Excel y Control de Salas",
+    message:
+      "📊 Cálculo reloj optimizado, exportación Excel estilizada con subcolumnas de créditos y seguimiento prioritario en control de salas.",
     detail:
-      "Se optimizó la vinculación optimista de créditos con programación y la visualización de observaciones generales con niveles de urgencia.",
+      "Se perfeccionó el cálculo de horas reloj en programación vinculado a los créditos, con diseño premium para la planilla Excel exportada y registro optimista de observaciones en salas.",
     ticker: "XLSX:LIVE ▲",
     date: "Reciente",
   },
@@ -79,6 +83,107 @@ type Props = {
   newsItems?: NewsItem[];
 };
 
+/**
+ * Subcomponente de texto estilo Marquesina / Ticker de Broker.
+ * Si el texto es más largo que el ancho disponible del contenedor,
+ * se desliza suavemente hacia la izquierda para que se pueda leer completo.
+ */
+function MarqueeText({
+  text,
+  isDark,
+  isHovered,
+  onComplete,
+}: {
+  text: string;
+  isDark: boolean;
+  isHovered: boolean;
+  onComplete?: () => void;
+}) {
+  const [viewportWidth, setViewportWidth] = useState(0);
+  const [textWidth, setTextWidth] = useState(0);
+
+  const scrollAnim = useRef(new Animated.Value(0)).current;
+  const animRef = useRef<Animated.CompositeAnimation | null>(null);
+
+  const isOverflowing = textWidth > viewportWidth && viewportWidth > 0;
+  const distance = isOverflowing ? textWidth - viewportWidth + 24 : 0;
+
+  useEffect(() => {
+    scrollAnim.setValue(0);
+    if (animRef.current) {
+      animRef.current.stop();
+      animRef.current = null;
+    }
+
+    if (isHovered) {
+      return;
+    }
+
+    if (!isOverflowing) {
+      // Texto corto que entra completamente: mantener visible 5.5s y rotar
+      const timer = setTimeout(() => {
+        if (!isHovered && onComplete) {
+          onComplete();
+        }
+      }, 5500);
+      return () => clearTimeout(timer);
+    }
+
+    // Velocidad de desplazamiento: ~38 píxeles por segundo (lectura cómoda)
+    const duration = Math.max(3000, (distance / 38) * 1000);
+
+    const anim = Animated.sequence([
+      Animated.delay(1600), // Pausa inicial para que el usuario empiece a leer
+      Animated.timing(scrollAnim, {
+        toValue: -distance,
+        duration,
+        easing: Easing.linear,
+        useNativeDriver: Platform.OS !== "web",
+      }),
+      Animated.delay(1800), // Pausa final para leer el remate del mensaje
+    ]);
+
+    animRef.current = anim;
+    anim.start(({ finished }) => {
+      if (finished && !isHovered && onComplete) {
+        onComplete();
+      }
+    });
+
+    return () => {
+      anim.stop();
+    };
+  }, [text, isOverflowing, distance, isHovered, onComplete, scrollAnim]);
+
+  return (
+    <View
+      style={s.tickerViewport}
+      onLayout={(e) => setViewportWidth(e.nativeEvent.layout.width)}
+    >
+      <Animated.View
+        style={[
+          s.tickerAnimatedTrack,
+          {
+            transform: [{ translateX: scrollAnim }],
+          },
+        ]}
+      >
+        <Text
+          onLayout={(e) => setTextWidth(e.nativeEvent.layout.width)}
+          style={[
+            s.tickerMessage,
+            isDark ? s.tickerMessageDark : s.tickerMessageLight,
+            Platform.OS === "web" && ({ whiteSpace: "nowrap" } as any),
+          ]}
+          numberOfLines={1}
+        >
+          {text}
+        </Text>
+      </Animated.View>
+    </View>
+  );
+}
+
 export default function NavHeader({
   title,
   subtitle,
@@ -88,11 +193,10 @@ export default function NavHeader({
   onToggleTheme,
   newsItems,
 }: Props) {
-  const { isWeb, isMobile, contentMaxWidth } = useAppLayout();
+  const { isWeb, isMobile } = useAppLayout();
 
   const news = newsItems && newsItems.length > 0 ? newsItems : DEFAULT_NEWS;
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [isPaused, setIsPaused] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
 
@@ -144,30 +248,12 @@ export default function NavHeader({
     changeNews(prev);
   }, [currentIndex, news.length, changeNews]);
 
-  // Rotación automática cada 4.5 segundos si no está en pausa
-  useEffect(() => {
-    if (isPaused || isHovered || news.length <= 1) return;
-
-    const timer = setInterval(() => {
-      handleNext();
-    }, 4500);
-
-    return () => clearInterval(timer);
-  }, [isPaused, isHovered, handleNext, news.length]);
-
   const isDark = themeMode === "dark";
 
   return (
     <View style={[s.wrap, isWeb ? s.wrapWeb : s.wrapMobile]}>
-      <View
-        style={[
-          s.row,
-          isWeb && {
-            maxWidth: contentMaxWidth,
-          },
-        ]}
-      >
-        {/* Botón de menú en móviles */}
+      <View style={s.row}>
+        {/* Botón de menú en dispositivos móviles */}
         <View style={s.side}>
           {isMobile && onPressMenu ? (
             <TouchableOpacity
@@ -184,13 +270,14 @@ export default function NavHeader({
           ) : null}
         </View>
 
-        {/* Centro: Comunicador de novedades estilo broker / ticker card */}
+        {/* Centro: Comunicador de novedades amplio estilo broker / ticker */}
         <View style={s.centerBlock}>
           <TouchableOpacity
             style={[
               s.brokerCard,
               isDark ? s.brokerCardDark : s.brokerCardLight,
               isHovered && s.brokerCardHover,
+              !isMobile && s.brokerCardDesktop,
             ]}
             onPress={() => setModalVisible(true)}
             activeOpacity={0.85}
@@ -199,7 +286,7 @@ export default function NavHeader({
               onMouseLeave: () => setIsHovered(false),
             } as any)}
           >
-            {/* Tag / Badge estilo broker ticker */}
+            {/* Tag / Badge estilo broker stock */}
             <View
               style={[
                 s.badgeContainer,
@@ -217,9 +304,9 @@ export default function NavHeader({
               />
               <MaterialCommunityIcons
                 name={currentNews.icon}
-                size={13}
+                size={14}
                 color={currentNews.badgeColor}
-                style={{ marginRight: 4 }}
+                style={{ marginRight: 5 }}
               />
               <Text
                 style={[
@@ -231,7 +318,7 @@ export default function NavHeader({
               </Text>
             </View>
 
-            {/* Mensaje animado tipo ticker */}
+            {/* Mensaje con animación vertical al cambiar y desplazamiento horizontal si desborda */}
             <Animated.View
               style={[
                 s.tickerContent,
@@ -241,18 +328,15 @@ export default function NavHeader({
                 },
               ]}
             >
-              <Text
-                style={[
-                  s.tickerMessage,
-                  isDark ? s.tickerMessageDark : s.tickerMessageLight,
-                ]}
-                numberOfLines={1}
-              >
-                {currentNews.message}
-              </Text>
+              <MarqueeText
+                text={currentNews.message}
+                isDark={isDark}
+                isHovered={isHovered}
+                onComplete={news.length > 1 ? handleNext : undefined}
+              />
             </Animated.View>
 
-            {/* Métrica / Ticker Code estilo broker de acciones (solo desktop) */}
+            {/* Métrica / Ticker Code bursátil (en escritorio) */}
             {isWeb && !isMobile && (
               <View
                 style={[
@@ -331,7 +415,7 @@ export default function NavHeader({
         </View>
       </View>
 
-      {/* Modal interactivo con todas las novedades */}
+      {/* Modal interactivo con todas las novedades detalladas */}
       <Modal
         visible={modalVisible}
         transparent
@@ -434,7 +518,7 @@ const s = StyleSheet.create({
 
   wrapWeb: {
     height: 72,
-    paddingHorizontal: THEME.spacing.xl,
+    paddingHorizontal: 20,
     justifyContent: "center",
     alignItems: "center",
     ...THEME.shadow.web,
@@ -443,7 +527,7 @@ const s = StyleSheet.create({
   wrapMobile: {
     paddingTop: 48,
     paddingBottom: THEME.spacing.md,
-    paddingHorizontal: THEME.spacing.lg,
+    paddingHorizontal: THEME.spacing.md,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
@@ -458,7 +542,7 @@ const s = StyleSheet.create({
   },
 
   side: {
-    width: 48,
+    width: 44,
     alignItems: "flex-start",
     justifyContent: "center",
   },
@@ -476,12 +560,19 @@ const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     width: "100%",
-    maxWidth: 720,
+    maxWidth: "100%",
     height: 44,
     borderRadius: 22,
     borderWidth: 1,
     paddingHorizontal: 12,
-    gap: 8,
+    gap: 10,
+  },
+
+  brokerCardDesktop: {
+    maxWidth: 1400,
+    height: 46,
+    paddingHorizontal: 16,
+    borderRadius: 23,
   },
 
   brokerCardLight: {
@@ -489,8 +580,8 @@ const s = StyleSheet.create({
     borderColor: "#E2E8F0",
     shadowColor: "#0F172A",
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
     elevation: 1,
   },
 
@@ -507,9 +598,10 @@ const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingVertical: 3.5,
     borderRadius: 12,
     borderWidth: 0.5,
+    flexShrink: 0,
   },
 
   badgeLiveDot: {
@@ -520,7 +612,7 @@ const s = StyleSheet.create({
   },
 
   badgeText: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: "800",
     letterSpacing: 0.6,
     textTransform: "uppercase",
@@ -530,16 +622,29 @@ const s = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     justifyContent: "center",
+    overflow: "hidden",
+  },
+
+  tickerViewport: {
+    width: "100%",
+    overflow: "hidden",
+    justifyContent: "center",
+  },
+
+  tickerAnimatedTrack: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
   },
 
   tickerMessage: {
-    fontSize: 13,
+    fontSize: 13.5,
     fontWeight: "600",
     letterSpacing: -0.2,
   },
 
   tickerMessageLight: {
-    color: "#1E293B",
+    color: "#0F172A",
   },
 
   tickerMessageDark: {
@@ -548,9 +653,10 @@ const s = StyleSheet.create({
 
   tickerMetricWrap: {
     paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingVertical: 3,
     borderRadius: 6,
     borderWidth: 0.5,
+    flexShrink: 0,
   },
 
   tickerMetricText: {
@@ -563,28 +669,29 @@ const s = StyleSheet.create({
   tickerNavWrap: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 2,
-    paddingLeft: 4,
+    gap: 3,
+    paddingLeft: 6,
     borderLeftWidth: 1,
-    borderLeftColor: "rgba(148, 163, 184, 0.2)",
+    borderLeftColor: "rgba(148, 163, 184, 0.25)",
+    flexShrink: 0,
   },
 
   navArrow: {
-    padding: 2,
+    padding: 3,
     borderRadius: 4,
   },
 
   navCounter: {
-    fontSize: 10,
+    fontSize: 10.5,
     fontWeight: "700",
     color: COLORS.muted,
     paddingHorizontal: 2,
   },
 
   menuBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: COLORS.card,
@@ -593,7 +700,7 @@ const s = StyleSheet.create({
   },
 
   sideRightWrap: {
-    width: 48,
+    width: 44,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-end",
@@ -601,9 +708,9 @@ const s = StyleSheet.create({
   },
 
   iconBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: COLORS.card,
@@ -622,8 +729,8 @@ const s = StyleSheet.create({
 
   modalCard: {
     width: "100%",
-    maxWidth: 540,
-    maxHeight: "80%",
+    maxWidth: 580,
+    maxHeight: "82%",
     backgroundColor: COLORS.card,
     borderRadius: 16,
     padding: 20,
