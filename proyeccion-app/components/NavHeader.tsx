@@ -57,6 +57,20 @@ const DEFAULT_NEWS: NewsItem[] = [
     ticker: "SALAS+OBS ▲",
     date: "Nuevo",
   },
+  {
+    id: "eventos-proyeccion-duracion",
+    tag: "EVENTOS",
+    badgeColor: "#8B5CF6",
+    badgeBg: "rgba(139, 92, 246, 0.14)",
+    icon: "calendar-clock",
+    title: "Eventos de Proyección con Duración en Programación",
+    message:
+      "🗓️ Eventos de Proyección: Si se les asigna duración, se reflejan automáticamente en la programación para que el staff conozca con exactitud el horario de salida.",
+    detail:
+      "Al definirle duración a los eventos generados por el área de proyección, estos se visualizan directamente en la programación general, manteniendo a todo el staff informado sobre los horarios reales de finalización y salida.",
+    ticker: "EVT:PROY ▲",
+    date: "Nuevo",
+  },
 ];
 
 type Props = {
