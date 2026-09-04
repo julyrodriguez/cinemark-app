@@ -44,32 +44,18 @@ const DEFAULT_NEWS: NewsItem[] = [
     date: "Hoy",
   },
   {
-    id: "offline-mode",
-    tag: "SISTEMA",
-    badgeColor: "#3B82F6",
-    badgeBg: "rgba(59, 130, 246, 0.14)",
-    icon: "server-network",
-    title: "Detección Automática de Servidor y Modo Respaldo",
+    id: "control-salas-butacas",
+    tag: "SALAS",
+    badgeColor: "#F59E0B",
+    badgeBg: "rgba(245, 158, 11, 0.14)",
+    icon: "seat",
+    title: "Control de Salas: Gravedad de Butacas y Observaciones",
     message:
-      "🛡️ Detección de servidor activa: Conmutación inmediata a modo lectura en Firebase con control de acceso por IP salteado ante caídas del servidor.",
+      "💺 Control de Salas: Ahora las butacas dañadas incluyen nivel de gravedad y se incorporan observaciones generales por sala.",
     detail:
-      "Si el servidor principal está fuera de línea o apagado, la aplicación no bloquea el acceso: activa automáticamente el modo lectura de respaldo sobre Firestore y saltea la validación de IP para que puedas consultar toda la información sin interrupciones.",
-    ticker: "SRV:AUTO ●",
+      "En el módulo de Control de Salas podés clasificar la gravedad de daño de cada butaca reportada y cargar observaciones generales por sala para optimizar el mantenimiento y seguimiento.",
+    ticker: "SALAS+OBS ▲",
     date: "Nuevo",
-  },
-  {
-    id: "reloj-opt",
-    tag: "UPDATE",
-    badgeColor: "#8B5CF6",
-    badgeBg: "rgba(139, 92, 246, 0.14)",
-    icon: "trending-up",
-    title: "Cálculo Reloj, Excel y Control de Salas",
-    message:
-      "📊 Cálculo reloj optimizado, exportación Excel estilizada con subcolumnas de créditos y seguimiento prioritario en control de salas.",
-    detail:
-      "Se perfeccionó el cálculo de horas reloj en programación vinculado a los créditos, con diseño premium para la planilla Excel exportada y registro optimista de observaciones en salas.",
-    ticker: "XLSX:LIVE ▲",
-    date: "Reciente",
   },
 ];
 
