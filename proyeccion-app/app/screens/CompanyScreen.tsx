@@ -202,7 +202,7 @@ export default function CompanyScreen() {
   // Toggles de Modo de Estadísticas (semanal o diaria)
   const [statsMode, setStatsMode] = useState<"weekly" | "daily">("weekly");
   const [statsDay, setStatsDay] = useState<string>(() => getCurrentWeekdayKey());
-  const [companyStatsTab, setCompanyStatsTab] = useState<"overview" | "cines" | "peliculas" | "horarios" | "trasnoche">("overview");
+  const [companyStatsTab, setCompanyStatsTab] = useState<"cines" | "peliculas" | "horarios" | "trasnoche">("cines");
   const [theaterSortBy, setTheaterSortBy] = useState<"tickets" | "occupancy">("tickets");
 
   // Modo de visualización de cartelera (list o grid)
@@ -1088,7 +1088,6 @@ export default function CompanyScreen() {
             contentContainerStyle={styles.companySubTabsScroll}
           >
             {[
-              { key: "overview", label: "Vista General", icon: "view-dashboard-outline" },
               { key: "cines", label: "Ranking de Cines", icon: "trophy-outline" },
               { key: "peliculas", label: "Top Películas Cadena", icon: "filmstrip" },
               { key: "horarios", label: "Días & Turnos", icon: "clock-time-four-outline" },
@@ -1118,7 +1117,7 @@ export default function CompanyScreen() {
         </View>
 
         {/* Tab 1: Ranking de Cines (Leaderboard) */}
-        {(companyStatsTab === "overview" || companyStatsTab === "cines") && (
+        {companyStatsTab === "cines" && (
           <View style={styles.companyAnalyticsCard}>
             <View style={styles.companyAnalyticsCardHeader}>
               <View style={{ flexDirection: "row", alignItems: "center" }}>
@@ -1216,7 +1215,7 @@ export default function CompanyScreen() {
         )}
 
         {/* Tab 2: Top Películas Cadena */}
-        {(companyStatsTab === "overview" || companyStatsTab === "peliculas") && (
+        {companyStatsTab === "peliculas" && (
           <View style={styles.companyAnalyticsCard}>
             <View style={styles.companyAnalyticsCardHeader}>
               <View style={{ flexDirection: "row", alignItems: "center" }}>
@@ -1274,7 +1273,7 @@ export default function CompanyScreen() {
         )}
 
         {/* Tab 3: Días & Franjas Horarias */}
-        {(companyStatsTab === "overview" || companyStatsTab === "horarios") && (
+        {companyStatsTab === "horarios" && (
           <View style={styles.companyAnalyticsCard}>
             <View style={styles.companyAnalyticsCardHeader}>
               <View style={{ flexDirection: "row", alignItems: "center" }}>
@@ -1360,49 +1359,61 @@ export default function CompanyScreen() {
         )}
 
         {/* Tab 4: Especial Trasnoche */}
-        {(companyStatsTab === "overview" || companyStatsTab === "trasnoche") && trasnocheStats.hasTrasnocheData && (
-          <View style={styles.trasnocheModernCard}>
-            <View style={styles.trasnocheModernHeader}>
-              <View style={styles.trasnocheMoonCircle}>
-                <MaterialCommunityIcons name="weather-night" size={20} color="#F59E0B" />
+        {companyStatsTab === "trasnoche" && (
+          trasnocheStats.hasTrasnocheData ? (
+            <View style={styles.trasnocheModernCard}>
+              <View style={styles.trasnocheModernHeader}>
+                <View style={styles.trasnocheMoonCircle}>
+                  <MaterialCommunityIcons name="weather-night" size={20} color="#F59E0B" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.trasnocheModernTitle}>
+                    {statsMode === "daily"
+                      ? `Especial Trasnoche Cadena 🌙 (${DAYS_OF_WEEK.find(d => d.key === statsDay)?.label || ""})`
+                      : "Especial Trasnoche Cadena 🌙 (Semanal)"}
+                  </Text>
+                  <Text style={styles.trasnocheModernSubtitle}>
+                    Funciones a partir de las 23:30 hs y trasnoches de madrugada en toda la red
+                  </Text>
+                </View>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.trasnocheModernTitle}>
-                  {statsMode === "daily"
-                    ? `Especial Trasnoche Cadena 🌙 (${DAYS_OF_WEEK.find(d => d.key === statsDay)?.label || ""})`
-                    : "Especial Trasnoche Cadena 🌙 (Semanal)"}
-                </Text>
-                <Text style={styles.trasnocheModernSubtitle}>
-                  Funciones a partir de las 23:30 hs y trasnoches de madrugada en toda la red
+
+              <View style={styles.trasnocheModernStatsGrid}>
+                <View style={styles.trasnocheModernCol}>
+                  <Text style={styles.trasnocheModernVal}>
+                    {trasnocheStats.totalSold.toLocaleString("es-AR")}
+                  </Text>
+                  <Text style={styles.trasnocheModernLbl}>Tickets Trasnoche Cadena</Text>
+                </View>
+
+                <View style={styles.trasnocheModernCol}>
+                  <Text style={styles.trasnocheModernVal}>
+                    {trasnocheStats.avgOccupancy.toFixed(1)}%
+                  </Text>
+                  <Text style={styles.trasnocheModernLbl}>Ocupación Media</Text>
+                </View>
+
+                <View style={styles.trasnocheModernCol}>
+                  <Text style={styles.trasnocheModernVal} numberOfLines={1}>
+                    {trasnocheStats.bestTheaterName}
+                  </Text>
+                  <Text style={styles.trasnocheModernLbl}>
+                    Líder Nocturno ({trasnocheStats.bestTheaterPercent.toFixed(1)}%)
+                  </Text>
+                </View>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.companyAnalyticsCard}>
+              <View style={{ alignItems: "center", paddingVertical: 24 }}>
+                <MaterialCommunityIcons name="weather-night" size={36} color={COLORS.muted} style={{ marginBottom: 8 }} />
+                <Text style={{ fontSize: 14, fontWeight: "bold", color: COLORS.text }}>Sin Funciones de Trasnoche</Text>
+                <Text style={{ fontSize: 12, color: COLORS.textSoft, marginTop: 4, textAlign: "center" }}>
+                  No se registran sesiones a partir de las 23:30 hs para el período seleccionado.
                 </Text>
               </View>
             </View>
-
-            <View style={styles.trasnocheModernStatsGrid}>
-              <View style={styles.trasnocheModernCol}>
-                <Text style={styles.trasnocheModernVal}>
-                  {trasnocheStats.totalSold.toLocaleString("es-AR")}
-                </Text>
-                <Text style={styles.trasnocheModernLbl}>Tickets Trasnoche Cadena</Text>
-              </View>
-
-              <View style={styles.trasnocheModernCol}>
-                <Text style={styles.trasnocheModernVal}>
-                  {trasnocheStats.avgOccupancy.toFixed(1)}%
-                </Text>
-                <Text style={styles.trasnocheModernLbl}>Ocupación Media</Text>
-              </View>
-
-              <View style={styles.trasnocheModernCol}>
-                <Text style={styles.trasnocheModernVal} numberOfLines={1}>
-                  {trasnocheStats.bestTheaterName}
-                </Text>
-                <Text style={styles.trasnocheModernLbl}>
-                  Líder Nocturno ({trasnocheStats.bestTheaterPercent.toFixed(1)}%)
-                </Text>
-              </View>
-            </View>
-          </View>
+          )
         )}
       </View>
 
