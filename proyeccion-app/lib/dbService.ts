@@ -56,10 +56,24 @@ export function setFallbackMode(active: boolean) {
   }
 }
 
+const HEARTBEAT_CHECK_INTERVAL_MS = 3 * 60 * 1000; // 3 minutos
+let healthPollingInterval: any = null;
+
+function ensureHeartbeatPolling() {
+  if ((Platform.OS === "web" || typeof window !== "undefined") && !healthPollingInterval) {
+    healthPollingInterval = setInterval(() => {
+      checkServerHealth(true).catch((err) => {
+        console.warn("[DB Service] Error en polling periódico de heartbeat:", err);
+      });
+    }, HEARTBEAT_CHECK_INTERVAL_MS);
+  }
+}
+
 export function subscribeServerStatus(listener: (status: ServerStatus) => void) {
   serverStatusListeners.add(listener);
   // Emitir valor actual inmediatamente
   listener(serverStatus);
+  ensureHeartbeatPolling();
   return () => {
     serverStatusListeners.delete(listener);
   };
@@ -68,6 +82,8 @@ export function subscribeServerStatus(listener: (status: ServerStatus) => void) 
 let healthCheckPromise: Promise<boolean> | null = null;
 
 export async function checkServerHealth(force = false): Promise<boolean> {
+  ensureHeartbeatPolling();
+
   if (!force && healthCheckPromise) {
     return healthCheckPromise;
   }
@@ -87,6 +103,14 @@ export async function checkServerHealth(force = false): Promise<boolean> {
       clearTimeout(timeoutId);
 
       if (res.ok) {
+        const data = await res.json().catch(() => null);
+        const isHeartbeatExpired = Boolean(data?.timestamp && (Date.now() - data.timestamp > HEARTBEAT_CHECK_INTERVAL_MS));
+        if (data && (data.isAlive === false || isHeartbeatExpired)) {
+          console.warn("[DB Service] Heartbeat caducado o inactivo. Marcando servidor como offline.", data);
+          setFallbackMode(true);
+          return false;
+        }
+
         setFallbackMode(false);
         return true;
       } else {
@@ -113,6 +137,8 @@ export function useServerStatus() {
   const [isChecking, setIsChecking] = useState(false);
 
   useEffect(() => {
+    ensureHeartbeatPolling();
+
     const unsub = subscribeServerStatus((newStatus) => {
       setStatus(newStatus);
     });
