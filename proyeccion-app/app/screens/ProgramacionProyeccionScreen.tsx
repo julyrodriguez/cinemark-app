@@ -302,6 +302,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
   const [apiError, setApiError] = useState<string | null>(null);
   const [selectedWeekStart, setSelectedWeekStart] = useState<string>("");
   const [showStatsPanel, setShowStatsPanel] = useState(false);
+  const [statsSubTab, setStatsSubTab] = useState<"todo" | "resumen" | "peliculas" | "dias" | "salas" | "alertas">("todo");
   const [adjustShowtimes, setAdjustShowtimes] = useState<boolean>(false);
 
   // Seat Map Integration
@@ -1745,18 +1746,38 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
     // 1. Weekly Stats (for the entire selectedWeekStart)
     let weeklyTotalSold = 0;
+    let weeklyTotalCapacity = 0;
+    let weeklyTotalSessions = 0;
     let weekly3DSold = 0;
 
     const movieSales: Record<string, number> = {};
+    const movieCapacities: Record<string, number> = {};
+    const movieSessions: Record<string, number> = {};
+
     const roomSales: Record<number, number> = {};
+    const roomCapacities: Record<number, number> = {};
+    const roomSessions: Record<number, number> = {};
+
     const daySales: Record<string, number> = {};
+    const dayCapacities: Record<string, number> = {};
+    const daySessions: Record<string, number> = {};
     const day3DSales: Record<string, number> = {};
+
+    const timeSlots = {
+      matine: { key: "matine", label: "Matiné", sub: "< 15:00 hs", icon: "weather-sunset-up" as const, sold: 0, capacity: 0, sessions: 0 },
+      tarde: { key: "tarde", label: "Tarde", sub: "15:00 a 19:00 hs", icon: "white-balance-sunny" as const, sold: 0, capacity: 0, sessions: 0 },
+      noche: { key: "noche", label: "Noche", sub: "19:00 a 23:00 hs", icon: "weather-sunset-down" as const, sold: 0, capacity: 0, sessions: 0 },
+      trasnoche: { key: "trasnoche", label: "Trasnoche", sub: "≥ 23:00 hs", icon: "weather-night" as const, sold: 0, capacity: 0, sessions: 0 },
+    };
+
     let maxOccupationSession: any = null;
     let maxOccupationSessionRate = -1;
 
     // Initialize all days in daySales and day3DSales to 0 to ensure they all exist in chart even if 0 sales
     DAYS_OF_WEEK.forEach(day => {
       daySales[day.key] = 0;
+      dayCapacities[day.key] = 0;
+      daySessions[day.key] = 0;
       day3DSales[day.key] = 0;
     });
 
@@ -1766,9 +1787,11 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
       if (weekStart !== selectedWeekStart) return;
 
       const sold = Math.max(0, session.occupation.capacity - session.occupation.availableSeats);
-      const capacity = session.occupation.capacity;
+      const capacity = session.occupation.capacity || 0;
       
       weeklyTotalSold += sold;
+      weeklyTotalCapacity += capacity;
+      weeklyTotalSessions += 1;
 
       const is3D = /3d/i.test(session.movieName) || /3d/i.test(session.sessionFormat || "");
       if (is3D) {
@@ -1778,10 +1801,14 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
       // Movie sales
       const movie = session.movieName;
       movieSales[movie] = (movieSales[movie] || 0) + sold;
+      movieCapacities[movie] = (movieCapacities[movie] || 0) + capacity;
+      movieSessions[movie] = (movieSessions[movie] || 0) + 1;
 
       // Room sales
       const room = Number(session.theaterRoom);
       roomSales[room] = (roomSales[room] || 0) + sold;
+      roomCapacities[room] = (roomCapacities[room] || 0) + capacity;
+      roomSessions[room] = (roomSessions[room] || 0) + 1;
 
       // Day sales
       const arDate = new Date(utcDate.getTime());
@@ -1796,9 +1823,31 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
       const sessionDay = map[dayNum];
       if (sessionDay) {
         daySales[sessionDay] = (daySales[sessionDay] || 0) + sold;
+        dayCapacities[sessionDay] = (dayCapacities[sessionDay] || 0) + capacity;
+        daySessions[sessionDay] = (daySessions[sessionDay] || 0) + 1;
         if (is3D) {
           day3DSales[sessionDay] = (day3DSales[sessionDay] || 0) + sold;
         }
+      }
+
+      // Time Slot
+      const hour = arDate.getUTCHours();
+      if (hour < 6 || hour >= 23) {
+        timeSlots.trasnoche.sold += sold;
+        timeSlots.trasnoche.capacity += capacity;
+        timeSlots.trasnoche.sessions += 1;
+      } else if (hour < 15) {
+        timeSlots.matine.sold += sold;
+        timeSlots.matine.capacity += capacity;
+        timeSlots.matine.sessions += 1;
+      } else if (hour < 19) {
+        timeSlots.tarde.sold += sold;
+        timeSlots.tarde.capacity += capacity;
+        timeSlots.tarde.sessions += 1;
+      } else {
+        timeSlots.noche.sold += sold;
+        timeSlots.noche.capacity += capacity;
+        timeSlots.noche.sessions += 1;
       }
 
       // Most full session
@@ -1850,6 +1899,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
       }
     });
     const bestDayLabelText = DAYS_OF_WEEK.find(d => d.key === bestDayKey)?.label || bestDayKey;
+    const bestDayOccupancy = (dayCapacities[bestDayKey] || 0) > 0 ? ((daySales[bestDayKey] || 0) / dayCapacities[bestDayKey]) * 100 : 0;
 
     // Find room with most sales
     let bestRoomNum = -1;
@@ -1861,6 +1911,47 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
         bestRoomSalesValue = sales;
         bestRoomNum = roomNum;
       }
+    });
+    const bestRoomOccupancy = (roomCapacities[bestRoomNum] || 0) > 0 ? ((roomSales[bestRoomNum] || 0) / roomCapacities[bestRoomNum]) * 100 : 0;
+
+    // Aggregates
+    const weeklyAvgOccupancy = weeklyTotalCapacity > 0 ? (weeklyTotalSold / weeklyTotalCapacity) * 100 : 0;
+    const weeklyAvgPerSession = weeklyTotalSessions > 0 ? Math.round(weeklyTotalSold / weeklyTotalSessions) : 0;
+    const weekly3DPercent = weeklyTotalSold > 0 ? (weekly3DSold / weeklyTotalSold) * 100 : 0;
+    const mostViewedMovieShare = weeklyTotalSold > 0 ? (mostViewedMovieCount / weeklyTotalSold) * 100 : 0;
+    const weekendSold = (daySales["viernes"] || 0) + (daySales["sabado"] || 0) + (daySales["domingo"] || 0);
+    const weekdaySold = Math.max(0, weeklyTotalSold - weekendSold);
+
+    // Day details
+    const dayDetails = DAYS_OF_WEEK.map((day) => {
+      const sold = daySales[day.key] || 0;
+      const cap = dayCapacities[day.key] || 0;
+      const count = daySessions[day.key] || 0;
+      const occ = cap > 0 ? (sold / cap) * 100 : 0;
+      const isWeekend = day.key === "viernes" || day.key === "sabado" || day.key === "domingo";
+      return {
+        ...day,
+        sold,
+        capacity: cap,
+        sessions: count,
+        occupancy: occ,
+        isWeekend
+      };
+    });
+
+    // Room details
+    const roomDetails = Object.keys(roomSales).map(Number).sort((a, b) => a - b).map((room) => {
+      const sold = roomSales[room] || 0;
+      const cap = roomCapacities[room] || 0;
+      const count = roomSessions[room] || 0;
+      const occ = cap > 0 ? (sold / cap) * 100 : 0;
+      return {
+        room,
+        sold,
+        capacity: cap,
+        sessions: count,
+        occupancy: occ
+      };
     });
 
     // 2. Daily Stats (for the current shows list of the selected day)
@@ -1890,26 +1981,46 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
     return {
       weeklyTotalSold,
+      weeklyTotalCapacity,
+      weeklyTotalSessions,
+      weeklyAvgOccupancy,
+      weeklyAvgPerSession,
       weekly3DSold,
+      weekly3DPercent,
+      weekly2DSold: Math.max(0, weeklyTotalSold - weekly3DSold),
       dailyTotalSold,
       daily3DSold,
       recordingRiskShows,
       guideNeededShows,
 
-      // New rich stats
+      // Rich stats
       movieSales,
+      movieCapacities,
+      movieSessions,
       roomSales,
+      roomCapacities,
+      roomSessions,
+      roomDetails,
       daySales,
+      dayCapacities,
+      daySessions,
+      dayDetails,
       day3DSales,
+      timeSlots,
+      weekendSold,
+      weekdaySold,
       mostViewedMovie,
       mostViewedMovieCount,
+      mostViewedMovieShare,
       leastViewedMovie,
       leastViewedMovieCount: leastViewedMovieCount === Infinity ? 0 : leastViewedMovieCount,
       maxOccupationSession,
       bestDayLabel: bestDayLabelText,
       bestDaySales: bestDaySalesValue,
+      bestDayOccupancy,
       bestRoom: bestRoomNum,
-      bestRoomSales: bestRoomSalesValue
+      bestRoomSales: bestRoomSalesValue,
+      bestRoomOccupancy
     };
   }, [useApiData, apiData, selectedWeekStart, shows]);
 
@@ -2340,7 +2451,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
     // Sort movies by sales
     const sortedMovies = Object.entries(stats.movieSales || {})
       .sort((a, b) => (b[1] as number) - (a[1] as number))
-      .slice(0, 5); // top 5
+      .slice(0, 8); // top 8
 
     // Sort rooms by sales
     const sortedRooms = Object.entries(stats.roomSales || {})
@@ -2351,241 +2462,529 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
     const maxRoomSales = stats.bestRoomSales > 0 ? stats.bestRoomSales : 1;
     const maxDay3DSales = Math.max(...Object.values(stats.day3DSales || {}), 1);
 
+    const showTodo = statsSubTab === "todo";
+    const showResumen = showTodo || statsSubTab === "resumen";
+    const showPeliculas = showTodo || statsSubTab === "peliculas";
+    const showDias = showTodo || statsSubTab === "dias";
+    const showSalas = showTodo || statsSubTab === "salas";
+    const showAlertas = showTodo || statsSubTab === "alertas";
+
     return (
-      <View style={styles.statsPanelContainer}>
-        {/* Section Header */}
-        <View style={styles.statsHeaderContainer}>
-          <MaterialCommunityIcons name="chart-box-outline" size={20} color={COLORS.primary} style={{ marginRight: 8 }} />
-          <Text style={styles.statsPanelTitle}>Análisis y Estadísticas Semanales</Text>
-        </View>
-
-        {/* Warning Banner */}
-        <View style={styles.statsWarningCard}>
-          <MaterialCommunityIcons name="alert-circle" size={16} color="#EAB308" style={{ marginRight: 8 }} />
-          <Text style={styles.statsWarningText}>
-            La información presentada en esta sección puede contener un margen de error.
-          </Text>
-        </View>
-
-        {/* Highlights Row */}
-        <View style={[styles.statsCardsRow, isMobile && { flexDirection: "column" }]}>
-          {/* Card 1: Más Vista */}
-          {stats.mostViewedMovie ? (
-            <View style={[styles.statsMiniCard, isMobile && { width: "100%", minWidth: "100%" }]}>
-              <View style={styles.statsMiniCardHeader}>
-                <MaterialCommunityIcons name="crown" size={16} color="#EAB308" />
-                <Text style={styles.statsMiniCardLabel}>Película Más Vista</Text>
-              </View>
-              <Text style={styles.statsMiniCardTitle} numberOfLines={1}>{stats.mostViewedMovie}</Text>
-              <Text style={styles.statsMiniCardValue}>{stats.mostViewedMovieCount} tickets</Text>
+      <View style={styles.statsModernPanelContainer}>
+        {/* Modern Header */}
+        <View style={styles.statsModernHeader}>
+          <View style={styles.statsModernHeaderTop}>
+            <View style={styles.statsBadgePill}>
+              <MaterialCommunityIcons name="lightning-bolt" size={13} color={COLORS.primary} />
+              <Text style={styles.statsBadgePillText}>ANÁLISIS DE RENDIMIENTO</Text>
             </View>
-          ) : null}
-
-          {/* Card 2: Menos Vista */}
-          {stats.leastViewedMovie ? (
-            <View style={[styles.statsMiniCard, isMobile && { width: "100%", minWidth: "100%" }]}>
-              <View style={styles.statsMiniCardHeader}>
-                <MaterialCommunityIcons name="trending-down" size={16} color="#EF4444" />
-                <Text style={styles.statsMiniCardLabel}>Película Menos Vista</Text>
-              </View>
-              <Text style={styles.statsMiniCardTitle} numberOfLines={1}>{stats.leastViewedMovie}</Text>
-              <Text style={styles.statsMiniCardValue}>{stats.leastViewedMovieCount} tickets</Text>
+            <View style={styles.statsWeekTag}>
+              <MaterialCommunityIcons name="calendar-range" size={13} color={COLORS.muted} style={{ marginRight: 4 }} />
+              <Text style={styles.statsWeekTagText}>{formatWeekRange(selectedWeekStart)}</Text>
             </View>
-          ) : null}
-
-          {/* Card 3: Día Estrella */}
-          {stats.bestDayLabel ? (
-            <View style={[styles.statsMiniCard, isMobile && { width: "100%", minWidth: "100%" }]}>
-              <View style={styles.statsMiniCardHeader}>
-                <MaterialCommunityIcons name="calendar-star" size={16} color="#10B981" />
-                <Text style={styles.statsMiniCardLabel}>Día de Mayor Venta</Text>
-              </View>
-              <Text style={styles.statsMiniCardTitle} numberOfLines={1}>{stats.bestDayLabel}</Text>
-              <Text style={styles.statsMiniCardValue}>{stats.bestDaySales} tickets</Text>
-            </View>
-          ) : null}
-
-          {/* Card 4: Sala Estrella */}
-          {stats.bestRoom !== -1 ? (
-            <View style={[styles.statsMiniCard, isMobile && { width: "100%", minWidth: "100%" }]}>
-              <View style={styles.statsMiniCardHeader}>
-                <MaterialCommunityIcons name="theater" size={16} color="#3B82F6" />
-                <Text style={styles.statsMiniCardLabel}>Sala con Más Ventas</Text>
-              </View>
-              <Text style={styles.statsMiniCardTitle} numberOfLines={1}>Sala {stats.bestRoom}</Text>
-              <Text style={styles.statsMiniCardValue}>{stats.bestRoomSales} tickets</Text>
-            </View>
-          ) : null}
-
-          {/* Card 5: Lentes 3D Semanales */}
-          <View style={[styles.statsMiniCard, isMobile && { width: "100%", minWidth: "100%" }]}>
-            <View style={styles.statsMiniCardHeader}>
-              <MaterialCommunityIcons name="sunglasses" size={16} color="#8B5CF6" />
-              <Text style={styles.statsMiniCardLabel}>Lentes 3D Semanales</Text>
-            </View>
-            <Text style={styles.statsMiniCardTitle} numberOfLines={1}>{stats.weekly3DSold}</Text>
-            <Text style={styles.statsMiniCardValue}>Total en la semana</Text>
           </View>
-        </View>
-
-        {/* Function Más Llena Highlight */}
-        {stats.maxOccupationSession ? (
-          <View style={styles.statsBannerCard}>
-            <MaterialCommunityIcons name="fire" size={20} color="#EF4444" style={{ marginRight: 8 }} />
+          <View style={styles.statsModernTitleRow}>
+            <View style={styles.statsModernIconCircle}>
+              <MaterialCommunityIcons name="chart-box-outline" size={22} color="#FFFFFF" />
+            </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.statsBannerLabel}>FUNCIÓN CON MAYOR OCUPACIÓN DE LA SEMANA</Text>
-              <Text style={styles.statsBannerTitle} numberOfLines={1}>
-                {stats.maxOccupationSession.pelicula}
-              </Text>
-              <Text style={styles.statsBannerSubtitle}>
-                {stats.maxOccupationSession.diaLabel} a las {stats.maxOccupationSession.inicio} hs • Sala {stats.maxOccupationSession.sala}
-              </Text>
-            </View>
-            <View style={styles.statsBannerBadge}>
-              <Text style={styles.statsBannerBadgeText}>
-                {Math.round(stats.maxOccupationSession.rate * 100)}% Lleno
-              </Text>
-              <Text style={styles.statsBannerBadgeSubtext}>
-                ({stats.maxOccupationSession.soldSeats}/{stats.maxOccupationSession.capacity} tix)
+              <Text style={styles.statsModernTitle}>Estadísticas & Inteligencia Semanal</Text>
+              <Text style={styles.statsModernSubtitle}>
+                Monitoreo comercial, demanda por sala y distribución de horarios
               </Text>
             </View>
           </View>
-        ) : null}
 
-        {/* Alerts Section (Only Daily) */}
-        <View style={styles.statsAlertsSection}>
-          <Text style={styles.statsAlertsTitle}>🚨 ALERTAS OPERATIVAS (Hoy)</Text>
-          {stats.recordingRiskShows.length === 0 && stats.guideNeededShows.length === 0 ? (
-            <View style={styles.noAlertsContainer}>
-              <MaterialCommunityIcons name="check-circle" size={14} color="#10B981" style={{ marginRight: 6 }} />
-              <Text style={styles.noAlertsText}>Sin alertas de sala hoy</Text>
-            </View>
-          ) : (
-            <View style={styles.alertsList}>
-              {stats.recordingRiskShows.length > 0 && (
-                <View style={[styles.alertItem, styles.alertItemRisk]}>
-                  <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
-                    <MaterialCommunityIcons name="alert-circle" size={14} color="#EF4444" style={{ marginRight: 6 }} />
-                    <Text style={styles.alertItemText} numberOfLines={1}>
-                      Hay <Text style={{ fontWeight: "bold" }}>{stats.recordingRiskShows.length}</Text> funciones con ocupación menor al 2%
-                    </Text>
-                  </View>
-                  <View style={[styles.alertBadge, { backgroundColor: "#EF4444" }]}>
-                    <Text style={styles.alertBadgeText}>Riesgo de grabación</Text>
-                  </View>
-                </View>
-              )}
-              {stats.guideNeededShows.map((show, idx) => (
-                <View key={`guide-${idx}`} style={[styles.alertItem, styles.alertItemGuide]}>
-                  <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
-                    <MaterialCommunityIcons name="account-group" size={14} color="#10B981" style={{ marginRight: 6 }} />
-                    <Text style={styles.alertItemText} numberOfLines={1}>
-                      <Text style={{ fontWeight: "bold" }}>{show.inicio}</Text> - Sala {show.sala} | {show.pelicula} (Ocupación: {show.capacity !== undefined && show.soldSeats !== undefined && show.capacity > 0 ? ((show.soldSeats/show.capacity)*100).toFixed(0) : 0}%)
-                    </Text>
-                  </View>
-                  <View style={[styles.alertBadge, { backgroundColor: "#10B981" }]}>
-                    <Text style={styles.alertBadgeText}>Necesario guía de sala</Text>
-                  </View>
-                </View>
-              ))}
-            </View>
-          )}
-        </View>
-
-        {/* Charts Container */}
-        <View style={[styles.chartsGrid, windowWidth < 1200 && { flexDirection: "column" }]}>
-          {/* Chart 1: Ranking Peliculas */}
-          <View style={[styles.chartContainer, { flex: windowWidth < 1200 ? undefined : 1 }, windowWidth < 1200 && { width: "100%" }]}>
-            <Text style={styles.chartTitle}>Top 5 Películas de la Semana (Tickets)</Text>
-            <View style={styles.chartBody}>
-              {sortedMovies.map(([movie, sales], index) => {
-                const percentage = ((sales as number) / maxMovieSales) * 100;
-                return (
-                  <View key={movie} style={styles.chartRow}>
-                    <View style={styles.chartRowInfo}>
-                      <Text style={styles.chartRowName} numberOfLines={1}>
-                        {index + 1}. {movie}
-                      </Text>
-                      <Text style={styles.chartRowValue}>{sales as number}</Text>
-                    </View>
-                    <View style={styles.chartBarTrack}>
-                      <View style={[styles.chartBarFill, { width: `${percentage}%`, backgroundColor: COLORS.primary }]} />
-                    </View>
-                  </View>
-                );
-              })}
-            </View>
+          {/* Warning Tooltip */}
+          <View style={styles.statsModernNotice}>
+            <MaterialCommunityIcons name="information-outline" size={14} color="#854D0E" style={{ marginRight: 6 }} />
+            <Text style={styles.statsModernNoticeText}>
+              Valores calculados en base a sesiones sincronizadas y reportes semanales. Margen de error mínimo aplicable.
+            </Text>
           </View>
 
-          {/* Chart 2: Ventas por Dia */}
-          <View style={[styles.chartContainer, { flex: windowWidth < 1200 ? undefined : 1, marginLeft: windowWidth < 1200 ? 0 : 16, marginTop: windowWidth < 1200 ? 16 : 0 }, windowWidth < 1200 && { width: "100%" }]}>
-            <Text style={styles.chartTitle}>Ventas por Día de la Semana (Tickets)</Text>
-            <View style={styles.chartBody}>
-              {DAYS_OF_WEEK.map((day) => {
-                const sales = stats.daySales[day.key] || 0;
-                const percentage = (sales / maxDaySales) * 100;
-                return (
-                  <View key={day.key} style={styles.chartRow}>
-                    <View style={styles.chartRowInfo}>
-                      <Text style={styles.chartRowName} numberOfLines={1}>
-                        {day.label}
-                      </Text>
-                      <Text style={styles.chartRowValue}>{sales}</Text>
-                    </View>
-                    <View style={styles.chartBarTrack}>
-                      <View style={[styles.chartBarFill, { width: `${percentage}%`, backgroundColor: "#10B981" }]} />
-                    </View>
-                  </View>
-                );
-              })}
-            </View>
-          </View>
-
-          {/* Chart 4: Lentes 3D por Dia */}
-          <View style={[styles.chartContainer, { flex: windowWidth < 1200 ? undefined : 1, marginLeft: windowWidth < 1200 ? 0 : 16, marginTop: windowWidth < 1200 ? 16 : 0 }, windowWidth < 1200 && { width: "100%" }]}>
-            <Text style={styles.chartTitle}>Lentes 3D por Día de la Semana</Text>
-            <View style={styles.chartBody}>
-              {DAYS_OF_WEEK.map((day) => {
-                const sales = stats.day3DSales[day.key] || 0;
-                const percentage = maxDay3DSales > 0 ? (sales / maxDay3DSales) * 100 : 0;
-                return (
-                  <View key={day.key} style={styles.chartRow}>
-                    <View style={styles.chartRowInfo}>
-                      <Text style={styles.chartRowName} numberOfLines={1}>
-                        {day.label}
-                      </Text>
-                      <Text style={styles.chartRowValue}>{sales}</Text>
-                    </View>
-                    <View style={styles.chartBarTrack}>
-                      <View style={[styles.chartBarFill, { width: `${percentage}%`, backgroundColor: "#8B5CF6" }]} />
-                    </View>
-                  </View>
-                );
-              })}
-            </View>
-          </View>
-        </View>
-
-        {/* Chart 3: Ventas por Sala */}
-        <View style={[styles.chartContainer, { marginHorizontal: 16 }]}>
-          <Text style={styles.chartTitle}>Ventas por Sala de Cine (Tickets)</Text>
-          <View style={[styles.chartBody, { flexDirection: "row", flexWrap: "wrap", gap: 12 }]}>
-            {sortedRooms.map(([room, sales]) => {
-              const percentage = ((sales as number) / maxRoomSales) * 100;
+          {/* Sub-Tabs Selector */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.statsSubTabsScroll}
+          >
+            {[
+              { key: "todo", label: "Vista General", icon: "view-dashboard-outline" },
+              { key: "resumen", label: "Resumen", icon: "chart-timeline-variant" },
+              { key: "peliculas", label: "Top Películas", icon: "filmstrip" },
+              { key: "dias", label: "Días & Turnos", icon: "calendar-clock" },
+              { key: "salas", label: "Salas", icon: "theater" },
+              { key: "alertas", label: `Alertas (${stats.recordingRiskShows.length + stats.guideNeededShows.length})`, icon: "shield-alert-outline" },
+            ].map((tab) => {
+              const isActive = statsSubTab === tab.key;
               return (
-                <View key={room} style={[styles.roomChartCell, { width: isMobile ? "100%" : "48%" }]}>
-                  <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
-                    <Text style={styles.roomChartName}>Sala {room}</Text>
-                    <Text style={styles.roomChartValue}>{sales as number} tix</Text>
-                  </View>
-                  <View style={styles.chartBarTrack}>
-                    <View style={[styles.chartBarFill, { width: `${percentage}%`, backgroundColor: "#3B82F6" }]} />
-                  </View>
-                </View>
+                <TouchableOpacity
+                  key={tab.key}
+                  onPress={() => setStatsSubTab(tab.key as any)}
+                  style={[styles.statsSubTabBtn, isActive && styles.statsSubTabBtnActive]}
+                  activeOpacity={0.7}
+                >
+                  <MaterialCommunityIcons
+                    name={tab.icon as any}
+                    size={14}
+                    color={isActive ? "#FFFFFF" : COLORS.textSoft}
+                    style={{ marginRight: 5 }}
+                  />
+                  <Text style={[styles.statsSubTabBtnText, isActive && styles.statsSubTabBtnTextActive]}>
+                    {tab.label}
+                  </Text>
+                </TouchableOpacity>
               );
             })}
-          </View>
+          </ScrollView>
         </View>
+
+        {/* 1. Scorecards Grid (Resumen) */}
+        {showResumen && (
+          <View style={styles.statsModernSection}>
+            <View style={styles.statsKpiGrid}>
+              {/* KPI 1: Total Tickets */}
+              <View style={[styles.statsKpiCard, { borderTopColor: COLORS.primary }]}>
+                <View style={styles.statsKpiHeader}>
+                  <View style={[styles.statsKpiIconBox, { backgroundColor: COLORS.primarySoft }]}>
+                    <MaterialCommunityIcons name="ticket-percent-outline" size={18} color={COLORS.primary} />
+                  </View>
+                  <View style={styles.statsKpiTrendPill}>
+                    <Text style={styles.statsKpiTrendText}>Semana</Text>
+                  </View>
+                </View>
+                <Text style={styles.statsKpiNumber}>{stats.weeklyTotalSold.toLocaleString("es-AR")}</Text>
+                <Text style={styles.statsKpiLabel}>Tickets Totales</Text>
+                <View style={styles.statsKpiDivider} />
+                <Text style={styles.statsKpiFooter}>
+                  Promedio: <Text style={{ fontWeight: "bold" }}>{stats.weeklyAvgPerSession} tix</Text> / show
+                </Text>
+              </View>
+
+              {/* KPI 2: Ocupación Promedio */}
+              <View style={[styles.statsKpiCard, { borderTopColor: "#10B981" }]}>
+                <View style={styles.statsKpiHeader}>
+                  <View style={[styles.statsKpiIconBox, { backgroundColor: "#D1FAE5" }]}>
+                    <MaterialCommunityIcons name="chart-donut" size={18} color="#047857" />
+                  </View>
+                  <View style={[styles.statsKpiTrendPill, { backgroundColor: "#D1FAE5" }]}>
+                    <Text style={[styles.statsKpiTrendText, { color: "#047857" }]}>Ocupación</Text>
+                  </View>
+                </View>
+                <Text style={styles.statsKpiNumber}>{stats.weeklyAvgOccupancy.toFixed(1)}%</Text>
+                <Text style={styles.statsKpiLabel}>Ocupación Promedio</Text>
+                <View style={styles.statsKpiDivider} />
+                <Text style={styles.statsKpiFooter}>
+                  Capacidad: <Text style={{ fontWeight: "bold" }}>{stats.weeklyTotalCapacity.toLocaleString("es-AR")}</Text> butacas
+                </Text>
+              </View>
+
+              {/* KPI 3: Experiencia 3D */}
+              <View style={[styles.statsKpiCard, { borderTopColor: "#8B5CF6" }]}>
+                <View style={styles.statsKpiHeader}>
+                  <View style={[styles.statsKpiIconBox, { backgroundColor: "#EDE9FE" }]}>
+                    <MaterialCommunityIcons name="sunglasses" size={18} color="#7C3AED" />
+                  </View>
+                  <View style={[styles.statsKpiTrendPill, { backgroundColor: "#EDE9FE" }]}>
+                    <Text style={[styles.statsKpiTrendText, { color: "#7C3AED" }]}>Formato 3D</Text>
+                  </View>
+                </View>
+                <Text style={styles.statsKpiNumber}>{stats.weekly3DSold.toLocaleString("es-AR")}</Text>
+                <Text style={styles.statsKpiLabel}>Lentes 3D Semanales</Text>
+                <View style={styles.statsKpiDivider} />
+                <Text style={styles.statsKpiFooter}>
+                  Penetración: <Text style={{ fontWeight: "bold" }}>{stats.weekly3DPercent.toFixed(1)}%</Text> del total
+                </Text>
+              </View>
+
+              {/* KPI 4: Funciones Totales */}
+              <View style={[styles.statsKpiCard, { borderTopColor: "#3B82F6" }]}>
+                <View style={styles.statsKpiHeader}>
+                  <View style={[styles.statsKpiIconBox, { backgroundColor: "#DBEAFE" }]}>
+                    <MaterialCommunityIcons name="movie-open-play-outline" size={18} color="#1D4ED8" />
+                  </View>
+                  <View style={[styles.statsKpiTrendPill, { backgroundColor: "#DBEAFE" }]}>
+                    <Text style={[styles.statsKpiTrendText, { color: "#1D4ED8" }]}>Shows</Text>
+                  </View>
+                </View>
+                <Text style={styles.statsKpiNumber}>{stats.weeklyTotalSessions}</Text>
+                <Text style={styles.statsKpiLabel}>Funciones Semanales</Text>
+                <View style={styles.statsKpiDivider} />
+                <Text style={styles.statsKpiFooter}>
+                  Títulos en cartel: <Text style={{ fontWeight: "bold" }}>{Object.keys(stats.movieSales).length}</Text>
+                </Text>
+              </View>
+            </View>
+
+            {/* Highlights Grid */}
+            <View style={styles.statsHighlightsRow}>
+              {stats.mostViewedMovie ? (
+                <View style={styles.statsHighlightCard}>
+                  <View style={styles.statsHighlightHeader}>
+                    <View style={[styles.statsHighlightIconBox, { backgroundColor: "#FEF3C7" }]}>
+                      <MaterialCommunityIcons name="crown" size={16} color="#D97706" />
+                    </View>
+                    <Text style={styles.statsHighlightBadge}>Película Más Vista</Text>
+                  </View>
+                  <Text style={styles.statsHighlightTitle} numberOfLines={1}>{stats.mostViewedMovie}</Text>
+                  <View style={styles.statsHighlightValueRow}>
+                    <Text style={styles.statsHighlightValue}>{stats.mostViewedMovieCount} tix</Text>
+                    <Text style={styles.statsHighlightSubvalue}>({stats.mostViewedMovieShare.toFixed(1)}% de la semana)</Text>
+                  </View>
+                </View>
+              ) : null}
+
+              {stats.leastViewedMovie ? (
+                <View style={styles.statsHighlightCard}>
+                  <View style={styles.statsHighlightHeader}>
+                    <View style={[styles.statsHighlightIconBox, { backgroundColor: "#FEE2E2" }]}>
+                      <MaterialCommunityIcons name="trending-down" size={16} color="#DC2626" />
+                    </View>
+                    <Text style={styles.statsHighlightBadge}>Película Menos Vista</Text>
+                  </View>
+                  <Text style={styles.statsHighlightTitle} numberOfLines={1}>{stats.leastViewedMovie}</Text>
+                  <View style={styles.statsHighlightValueRow}>
+                    <Text style={[styles.statsHighlightValue, { color: "#DC2626" }]}>{stats.leastViewedMovieCount} tix</Text>
+                    <Text style={styles.statsHighlightSubvalue}>Oportunidad comercial</Text>
+                  </View>
+                </View>
+              ) : null}
+
+              {stats.bestDayLabel ? (
+                <View style={styles.statsHighlightCard}>
+                  <View style={styles.statsHighlightHeader}>
+                    <View style={[styles.statsHighlightIconBox, { backgroundColor: "#D1FAE5" }]}>
+                      <MaterialCommunityIcons name="calendar-star" size={16} color="#059669" />
+                    </View>
+                    <Text style={styles.statsHighlightBadge}>Día de Mayor Venta</Text>
+                  </View>
+                  <Text style={styles.statsHighlightTitle} numberOfLines={1}>{stats.bestDayLabel}</Text>
+                  <View style={styles.statsHighlightValueRow}>
+                    <Text style={[styles.statsHighlightValue, { color: "#059669" }]}>{stats.bestDaySales} tix</Text>
+                    <Text style={styles.statsHighlightSubvalue}>({stats.bestDayOccupancy.toFixed(1)}% ocupación)</Text>
+                  </View>
+                </View>
+              ) : null}
+
+              {stats.bestRoom !== -1 ? (
+                <View style={styles.statsHighlightCard}>
+                  <View style={styles.statsHighlightHeader}>
+                    <View style={[styles.statsHighlightIconBox, { backgroundColor: "#DBEAFE" }]}>
+                      <MaterialCommunityIcons name="theater" size={16} color="#2563EB" />
+                    </View>
+                    <Text style={styles.statsHighlightBadge}>Sala Estrella</Text>
+                  </View>
+                  <Text style={styles.statsHighlightTitle} numberOfLines={1}>Sala {stats.bestRoom}</Text>
+                  <View style={styles.statsHighlightValueRow}>
+                    <Text style={[styles.statsHighlightValue, { color: "#2563EB" }]}>{stats.bestRoomSales} tix</Text>
+                    <Text style={styles.statsHighlightSubvalue}>({stats.bestRoomOccupancy.toFixed(1)}% ocupación)</Text>
+                  </View>
+                </View>
+              ) : null}
+            </View>
+
+            {/* Record Function Hero Banner */}
+            {stats.maxOccupationSession ? (
+              <View style={styles.statsHeroBanner}>
+                <View style={styles.statsHeroFlameCircle}>
+                  <MaterialCommunityIcons name="fire" size={24} color="#EF4444" />
+                </View>
+                <View style={{ flex: 1, paddingRight: 8 }}>
+                  <View style={styles.statsHeroBadgeRow}>
+                    <Text style={styles.statsHeroBadgeLabel}>FUNCIÓN RÉCORD DE LA SEMANA</Text>
+                    <View style={styles.statsHeroPill}>
+                      <Text style={styles.statsHeroPillText}>
+                        {Math.round(stats.maxOccupationSession.rate * 100)}% LLENO
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={styles.statsHeroMovie} numberOfLines={1}>
+                    {stats.maxOccupationSession.pelicula}
+                  </Text>
+                  <Text style={styles.statsHeroDetails}>
+                    {stats.maxOccupationSession.diaLabel} a las {stats.maxOccupationSession.inicio} hs • Sala {stats.maxOccupationSession.sala}
+                  </Text>
+                  {/* Progress bar */}
+                  <View style={styles.statsHeroProgressBg}>
+                    <View 
+                      style={[
+                        styles.statsHeroProgressFill, 
+                        { width: `${Math.min(100, Math.round(stats.maxOccupationSession.rate * 100))}%` }
+                      ]} 
+                    />
+                  </View>
+                </View>
+                <View style={styles.statsHeroNumbers}>
+                  <Text style={styles.statsHeroTicketsSold}>
+                    {stats.maxOccupationSession.soldSeats}
+                  </Text>
+                  <Text style={styles.statsHeroTicketsCap}>
+                    / {stats.maxOccupationSession.capacity} tix
+                  </Text>
+                </View>
+              </View>
+            ) : null}
+          </View>
+        )}
+
+        {/* 2. Top Películas Ranking */}
+        {showPeliculas && (
+          <View style={styles.statsModernSection}>
+            <View style={styles.statsCardContainer}>
+              <View style={styles.statsCardHeader}>
+                <MaterialCommunityIcons name="trophy-outline" size={18} color="#EAB308" style={{ marginRight: 8 }} />
+                <Text style={styles.statsCardTitle}>Ranking de Películas en Cartelera (Tickets)</Text>
+              </View>
+              <View style={styles.statsCardBody}>
+                {sortedMovies.map(([movie, sales], index) => {
+                  const percentage = ((sales as number) / maxMovieSales) * 100;
+                  const shareOfTotal = stats.weeklyTotalSold > 0 ? ((sales as number) / stats.weeklyTotalSold) * 100 : 0;
+                  const sessionsCount = stats.movieSessions[movie] || 0;
+                  const rankIcons = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣"];
+
+                  return (
+                    <View key={movie} style={styles.modernRankRow}>
+                      <Text style={styles.modernRankIcon}>{rankIcons[index] || `#${index + 1}`}</Text>
+                      <View style={{ flex: 1 }}>
+                        <View style={styles.modernRankInfoRow}>
+                          <Text style={styles.modernRankMovieName} numberOfLines={1}>
+                            {movie}
+                          </Text>
+                          <View style={styles.modernRankNumbersCol}>
+                            <Text style={styles.modernRankSalesText}>{sales as number} tix</Text>
+                            <Text style={styles.modernRankShareText}>({shareOfTotal.toFixed(1)}%)</Text>
+                          </View>
+                        </View>
+                        <View style={styles.modernRankProgressBarBg}>
+                          <View
+                            style={[
+                              styles.modernRankProgressBarFill,
+                              {
+                                width: `${percentage}%`,
+                                backgroundColor: index === 0 ? COLORS.primary : index === 1 ? "#3B82F6" : index === 2 ? "#10B981" : "#64748B",
+                              },
+                            ]}
+                          />
+                        </View>
+                        <Text style={styles.modernRankFooterDetails}>
+                          {sessionsCount} funciones programadas
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* 3. Días de la Semana & Franjas Horarias */}
+        {showDias && (
+          <View style={styles.statsModernSection}>
+            {/* Franjas Horarias (Turnos) */}
+            <View style={styles.statsCardContainer}>
+              <View style={styles.statsCardHeader}>
+                <MaterialCommunityIcons name="clock-time-four-outline" size={18} color="#3B82F6" style={{ marginRight: 8 }} />
+                <Text style={styles.statsCardTitle}>Distribución por Franjas Horarias (Turnos)</Text>
+              </View>
+              <View style={styles.timeSlotsGrid}>
+                {Object.values(stats.timeSlots).map((slot) => {
+                  const occ = slot.capacity > 0 ? (slot.sold / slot.capacity) * 100 : 0;
+                  const percentOfTotal = stats.weeklyTotalSold > 0 ? (slot.sold / stats.weeklyTotalSold) * 100 : 0;
+                  return (
+                    <View key={slot.key} style={styles.timeSlotCard}>
+                      <View style={styles.timeSlotHeader}>
+                        <MaterialCommunityIcons name={slot.icon} size={18} color={COLORS.primary} />
+                        <Text style={styles.timeSlotTitle}>{slot.label}</Text>
+                      </View>
+                      <Text style={styles.timeSlotSub}>{slot.sub}</Text>
+                      <Text style={styles.timeSlotSold}>{slot.sold.toLocaleString("es-AR")} tix</Text>
+                      <View style={styles.timeSlotProgressBg}>
+                        <View style={[styles.timeSlotProgressFill, { width: `${Math.min(100, occ)}%` }]} />
+                      </View>
+                      <View style={styles.timeSlotFooterRow}>
+                        <Text style={styles.timeSlotFooterText}>{slot.sessions} funciones</Text>
+                        <Text style={styles.timeSlotFooterOcc}>{occ.toFixed(0)}% ocup.</Text>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+
+            {/* Días de la Semana (Tickets & 3D) */}
+            <View style={[styles.chartsGrid, windowWidth < 1200 && { flexDirection: "column" }]}>
+              {/* Ventas por Día */}
+              <View style={[styles.chartContainer, { flex: windowWidth < 1200 ? undefined : 1 }, windowWidth < 1200 && { width: "100%" }]}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                  <Text style={styles.chartTitle}>Ventas por Día de la Semana</Text>
+                  <View style={styles.weekendBadge}>
+                    <Text style={styles.weekendBadgeText}>
+                      Finde: {stats.weekendSold} tix
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.chartBody}>
+                  {stats.dayDetails.map((day) => {
+                    const percentage = (day.sold / maxDaySales) * 100;
+                    const isPeak = day.sold === stats.bestDaySales && stats.bestDaySales > 0;
+                    return (
+                      <View key={day.key} style={styles.chartRow}>
+                        <View style={styles.chartRowInfo}>
+                          <View style={{ flexDirection: "row", alignItems: "center" }}>
+                            {isPeak && <MaterialCommunityIcons name="star" size={13} color="#EAB308" style={{ marginRight: 4 }} />}
+                            <Text style={[styles.chartRowName, isPeak && { color: COLORS.primary, fontWeight: "900" }]} numberOfLines={1}>
+                              {day.label} {day.isWeekend && "(FDS)"}
+                            </Text>
+                          </View>
+                          <Text style={[styles.chartRowValue, isPeak && { color: COLORS.primary }]}>
+                            {day.sold} tix ({day.occupancy.toFixed(0)}%)
+                          </Text>
+                        </View>
+                        <View style={styles.chartBarTrack}>
+                          <View
+                            style={[
+                              styles.chartBarFill,
+                              {
+                                width: `${percentage}%`,
+                                backgroundColor: isPeak ? COLORS.primary : day.isWeekend ? "#10B981" : "#3B82F6",
+                              },
+                            ]}
+                          />
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+
+              {/* Lentes 3D por Día */}
+              <View style={[styles.chartContainer, { flex: windowWidth < 1200 ? undefined : 1, marginLeft: windowWidth < 1200 ? 0 : 16, marginTop: windowWidth < 1200 ? 16 : 0 }, windowWidth < 1200 && { width: "100%" }]}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                  <Text style={styles.chartTitle}>Lentes 3D por Día de la Semana</Text>
+                  <View style={[styles.weekendBadge, { backgroundColor: "#EDE9FE" }]}>
+                    <Text style={[styles.weekendBadgeText, { color: "#7C3AED" }]}>
+                      Total: {stats.weekly3DSold} tix
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.chartBody}>
+                  {DAYS_OF_WEEK.map((day) => {
+                    const sales = stats.day3DSales[day.key] || 0;
+                    const percentage = maxDay3DSales > 0 ? (sales / maxDay3DSales) * 100 : 0;
+                    return (
+                      <View key={day.key} style={styles.chartRow}>
+                        <View style={styles.chartRowInfo}>
+                          <Text style={styles.chartRowName} numberOfLines={1}>
+                            {day.label}
+                          </Text>
+                          <Text style={[styles.chartRowValue, { color: "#7C3AED" }]}>{sales} lentes</Text>
+                        </View>
+                        <View style={styles.chartBarTrack}>
+                          <View style={[styles.chartBarFill, { width: `${percentage}%`, backgroundColor: "#8B5CF6" }]} />
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* 4. Rendimiento por Sala */}
+        {showSalas && (
+          <View style={styles.statsModernSection}>
+            <View style={styles.statsCardContainer}>
+              <View style={styles.statsCardHeader}>
+                <MaterialCommunityIcons name="theater" size={18} color="#3B82F6" style={{ marginRight: 8 }} />
+                <Text style={styles.statsCardTitle}>Matriz de Rendimiento por Salas de Cine</Text>
+              </View>
+              <View style={[styles.statsCardBody, { flexDirection: "row", flexWrap: "wrap", gap: 12 }]}>
+                {stats.roomDetails.map((item) => {
+                  const percentage = ((item.sold as number) / maxRoomSales) * 100;
+                  const isTopRoom = item.room === stats.bestRoom;
+                  let occColor = "#3B82F6";
+                  if (item.occupancy > 50) occColor = "#EF4444";
+                  else if (item.occupancy >= 25) occColor = "#10B981";
+
+                  return (
+                    <View key={item.room} style={[styles.modernRoomCell, { width: isMobile ? "100%" : "31.5%" }, isTopRoom && styles.modernRoomCellStar]}>
+                      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                        <View style={{ flexDirection: "row", alignItems: "center" }}>
+                          <MaterialCommunityIcons name="theater" size={15} color={isTopRoom ? COLORS.primary : COLORS.text} style={{ marginRight: 4 }} />
+                          <Text style={[styles.modernRoomTitle, isTopRoom && { color: COLORS.primary }]}>
+                            Sala {item.room} {isTopRoom && "⭐"}
+                          </Text>
+                        </View>
+                        <View style={[styles.modernRoomBadge, { backgroundColor: `${occColor}20` }]}>
+                          <Text style={[styles.modernRoomBadgeText, { color: occColor }]}>
+                            {item.occupancy.toFixed(0)}% Ocup.
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={styles.modernRoomNumbersRow}>
+                        <Text style={styles.modernRoomTicketsText}>{item.sold} tickets</Text>
+                        <Text style={styles.modernRoomCapText}>{item.sessions} shows</Text>
+                      </View>
+                      <View style={styles.chartBarTrack}>
+                        <View style={[styles.chartBarFill, { width: `${percentage}%`, backgroundColor: occColor }]} />
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* 5. Alertas Operativas (Hoy) */}
+        {showAlertas && (
+          <View style={styles.statsModernSection}>
+            <View style={styles.statsAlertsSectionModern}>
+              <View style={styles.statsAlertsHeaderRow}>
+                <MaterialCommunityIcons name="shield-alert-outline" size={18} color="#EF4444" style={{ marginRight: 8 }} />
+                <Text style={styles.statsAlertsTitle}>Alertas Operativas del Día</Text>
+              </View>
+              {stats.recordingRiskShows.length === 0 && stats.guideNeededShows.length === 0 ? (
+                <View style={styles.noAlertsContainerModern}>
+                  <MaterialCommunityIcons name="check-decagram" size={18} color="#10B981" style={{ marginRight: 8 }} />
+                  <Text style={styles.noAlertsTextModern}>Todas las salas operan con normalidad. Sin alertas de aforo hoy.</Text>
+                </View>
+              ) : (
+                <View style={styles.alertsList}>
+                  {stats.recordingRiskShows.length > 0 && (
+                    <View style={[styles.alertItem, styles.alertItemRisk]}>
+                      <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+                        <MaterialCommunityIcons name="video-vintage" size={16} color="#EF4444" style={{ marginRight: 8 }} />
+                        <Text style={styles.alertItemText} numberOfLines={2}>
+                          Atención: Hay <Text style={{ fontWeight: "bold" }}>{stats.recordingRiskShows.length}</Text> funciones con ocupación mínima (&lt; 2%). Revisar sala periódicamente.
+                        </Text>
+                      </View>
+                      <View style={[styles.alertBadge, { backgroundColor: "#EF4444" }]}>
+                        <Text style={styles.alertBadgeText}>Riesgo de Grabación</Text>
+                      </View>
+                    </View>
+                  )}
+                  {stats.guideNeededShows.map((show, idx) => (
+                    <View key={`guide-${idx}`} style={[styles.alertItem, styles.alertItemGuide]}>
+                      <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+                        <MaterialCommunityIcons name="account-multiple-check" size={16} color="#10B981" style={{ marginRight: 8 }} />
+                        <Text style={styles.alertItemText} numberOfLines={2}>
+                          <Text style={{ fontWeight: "bold" }}>{show.inicio} hs</Text> • Sala {show.sala} | {show.pelicula} (Ocupación: {show.capacity !== undefined && show.soldSeats !== undefined && show.capacity > 0 ? ((show.soldSeats/show.capacity)*100).toFixed(0) : 0}%)
+                        </Text>
+                      </View>
+                      <View style={[styles.alertBadge, { backgroundColor: "#10B981" }]}>
+                        <Text style={styles.alertBadgeText}>Guía de Sala Requerido</Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+          </View>
+        )}
       </View>
     );
   };
@@ -4107,163 +4506,588 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     flex: 1,
   },
-  statsPanelContainer: {
-    backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F1F5F9)" : "#F1F5F9",
+  // ─── Modern Statistics Panel Styles ─────────────────────────
+  statsModernPanelContainer: {
+    backgroundColor: Platform.OS === "web" ? "var(--bg, #F8FAFC)" : "#F8FAFC",
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
-    paddingBottom: 24,
-    marginTop: 20,
+    paddingBottom: 36,
+    marginTop: 24,
   },
-  statsHeaderContainer: {
-    flexDirection: "row",
-    alignItems: "center",
+  statsModernHeader: {
+    backgroundColor: COLORS.card,
     paddingHorizontal: 16,
     paddingTop: 20,
-    paddingBottom: 12,
+    paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
-    backgroundColor: COLORS.card,
   },
-  statsPanelTitle: {
-    fontSize: 15,
+  statsModernHeaderTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  statsBadgePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.primarySoft,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(137, 4, 4, 0.15)",
+  },
+  statsBadgePillText: {
+    fontSize: 10,
+    fontWeight: "900",
+    color: COLORS.primary,
+    marginLeft: 4,
+    letterSpacing: 0.5,
+  },
+  statsWeekTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F1F5F9)" : "#F1F5F9",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  statsWeekTagText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: COLORS.textSoft,
+  },
+  statsModernTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  statsModernIconCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: COLORS.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+    ...Platform.select({
+      web: { boxShadow: "0 4px 10px rgba(137, 4, 4, 0.25)" },
+      default: { elevation: 3 },
+    }),
+  },
+  statsModernTitle: {
+    fontSize: 17,
     fontWeight: "bold",
     color: COLORS.text,
   },
-  statsCardsRow: {
+  statsModernSubtitle: {
+    fontSize: 12,
+    color: COLORS.textSoft,
+    marginTop: 2,
+  },
+  statsModernNotice: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FEFCE8",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#FEF08A",
+    marginBottom: 14,
+  },
+  statsModernNoticeText: {
+    fontSize: 11,
+    color: "#854D0E",
+    flex: 1,
+    fontWeight: "500",
+  },
+  statsSubTabsScroll: {
+    flexDirection: "row",
+    gap: 8,
+    paddingVertical: 4,
+  },
+  statsSubTabBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F1F5F9)" : "#F1F5F9",
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  statsSubTabBtnActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+    ...Platform.select({
+      web: { boxShadow: "0 2px 6px rgba(137, 4, 4, 0.25)" },
+      default: { elevation: 2 },
+    }),
+  },
+  statsSubTabBtnText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: COLORS.textSoft,
+  },
+  statsSubTabBtnTextActive: {
+    color: "#FFFFFF",
+    fontWeight: "bold",
+  },
+  statsModernSection: {
+    paddingHorizontal: 16,
+    marginTop: 16,
+  },
+  statsKpiGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    padding: 16,
     gap: 12,
+    marginBottom: 16,
   },
-  statsMiniCard: {
+  statsKpiCard: {
     flex: 1,
-    minWidth: 140,
+    minWidth: 150,
+    backgroundColor: COLORS.card,
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderTopWidth: 3,
+    ...Platform.select({
+      web: { boxShadow: "0 2px 8px rgba(0,0,0,0.04)" },
+      default: { elevation: 2 },
+    }),
+  },
+  statsKpiHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  statsKpiIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  statsKpiTrendPill: {
+    backgroundColor: COLORS.primarySoft,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  statsKpiTrendText: {
+    fontSize: 9,
+    fontWeight: "bold",
+    color: COLORS.primary,
+  },
+  statsKpiNumber: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: COLORS.text,
+    letterSpacing: -0.5,
+  },
+  statsKpiLabel: {
+    fontSize: 11,
+    color: COLORS.textSoft,
+    fontWeight: "600",
+    marginTop: 2,
+  },
+  statsKpiDivider: {
+    height: 1,
+    backgroundColor: COLORS.border,
+    marginVertical: 8,
+  },
+  statsKpiFooter: {
+    fontSize: 10.5,
+    color: COLORS.textSoft,
+  },
+  statsHighlightsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+    marginBottom: 16,
+  },
+  statsHighlightCard: {
+    flex: 1,
+    minWidth: 150,
     backgroundColor: COLORS.card,
     borderRadius: 10,
     padding: 12,
     borderWidth: 1,
     borderColor: COLORS.border,
     ...Platform.select({
-      web: {
-        boxShadow: "0 2px 6px rgba(0,0,0,0.03)",
-      },
-      default: {
-        elevation: 1,
-      },
+      web: { boxShadow: "0 2px 6px rgba(0,0,0,0.03)" },
+      default: { elevation: 1 },
     }),
   },
-  statsMiniCardHeader: {
+  statsHighlightHeader: {
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 6,
   },
-  statsMiniCardLabel: {
-    fontSize: 11,
-    color: COLORS.textSoft,
-    fontWeight: "bold",
-    marginLeft: 4,
+  statsHighlightIconBox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 6,
   },
-  statsMiniCardTitle: {
+  statsHighlightBadge: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: COLORS.textSoft,
+    textTransform: "uppercase",
+  },
+  statsHighlightTitle: {
     fontSize: 13,
     fontWeight: "bold",
     color: COLORS.text,
-    marginBottom: 2,
+    marginBottom: 4,
   },
-  statsMiniCardValue: {
-    fontSize: 12,
+  statsHighlightValueRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: 4,
+  },
+  statsHighlightValue: {
+    fontSize: 13,
     fontWeight: "bold",
     color: COLORS.primary,
   },
-  statsBannerCard: {
+  statsHighlightSubvalue: {
+    fontSize: 10.5,
+    color: COLORS.textSoft,
+  },
+  statsHeroBanner: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: COLORS.card,
-    marginHorizontal: 16,
-    marginBottom: 16,
+    borderRadius: 12,
     padding: 14,
-    borderRadius: 10,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderLeftWidth: 4,
+    borderColor: "rgba(239, 68, 68, 0.2)",
+    borderLeftWidth: 5,
     borderLeftColor: "#EF4444",
+    marginBottom: 16,
+    ...Platform.select({
+      web: { boxShadow: "0 4px 12px rgba(239, 68, 68, 0.08)" },
+      default: { elevation: 2 },
+    }),
   },
-  statsBannerLabel: {
-    fontSize: 10,
-    color: COLORS.textSoft,
+  statsHeroFlameCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(239, 68, 68, 0.1)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  statsHeroBadgeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 2,
+  },
+  statsHeroBadgeLabel: {
+    fontSize: 9.5,
     fontWeight: "900",
+    color: "#EF4444",
     letterSpacing: 0.5,
   },
-  statsBannerTitle: {
+  statsHeroPill: {
+    backgroundColor: "#EF4444",
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  statsHeroPillText: {
+    fontSize: 9,
+    fontWeight: "bold",
+    color: "#FFFFFF",
+  },
+  statsHeroMovie: {
     fontSize: 14,
     fontWeight: "bold",
     color: COLORS.text,
-    marginTop: 2,
   },
-  statsBannerSubtitle: {
+  statsHeroDetails: {
     fontSize: 11,
     color: COLORS.textSoft,
-    marginTop: 1,
+    marginTop: 2,
+    marginBottom: 6,
   },
-  statsBannerBadge: {
+  statsHeroProgressBg: {
+    height: 6,
+    backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F1F5F9)" : "#F1F5F9",
+    borderRadius: 3,
+    overflow: "hidden",
+  },
+  statsHeroProgressFill: {
+    height: "100%",
+    backgroundColor: "#EF4444",
+    borderRadius: 3,
+  },
+  statsHeroNumbers: {
     alignItems: "flex-end",
-    marginLeft: 10,
+    marginLeft: 12,
   },
-  statsBannerBadgeText: {
-    fontSize: 13,
-    fontWeight: "bold",
+  statsHeroTicketsSold: {
+    fontSize: 20,
+    fontWeight: "900",
     color: "#EF4444",
   },
-  statsBannerBadgeSubtext: {
+  statsHeroTicketsCap: {
     fontSize: 10,
     color: COLORS.textSoft,
-    marginTop: 2,
   },
-  statsAlertsSection: {
+  statsCardContainer: {
     backgroundColor: COLORS.card,
-    marginHorizontal: 16,
-    marginBottom: 16,
-    padding: 14,
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: COLORS.border,
-    gap: 8,
+    padding: 16,
+    marginBottom: 16,
+    ...Platform.select({
+      web: { boxShadow: "0 2px 8px rgba(0,0,0,0.03)" },
+      default: { elevation: 1 },
+    }),
   },
-  statsAlertsTitle: {
+  statsCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 14,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  statsCardTitle: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: COLORS.text,
+  },
+  statsCardBody: {
+    gap: 12,
+  },
+  modernRankRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  modernRankIcon: {
+    fontSize: 16,
+    width: 24,
+    textAlign: "center",
+  },
+  modernRankInfoRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 4,
+  },
+  modernRankMovieName: {
     fontSize: 12,
     fontWeight: "bold",
     color: COLORS.text,
-    letterSpacing: 0.5,
-    borderBottomWidth: 0.5,
-    borderBottomColor: COLORS.border,
-    paddingBottom: 6,
-    marginBottom: 4,
+    flex: 1,
+    marginRight: 8,
   },
+  modernRankNumbersCol: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  modernRankSalesText: {
+    fontSize: 12,
+    fontWeight: "bold",
+    color: COLORS.text,
+  },
+  modernRankShareText: {
+    fontSize: 10,
+    color: COLORS.textSoft,
+  },
+  modernRankProgressBarBg: {
+    height: 7,
+    backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F1F5F9)" : "#F1F5F9",
+    borderRadius: 4,
+    overflow: "hidden",
+  },
+  modernRankProgressBarFill: {
+    height: "100%",
+    borderRadius: 4,
+  },
+  modernRankFooterDetails: {
+    fontSize: 9.5,
+    color: COLORS.textSoft,
+    marginTop: 2,
+  },
+  timeSlotsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  timeSlotCard: {
+    flex: 1,
+    minWidth: 130,
+    backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F8FAFC)" : "#F8FAFC",
+    borderRadius: 10,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  timeSlotHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 2,
+  },
+  timeSlotTitle: {
+    fontSize: 12,
+    fontWeight: "bold",
+    color: COLORS.text,
+  },
+  timeSlotSub: {
+    fontSize: 10,
+    color: COLORS.textSoft,
+    marginBottom: 6,
+  },
+  timeSlotSold: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: COLORS.primary,
+    marginBottom: 6,
+  },
+  timeSlotProgressBg: {
+    height: 5,
+    backgroundColor: COLORS.border,
+    borderRadius: 3,
+    overflow: "hidden",
+    marginBottom: 6,
+  },
+  timeSlotProgressFill: {
+    height: "100%",
+    backgroundColor: COLORS.primary,
+    borderRadius: 3,
+  },
+  timeSlotFooterRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  timeSlotFooterText: {
+    fontSize: 9.5,
+    color: COLORS.textSoft,
+  },
+  timeSlotFooterOcc: {
+    fontSize: 9.5,
+    fontWeight: "bold",
+    color: "#059669",
+  },
+  weekendBadge: {
+    backgroundColor: "#D1FAE5",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  weekendBadgeText: {
+    fontSize: 10,
+    fontWeight: "bold",
+    color: "#047857",
+  },
+  modernRoomCell: {
+    padding: 12,
+    backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F8FAFC)" : "#F8FAFC",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  modernRoomCellStar: {
+    borderColor: "rgba(137, 4, 4, 0.3)",
+    backgroundColor: "rgba(137, 4, 4, 0.02)",
+  },
+  modernRoomTitle: {
+    fontSize: 12,
+    fontWeight: "bold",
+    color: COLORS.text,
+  },
+  modernRoomBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  modernRoomBadgeText: {
+    fontSize: 9.5,
+    fontWeight: "bold",
+  },
+  modernRoomNumbersRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 6,
+  },
+  modernRoomTicketsText: {
+    fontSize: 12,
+    fontWeight: "bold",
+    color: COLORS.text,
+  },
+  modernRoomCapText: {
+    fontSize: 10,
+    color: COLORS.textSoft,
+  },
+  statsAlertsSectionModern: {
+    backgroundColor: COLORS.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 16,
+    marginBottom: 16,
+  },
+  statsAlertsHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  noAlertsContainerModern: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#ECFDF5",
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#A7F3D0",
+  },
+  noAlertsTextModern: {
+    fontSize: 12,
+    color: "#065F46",
+    fontWeight: "600",
+  },
+  // ─── Standard Chart Styles ─────────────────────────────────
   chartsGrid: {
     flexDirection: "row",
-    paddingHorizontal: 16,
     marginBottom: 16,
     width: "100%",
   },
   chartContainer: {
     backgroundColor: COLORS.card,
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: COLORS.border,
     padding: 16,
     ...Platform.select({
-      web: {
-        boxShadow: "0 2px 6px rgba(0,0,0,0.03)",
-      },
-      default: {
-        elevation: 1,
-      },
+      web: { boxShadow: "0 2px 8px rgba(0,0,0,0.03)" },
+      default: { elevation: 1 },
     }),
   },
   chartTitle: {
     fontSize: 13,
     fontWeight: "bold",
     color: COLORS.text,
-    marginBottom: 12,
   },
   chartBody: {
     gap: 10,
@@ -4291,7 +5115,7 @@ const styles = StyleSheet.create({
     color: COLORS.textSoft,
   },
   chartBarTrack: {
-    height: 8,
+    height: 7,
     backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F1F5F9)" : "#F1F5F9",
     borderRadius: 4,
     overflow: "hidden",
@@ -4300,50 +5124,23 @@ const styles = StyleSheet.create({
     height: "100%",
     borderRadius: 4,
   },
-  roomChartCell: {
-    padding: 10,
-    backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F1F5F9)" : "#F1F5F9",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  roomChartName: {
-    fontSize: 11,
-    fontWeight: "bold",
-    color: COLORS.text,
-  },
-  roomChartValue: {
-    fontSize: 11,
-    fontWeight: "bold",
-    color: COLORS.textSoft,
-  },
-  noAlertsContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 4,
-  },
-  noAlertsText: {
-    fontSize: 12,
-    color: "#10B981",
-    fontWeight: "500",
-  },
   alertsList: {
     gap: 8,
   },
   alertItem: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 8,
-    borderRadius: 6,
+    padding: 10,
+    borderRadius: 8,
     borderWidth: 1,
     justifyContent: "space-between",
   },
   alertItemRisk: {
-    backgroundColor: "rgba(239, 68, 68, 0.08)",
+    backgroundColor: "rgba(239, 68, 68, 0.06)",
     borderColor: "rgba(239, 68, 68, 0.2)",
   },
   alertItemGuide: {
-    backgroundColor: "rgba(16, 185, 129, 0.08)",
+    backgroundColor: "rgba(16, 185, 129, 0.06)",
     borderColor: "rgba(16, 185, 129, 0.2)",
   },
   alertItemText: {
@@ -4353,12 +5150,12 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   alertBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
   },
   alertBadgeText: {
-    fontSize: 9,
+    fontSize: 9.5,
     color: "#FFFFFF",
     fontWeight: "bold",
   },

@@ -202,6 +202,8 @@ export default function CompanyScreen() {
   // Toggles de Modo de Estadísticas (semanal o diaria)
   const [statsMode, setStatsMode] = useState<"weekly" | "daily">("weekly");
   const [statsDay, setStatsDay] = useState<string>(() => getCurrentWeekdayKey());
+  const [companyStatsTab, setCompanyStatsTab] = useState<"overview" | "cines" | "peliculas" | "horarios" | "trasnoche">("overview");
+  const [theaterSortBy, setTheaterSortBy] = useState<"tickets" | "occupancy">("tickets");
 
   // Modo de visualización de cartelera (list o grid)
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
@@ -393,6 +395,232 @@ export default function CompanyScreen() {
       leaderPercent
     };
   }, [computedTheaterStats]);
+
+  // Extended Company Deep Analytics
+  const companyAnalytics = useMemo(() => {
+    let totalSold = 0;
+    let totalCap = 0;
+    let totalSessions = 0;
+    let total3DSold = 0;
+    let total2DSold = 0;
+
+    let volumeLeaderName = "-";
+    let volumeLeaderTickets = -1;
+    let occupancyLeaderName = "-";
+    let occupancyLeaderPercent = -1;
+
+    const theatersRanked: Array<{
+      id: string;
+      name: string;
+      icon: string;
+      totalTickets: number;
+      totalCapacity: number;
+      occupancy: number;
+      sessionsCount: number;
+      avgPaxPerShow: number;
+      shareOfTotal: number;
+    }> = [];
+
+    const movieAggregates: Record<string, {
+      title: string;
+      totalSold: number;
+      totalCap: number;
+      sessionsCount: number;
+      theatersSet: Set<string>;
+      sold3D: number;
+    }> = {};
+
+    const networkShifts = {
+      matine: { key: "matine", label: "Matiné", sub: "< 15:00 hs", icon: "weather-sunset-up" as const, sold: 0, cap: 0, sessions: 0 },
+      tarde: { key: "tarde", label: "Tarde", sub: "15:00 a 19:00 hs", icon: "white-balance-sunny" as const, sold: 0, cap: 0, sessions: 0 },
+      noche: { key: "noche", label: "Noche", sub: "19:00 a 23:00 hs", icon: "weather-sunset-down" as const, sold: 0, cap: 0, sessions: 0 },
+      trasnoche: { key: "trasnoche", label: "Trasnoche", sub: "≥ 23:00 hs", icon: "weather-night" as const, sold: 0, cap: 0, sessions: 0 },
+    };
+
+    const daySalesCompany: Record<string, { sold: number; cap: number; sessions: number }> = {};
+    DAYS_OF_WEEK.forEach(d => {
+      daySalesCompany[d.key] = { sold: 0, cap: 0, sessions: 0 };
+    });
+
+    let networkRecordSession: any = null;
+    let networkRecordRate = -1;
+
+    THEATERS.forEach((theater) => {
+      const data = weeklyDataCache[theater.id];
+      const stats = computedTheaterStats[theater.id];
+      const theaterSold = stats?.totalTickets || 0;
+      const theaterCap = stats?.totalCapacity || 0;
+      const theaterOcc = stats?.occupancy || 0;
+      const theaterSessions = stats?.sessionsCount || 0;
+
+      totalSold += theaterSold;
+      totalCap += theaterCap;
+      totalSessions += theaterSessions;
+
+      if (theaterSold > volumeLeaderTickets) {
+        volumeLeaderTickets = theaterSold;
+        volumeLeaderName = theater.name;
+      }
+      if (theaterOcc > occupancyLeaderPercent && theaterCap > 0) {
+        occupancyLeaderPercent = theaterOcc;
+        occupancyLeaderName = theater.name;
+      }
+
+      theatersRanked.push({
+        id: theater.id,
+        name: theater.name,
+        icon: theater.icon,
+        totalTickets: theaterSold,
+        totalCapacity: theaterCap,
+        occupancy: theaterOcc,
+        sessionsCount: theaterSessions,
+        avgPaxPerShow: theaterSessions > 0 ? Math.round(theaterSold / theaterSessions) : 0,
+        shareOfTotal: 0,
+      });
+
+      if (data && data.sessions) {
+        data.sessions.forEach((s) => {
+          if (statsMode === "daily" && getSessionDayKey(s.sessionDateTime) !== statsDay) {
+            return;
+          }
+
+          const cap = s.occupation?.capacity || 200;
+          let sold = s.soldSeats || s.occupiedSeats?.length || 0;
+          if (!sold && s.occupation) {
+            sold = Math.max(0, s.occupation.capacity - s.occupation.availableSeats);
+          }
+
+          const is3D = /3d/i.test(s.movieName) || /3d/i.test(s.sessionFormat || "");
+          if (is3D) total3DSold += sold;
+          else total2DSold += sold;
+
+          if (!movieAggregates[s.movieName]) {
+            movieAggregates[s.movieName] = {
+              title: s.movieName,
+              totalSold: 0,
+              totalCap: 0,
+              sessionsCount: 0,
+              theatersSet: new Set<string>(),
+              sold3D: 0
+            };
+          }
+          movieAggregates[s.movieName].totalSold += sold;
+          movieAggregates[s.movieName].totalCap += cap;
+          movieAggregates[s.movieName].sessionsCount += 1;
+          movieAggregates[s.movieName].theatersSet.add(theater.name);
+          if (is3D) movieAggregates[s.movieName].sold3D += sold;
+
+          const time = s.sessionDateTime ? s.sessionDateTime.substring(11, 16) : "";
+          const hour = parseInt(time.split(":")[0] || "0", 10);
+          if (isTrasnocheSession(time)) {
+            networkShifts.trasnoche.sold += sold;
+            networkShifts.trasnoche.cap += cap;
+            networkShifts.trasnoche.sessions += 1;
+          } else if (hour < 15) {
+            networkShifts.matine.sold += sold;
+            networkShifts.matine.cap += cap;
+            networkShifts.matine.sessions += 1;
+          } else if (hour < 19) {
+            networkShifts.tarde.sold += sold;
+            networkShifts.tarde.cap += cap;
+            networkShifts.tarde.sessions += 1;
+          } else {
+            networkShifts.noche.sold += sold;
+            networkShifts.noche.cap += cap;
+            networkShifts.noche.sessions += 1;
+          }
+
+          const dayKey = getSessionDayKey(s.sessionDateTime);
+          if (daySalesCompany[dayKey]) {
+            daySalesCompany[dayKey].sold += sold;
+            daySalesCompany[dayKey].cap += cap;
+            daySalesCompany[dayKey].sessions += 1;
+          }
+
+          if (cap > 0) {
+            const rate = sold / cap;
+            if (rate > networkRecordRate || (rate === networkRecordRate && sold > (networkRecordSession?.sold || 0))) {
+              networkRecordRate = rate;
+              networkRecordSession = {
+                theaterName: theater.name,
+                movieName: s.movieName,
+                time: time,
+                dayKey: dayKey,
+                dayLabel: DAYS_OF_WEEK.find(d => d.key === dayKey)?.label || dayKey,
+                room: s.theaterRoom,
+                sold: sold,
+                cap: cap,
+                rate: rate
+              };
+            }
+          }
+        });
+      }
+    });
+
+    theatersRanked.forEach((t) => {
+      t.shareOfTotal = totalSold > 0 ? (t.totalTickets / totalSold) * 100 : 0;
+    });
+
+    const topMovies = Object.values(movieAggregates)
+      .sort((a, b) => b.totalSold - a.totalSold)
+      .slice(0, 8)
+      .map(m => ({
+        ...m,
+        theatersCount: m.theatersSet.size,
+        occupancy: m.totalCap > 0 ? (m.totalSold / m.totalCap) * 100 : 0,
+        shareOfChain: totalSold > 0 ? (m.totalSold / totalSold) * 100 : 0,
+      }));
+
+    const avgOccupancy = totalCap > 0 ? (totalSold / totalCap) * 100 : 0;
+    const avgPaxPerShow = totalSessions > 0 ? Math.round(totalSold / totalSessions) : 0;
+    const mix3DPercent = totalSold > 0 ? (total3DSold / totalSold) * 100 : 0;
+
+    const dayDetails = DAYS_OF_WEEK.map((d) => {
+      const data = daySalesCompany[d.key] || { sold: 0, cap: 0, sessions: 0 };
+      const occ = data.cap > 0 ? (data.sold / data.cap) * 100 : 0;
+      const isWeekend = d.key === "viernes" || d.key === "sabado" || d.key === "domingo";
+      return {
+        ...d,
+        sold: data.sold,
+        capacity: data.cap,
+        sessions: data.sessions,
+        occupancy: occ,
+        isWeekend
+      };
+    });
+
+    let bestDay = dayDetails[0];
+    dayDetails.forEach(d => {
+      if (d.sold > bestDay.sold) bestDay = d;
+    });
+
+    const weekendSold = (daySalesCompany["viernes"]?.sold || 0) + (daySalesCompany["sabado"]?.sold || 0) + (daySalesCompany["domingo"]?.sold || 0);
+    const weekdaySold = Math.max(0, totalSold - weekendSold);
+
+    return {
+      totalSold,
+      totalCap,
+      totalSessions,
+      avgOccupancy,
+      avgPaxPerShow,
+      total3DSold,
+      total2DSold,
+      mix3DPercent,
+      volumeLeaderName,
+      volumeLeaderTickets: Math.max(0, volumeLeaderTickets),
+      occupancyLeaderName,
+      occupancyLeaderPercent: Math.max(0, occupancyLeaderPercent),
+      theatersRanked,
+      topMovies,
+      networkShifts,
+      dayDetails,
+      bestDay,
+      weekendSold,
+      weekdaySold,
+      networkRecordSession
+    };
+  }, [computedTheaterStats, weeklyDataCache, statsMode, statsDay]);
 
   // Estadísticas Especiales de Trasnoche (23:30 hs a 06:00 hs)
   const trasnocheStats = useMemo(() => {
@@ -680,72 +908,503 @@ export default function CompanyScreen() {
         </View>
       )}
 
-      {/* KPIs Globales */}
-      <View style={styles.kpiRow}>
-        <View style={styles.kpiCard}>
-          <MaterialCommunityIcons name="ticket-percent-outline" size={24} color={COLORS.info} />
-          <Text style={styles.kpiValue}>
-            {loadingTheaters ? "-" : `${globalKpis.totalSold.toLocaleString("es-AR")}`}
+      {/* Centro de Inteligencia & Estadísticas de la Compañía */}
+      <View style={styles.companyStatsModernContainer}>
+        {/* Modern Section Header */}
+        <View style={styles.companyStatsHeaderRow}>
+          <View style={styles.companyHeaderBadgePill}>
+            <MaterialCommunityIcons name="domain" size={13} color={COLORS.primary} />
+            <Text style={styles.companyHeaderBadgeText}>INTELIGENCIA DE RED • CADENA</Text>
+          </View>
+          <Text style={styles.companyStatsMainTitle}>
+            Estadísticas Consolidadas de la Compañía
           </Text>
-          <Text style={styles.kpiLabel}>
-            Tickets {statsMode === "daily" ? "Diarios" : "Semanales"} Vendidos
+          <Text style={styles.companyStatsMainSubtitle}>
+            Monitoreo comercial y operativo de los 11 complejos Cinemark en tiempo real
           </Text>
         </View>
 
-        <View style={styles.kpiCard}>
-          <MaterialCommunityIcons name="chart-donut" size={24} color={COLORS.success} />
-          <Text style={styles.kpiValue}>
-            {loadingTheaters ? "-" : `${globalKpis.avgOccupancy.toFixed(1)}%`}
-          </Text>
-          <Text style={styles.kpiLabel}>Ocupación Promedio Gral.</Text>
-        </View>
-
-        <View style={styles.kpiCard}>
-          <MaterialCommunityIcons name="trophy-outline" size={24} color={COLORS.warning} />
-          <Text style={styles.kpiValue} numberOfLines={1}>
-            {loadingTheaters ? "-" : globalKpis.leaderName}
-          </Text>
-          <Text style={styles.kpiLabel}>
-            Cine Líder ({globalKpis.leaderPercent.toFixed(1)}%)
-          </Text>
-        </View>
-      </View>
-
-      {/* Sección Especial Trasnoche */}
-      {trasnocheStats.hasTrasnocheData && (
-        <View style={styles.trasnocheStatsContainer}>
-          <View style={styles.trasnocheStatsHeader}>
-            <MaterialCommunityIcons name="weather-night" size={18} color={COLORS.warning} />
-            <Text style={styles.trasnocheStatsTitle}>
-              {statsMode === "daily"
-                ? `Especial Trasnoche 🌙 (Diario - ${DAYS_OF_WEEK.find(d => d.key === statsDay)?.label || ""})`
-                : "Especial Trasnoche 🌙 (Semanal)"}
+        {/* 6 Executive KPI Scorecards */}
+        <View style={styles.companyKpiGrid}>
+          {/* Card 1: Tickets Cadena */}
+          <View style={[styles.companyKpiCard, { borderTopColor: COLORS.primary }]}>
+            <View style={styles.companyKpiTopRow}>
+              <View style={[styles.companyKpiIconCircle, { backgroundColor: COLORS.primarySoft }]}>
+                <MaterialCommunityIcons name="ticket-percent-outline" size={18} color={COLORS.primary} />
+              </View>
+              <View style={styles.companyKpiTag}>
+                <Text style={styles.companyKpiTagText}>{statsMode === "daily" ? "Diario" : "Semanal"}</Text>
+              </View>
+            </View>
+            <Text style={styles.companyKpiNumber}>
+              {loadingTheaters ? "-" : companyAnalytics.totalSold.toLocaleString("es-AR")}
+            </Text>
+            <Text style={styles.companyKpiLabel}>Tickets Totales Cadena</Text>
+            <View style={styles.companyKpiDivider} />
+            <Text style={styles.companyKpiFooter}>
+              Promedio: <Text style={{ fontWeight: "bold" }}>{companyAnalytics.avgPaxPerShow} tix</Text> / show
             </Text>
           </View>
-          <View style={styles.trasnocheStatsBody}>
-            <View style={styles.trasnocheStatCol}>
-              <Text style={styles.trasnocheStatValue}>
-                {trasnocheStats.totalSold.toLocaleString("es-AR")}
-              </Text>
-              <Text style={styles.trasnocheStatLabel}>Tickets Trasnoche</Text>
+
+          {/* Card 2: Ocupación Promedio */}
+          <View style={[styles.companyKpiCard, { borderTopColor: "#10B981" }]}>
+            <View style={styles.companyKpiTopRow}>
+              <View style={[styles.companyKpiIconCircle, { backgroundColor: "#D1FAE5" }]}>
+                <MaterialCommunityIcons name="chart-donut" size={18} color="#047857" />
+              </View>
+              <View style={[styles.companyKpiTag, { backgroundColor: "#D1FAE5" }]}>
+                <Text style={[styles.companyKpiTagText, { color: "#047857" }]}>Ocupación</Text>
+              </View>
             </View>
-            <View style={styles.trasnocheStatCol}>
-              <Text style={styles.trasnocheStatValue}>
-                {trasnocheStats.avgOccupancy.toFixed(1)}%
-              </Text>
-              <Text style={styles.trasnocheStatLabel}>Ocupación Promedio</Text>
+            <Text style={styles.companyKpiNumber}>
+              {loadingTheaters ? "-" : `${companyAnalytics.avgOccupancy.toFixed(1)}%`}
+            </Text>
+            <Text style={styles.companyKpiLabel}>Ocupación Media Red</Text>
+            <View style={styles.companyKpiDivider} />
+            <Text style={styles.companyKpiFooter}>
+              Capacidad: <Text style={{ fontWeight: "bold" }}>{companyAnalytics.totalCap.toLocaleString("es-AR")}</Text> butacas
+            </Text>
+          </View>
+
+          {/* Card 3: Cine Líder en Ocupación */}
+          <View style={[styles.companyKpiCard, { borderTopColor: "#EAB308" }]}>
+            <View style={styles.companyKpiTopRow}>
+              <View style={[styles.companyKpiIconCircle, { backgroundColor: "#FEF3C7" }]}>
+                <MaterialCommunityIcons name="trophy-outline" size={18} color="#B45309" />
+              </View>
+              <View style={[styles.companyKpiTag, { backgroundColor: "#FEF3C7" }]}>
+                <Text style={[styles.companyKpiTagText, { color: "#B45309" }]}>Eficiencia</Text>
+              </View>
             </View>
-            <View style={styles.trasnocheStatCol}>
-              <Text style={styles.trasnocheStatValue}>
-                {trasnocheStats.bestTheaterName}
+            <Text style={styles.companyKpiNumberText} numberOfLines={1}>
+              {loadingTheaters ? "-" : companyAnalytics.occupancyLeaderName}
+            </Text>
+            <Text style={styles.companyKpiLabel}>Líder en Ocupación</Text>
+            <View style={styles.companyKpiDivider} />
+            <Text style={styles.companyKpiFooter}>
+              Aforo récord: <Text style={{ fontWeight: "bold" }}>{companyAnalytics.occupancyLeaderPercent.toFixed(1)}%</Text>
+            </Text>
+          </View>
+
+          {/* Card 4: Cine Mayor Volumen */}
+          <View style={[styles.companyKpiCard, { borderTopColor: "#3B82F6" }]}>
+            <View style={styles.companyKpiTopRow}>
+              <View style={[styles.companyKpiIconCircle, { backgroundColor: "#DBEAFE" }]}>
+                <MaterialCommunityIcons name="trending-up" size={18} color="#1D4ED8" />
+              </View>
+              <View style={[styles.companyKpiTag, { backgroundColor: "#DBEAFE" }]}>
+                <Text style={[styles.companyKpiTagText, { color: "#1D4ED8" }]}>Volumen</Text>
+              </View>
+            </View>
+            <Text style={styles.companyKpiNumberText} numberOfLines={1}>
+              {loadingTheaters ? "-" : companyAnalytics.volumeLeaderName}
+            </Text>
+            <Text style={styles.companyKpiLabel}>Líder en Tickets</Text>
+            <View style={styles.companyKpiDivider} />
+            <Text style={styles.companyKpiFooter}>
+              Ventas: <Text style={{ fontWeight: "bold" }}>{companyAnalytics.volumeLeaderTickets.toLocaleString("es-AR")} tix</Text>
+            </Text>
+          </View>
+
+          {/* Card 5: Lentes 3D Cadena */}
+          <View style={[styles.companyKpiCard, { borderTopColor: "#8B5CF6" }]}>
+            <View style={styles.companyKpiTopRow}>
+              <View style={[styles.companyKpiIconCircle, { backgroundColor: "#EDE9FE" }]}>
+                <MaterialCommunityIcons name="sunglasses" size={18} color="#7C3AED" />
+              </View>
+              <View style={[styles.companyKpiTag, { backgroundColor: "#EDE9FE" }]}>
+                <Text style={[styles.companyKpiTagText, { color: "#7C3AED" }]}>Mix 3D</Text>
+              </View>
+            </View>
+            <Text style={styles.companyKpiNumber}>
+              {loadingTheaters ? "-" : companyAnalytics.total3DSold.toLocaleString("es-AR")}
+            </Text>
+            <Text style={styles.companyKpiLabel}>Lentes 3D Cadena</Text>
+            <View style={styles.companyKpiDivider} />
+            <Text style={styles.companyKpiFooter}>
+              Penetración: <Text style={{ fontWeight: "bold" }}>{companyAnalytics.mix3DPercent.toFixed(1)}%</Text> del aforo
+            </Text>
+          </View>
+
+          {/* Card 6: Shows & Complejos */}
+          <View style={[styles.companyKpiCard, { borderTopColor: "#64748B" }]}>
+            <View style={styles.companyKpiTopRow}>
+              <View style={[styles.companyKpiIconCircle, { backgroundColor: "#F1F5F9" }]}>
+                <MaterialCommunityIcons name="theater" size={18} color="#334155" />
+              </View>
+              <View style={[styles.companyKpiTag, { backgroundColor: "#F1F5F9" }]}>
+                <Text style={[styles.companyKpiTagText, { color: "#334155" }]}>Red</Text>
+              </View>
+            </View>
+            <Text style={styles.companyKpiNumber}>
+              {loadingTheaters ? "-" : companyAnalytics.totalSessions}
+            </Text>
+            <Text style={styles.companyKpiLabel}>Funciones Activas</Text>
+            <View style={styles.companyKpiDivider} />
+            <Text style={styles.companyKpiFooter}>
+              Complejos: <Text style={{ fontWeight: "bold" }}>{THEATERS.length}</Text> cines monitoreados
+            </Text>
+          </View>
+        </View>
+
+        {/* Función Récord de la Cadena Banner */}
+        {companyAnalytics.networkRecordSession ? (
+          <View style={styles.companyRecordBanner}>
+            <View style={styles.companyRecordFlameCircle}>
+              <MaterialCommunityIcons name="fire" size={24} color="#EF4444" />
+            </View>
+            <View style={{ flex: 1, paddingRight: 8 }}>
+              <View style={styles.companyRecordBadgeRow}>
+                <Text style={styles.companyRecordBadgeLabel}>FUNCIÓN RÉCORD DE LA CADENA</Text>
+                <View style={styles.companyRecordPill}>
+                  <Text style={styles.companyRecordPillText}>
+                    {Math.round(companyAnalytics.networkRecordSession.rate * 100)}% LLENO
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.companyRecordMovie} numberOfLines={1}>
+                {companyAnalytics.networkRecordSession.movieName}
               </Text>
-              <Text style={styles.trasnocheStatLabel}>
-                Líder Trasnoche ({trasnocheStats.bestTheaterPercent.toFixed(1)}%)
+              <Text style={styles.companyRecordDetails}>
+                {companyAnalytics.networkRecordSession.theaterName} • {companyAnalytics.networkRecordSession.dayLabel} a las {companyAnalytics.networkRecordSession.time} hs (Sala {companyAnalytics.networkRecordSession.room})
+              </Text>
+            </View>
+            <View style={styles.companyRecordNumbers}>
+              <Text style={styles.companyRecordTicketsSold}>
+                {companyAnalytics.networkRecordSession.sold}
+              </Text>
+              <Text style={styles.companyRecordTicketsCap}>
+                / {companyAnalytics.networkRecordSession.cap} tix
               </Text>
             </View>
           </View>
+        ) : null}
+
+        {/* Sub-Tabs Selector de Estadísticas */}
+        <View style={styles.companySubTabsContainer}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.companySubTabsScroll}
+          >
+            {[
+              { key: "overview", label: "Vista General", icon: "view-dashboard-outline" },
+              { key: "cines", label: "Ranking de Cines", icon: "trophy-outline" },
+              { key: "peliculas", label: "Top Películas Cadena", icon: "filmstrip" },
+              { key: "horarios", label: "Días & Turnos", icon: "clock-time-four-outline" },
+              { key: "trasnoche", label: "Especial Trasnoche", icon: "weather-night" },
+            ].map((tab) => {
+              const isActive = companyStatsTab === tab.key;
+              return (
+                <TouchableOpacity
+                  key={tab.key}
+                  onPress={() => setCompanyStatsTab(tab.key as any)}
+                  style={[styles.companySubTabBtn, isActive && styles.companySubTabBtnActive]}
+                  activeOpacity={0.7}
+                >
+                  <MaterialCommunityIcons
+                    name={tab.icon as any}
+                    size={15}
+                    color={isActive ? "#FFFFFF" : COLORS.textSoft}
+                    style={{ marginRight: 6 }}
+                  />
+                  <Text style={[styles.companySubTabBtnText, isActive && styles.companySubTabBtnTextActive]}>
+                    {tab.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
         </View>
-      )}
+
+        {/* Tab 1: Ranking de Cines (Leaderboard) */}
+        {(companyStatsTab === "overview" || companyStatsTab === "cines") && (
+          <View style={styles.companyAnalyticsCard}>
+            <View style={styles.companyAnalyticsCardHeader}>
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <MaterialCommunityIcons name="trophy-variant-outline" size={18} color="#EAB308" style={{ marginRight: 8 }} />
+                <Text style={styles.companyAnalyticsCardTitle}>Ranking & Rendimiento por Complejo</Text>
+              </View>
+              {/* Sorter toggle */}
+              <View style={styles.sorterContainer}>
+                <TouchableOpacity
+                  onPress={() => setTheaterSortBy("tickets")}
+                  style={[styles.sortBtn, theaterSortBy === "tickets" && styles.sortBtnActive]}
+                >
+                  <Text style={[styles.sortBtnText, theaterSortBy === "tickets" && styles.sortBtnTextActive]}>
+                    Tickets
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setTheaterSortBy("occupancy")}
+                  style={[styles.sortBtn, theaterSortBy === "occupancy" && styles.sortBtnActive]}
+                >
+                  <Text style={[styles.sortBtnText, theaterSortBy === "occupancy" && styles.sortBtnTextActive]}>
+                    Ocupación
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={styles.leaderboardList}>
+              {[...companyAnalytics.theatersRanked]
+                .sort((a, b) => theaterSortBy === "tickets" ? b.totalTickets - a.totalTickets : b.occupancy - a.occupancy)
+                .map((theater, index) => {
+                  const medals = ["🥇", "🥈", "🥉"];
+                  const rankBadge = medals[index] || `#${index + 1}`;
+                  const isTop3 = index < 3;
+                  const isSelected = selectedTheater?.id === theater.id;
+
+                  let barColor = "#3B82F6";
+                  if (theater.occupancy > 50) barColor = "#EF4444";
+                  else if (theater.occupancy >= 25) barColor = "#10B981";
+
+                  return (
+                    <TouchableOpacity
+                      key={theater.id}
+                      onPress={() => {
+                        const target = THEATERS.find(t => t.id === theater.id);
+                        if (target) handleSelectTheater(target);
+                      }}
+                      style={[
+                        styles.leaderboardRow,
+                        isTop3 && styles.leaderboardRowTop3,
+                        isSelected && styles.leaderboardRowSelected,
+                      ]}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.leaderboardRankIcon}>{rankBadge}</Text>
+                      <View style={[styles.leaderboardIconCircle, isSelected && { backgroundColor: COLORS.primarySoft }]}>
+                        <MaterialCommunityIcons
+                          name={theater.icon as any || "movie-roll"}
+                          size={18}
+                          color={isSelected ? COLORS.primary : COLORS.text}
+                        />
+                      </View>
+                      <View style={{ flex: 1, marginRight: 12 }}>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                          <Text style={[styles.leaderboardTheaterName, isSelected && { color: COLORS.primary }]}>
+                            {theater.name}
+                          </Text>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                            <Text style={styles.leaderboardTicketsText}>
+                              {theater.totalTickets.toLocaleString("es-AR")} tix
+                            </Text>
+                            <Text style={styles.leaderboardShareText}>
+                              ({theater.shareOfTotal.toFixed(1)}%)
+                            </Text>
+                          </View>
+                        </View>
+                        {/* Occupancy bar */}
+                        <View style={styles.leaderboardBarBg}>
+                          <View style={[styles.leaderboardBarFill, { width: `${Math.min(100, theater.occupancy)}%`, backgroundColor: barColor }]} />
+                        </View>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 4 }}>
+                          <Text style={styles.leaderboardSubDetail}>
+                            {theater.sessionsCount} funciones • {theater.avgPaxPerShow} pax/show
+                          </Text>
+                          <Text style={[styles.leaderboardOccText, { color: barColor }]}>
+                            {theater.occupancy.toFixed(1)}% ocupación
+                          </Text>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+            </View>
+          </View>
+        )}
+
+        {/* Tab 2: Top Películas Cadena */}
+        {(companyStatsTab === "overview" || companyStatsTab === "peliculas") && (
+          <View style={styles.companyAnalyticsCard}>
+            <View style={styles.companyAnalyticsCardHeader}>
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <MaterialCommunityIcons name="filmstrip" size={18} color={COLORS.primary} style={{ marginRight: 8 }} />
+                <Text style={styles.companyAnalyticsCardTitle}>Top Películas en Cartelera (Box Office Cadena)</Text>
+              </View>
+            </View>
+
+            <View style={styles.topMoviesList}>
+              {companyAnalytics.topMovies.map((movie, index) => {
+                const medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣"];
+                const maxTickets = companyAnalytics.topMovies[0]?.totalSold || 1;
+                const percentage = (movie.totalSold / maxTickets) * 100;
+
+                return (
+                  <View key={movie.title} style={styles.topMovieRow}>
+                    <Text style={styles.topMovieRank}>{medals[index] || `#${index + 1}`}</Text>
+                    <View style={{ flex: 1 }}>
+                      <View style={styles.topMovieInfoRow}>
+                        <Text style={styles.topMovieTitle} numberOfLines={1}>
+                          {movie.title}
+                        </Text>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                          <Text style={styles.topMovieTickets}>{movie.totalSold.toLocaleString("es-AR")} tix</Text>
+                          <Text style={styles.topMovieShare}>({movie.shareOfChain.toFixed(1)}%)</Text>
+                        </View>
+                      </View>
+                      <View style={styles.topMovieBarBg}>
+                        <View
+                          style={[
+                            styles.topMovieBarFill,
+                            {
+                              width: `${percentage}%`,
+                              backgroundColor: index === 0 ? COLORS.primary : index === 1 ? "#3B82F6" : index === 2 ? "#10B981" : "#64748B"
+                            }
+                          ]}
+                        />
+                      </View>
+                      <View style={styles.topMovieFooterRow}>
+                        <Text style={styles.topMovieFooterText}>
+                          Exhibida en <Text style={{ fontWeight: "bold" }}>{movie.theatersCount}</Text> de {THEATERS.length} complejos • {movie.sessionsCount} funciones
+                        </Text>
+                        {movie.sold3D > 0 && (
+                          <View style={styles.topMovie3DChip}>
+                            <Text style={styles.topMovie3DChipText}>3D: {movie.sold3D} tix</Text>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        )}
+
+        {/* Tab 3: Días & Franjas Horarias */}
+        {(companyStatsTab === "overview" || companyStatsTab === "horarios") && (
+          <View style={styles.companyAnalyticsCard}>
+            <View style={styles.companyAnalyticsCardHeader}>
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <MaterialCommunityIcons name="clock-time-four-outline" size={18} color="#3B82F6" style={{ marginRight: 8 }} />
+                <Text style={styles.companyAnalyticsCardTitle}>Distribución por Turnos & Franjas Horarias</Text>
+              </View>
+            </View>
+
+            {/* Franjas Horarias */}
+            <View style={styles.companyShiftsGrid}>
+              {Object.values(companyAnalytics.networkShifts).map((shift) => {
+                const occ = shift.cap > 0 ? (shift.sold / shift.cap) * 100 : 0;
+                const percentOfChain = companyAnalytics.totalSold > 0 ? (shift.sold / companyAnalytics.totalSold) * 100 : 0;
+                return (
+                  <View key={shift.key} style={styles.companyShiftCard}>
+                    <View style={styles.companyShiftHeader}>
+                      <MaterialCommunityIcons name={shift.icon} size={18} color={COLORS.primary} />
+                      <Text style={styles.companyShiftTitle}>{shift.label}</Text>
+                    </View>
+                    <Text style={styles.companyShiftSub}>{shift.sub}</Text>
+                    <Text style={styles.companyShiftSold}>{shift.sold.toLocaleString("es-AR")} tix</Text>
+                    <View style={styles.companyShiftBarBg}>
+                      <View style={[styles.companyShiftBarFill, { width: `${Math.min(100, occ)}%` }]} />
+                    </View>
+                    <View style={styles.companyShiftFooterRow}>
+                      <Text style={styles.companyShiftFooterText}>{shift.sessions} funciones</Text>
+                      <Text style={styles.companyShiftOcc}>{occ.toFixed(0)}% ocup.</Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+
+            {/* Días de la Semana (si estamos en vista semanal) */}
+            {statsMode === "weekly" && (
+              <View style={{ marginTop: 20 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                  <Text style={styles.companyDaysTitle}>Curva de Ventas por Día de la Semana</Text>
+                  <View style={styles.companyWeekendBadge}>
+                    <Text style={styles.companyWeekendBadgeText}>
+                      Finde: {companyAnalytics.weekendSold.toLocaleString("es-AR")} tix
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.companyDaysList}>
+                  {companyAnalytics.dayDetails.map((day) => {
+                    const maxDaySold = companyAnalytics.bestDay?.sold || 1;
+                    const percentage = (day.sold / maxDaySold) * 100;
+                    const isPeak = day.key === companyAnalytics.bestDay?.key && day.sold > 0;
+
+                    return (
+                      <View key={day.key} style={styles.companyDayRow}>
+                        <View style={styles.companyDayInfoRow}>
+                          <View style={{ flexDirection: "row", alignItems: "center" }}>
+                            {isPeak && <MaterialCommunityIcons name="star" size={13} color="#EAB308" style={{ marginRight: 4 }} />}
+                            <Text style={[styles.companyDayName, isPeak && { color: COLORS.primary, fontWeight: "900" }]}>
+                              {day.label} {day.isWeekend && "(FDS)"}
+                            </Text>
+                          </View>
+                          <Text style={[styles.companyDayTickets, isPeak && { color: COLORS.primary }]}>
+                            {day.sold.toLocaleString("es-AR")} tix ({day.occupancy.toFixed(0)}%)
+                          </Text>
+                        </View>
+                        <View style={styles.companyDayBarBg}>
+                          <View
+                            style={[
+                              styles.companyDayBarFill,
+                              {
+                                width: `${percentage}%`,
+                                backgroundColor: isPeak ? COLORS.primary : day.isWeekend ? "#10B981" : "#3B82F6"
+                              }
+                            ]}
+                          />
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Tab 4: Especial Trasnoche */}
+        {(companyStatsTab === "overview" || companyStatsTab === "trasnoche") && trasnocheStats.hasTrasnocheData && (
+          <View style={styles.trasnocheModernCard}>
+            <View style={styles.trasnocheModernHeader}>
+              <View style={styles.trasnocheMoonCircle}>
+                <MaterialCommunityIcons name="weather-night" size={20} color="#F59E0B" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.trasnocheModernTitle}>
+                  {statsMode === "daily"
+                    ? `Especial Trasnoche Cadena 🌙 (${DAYS_OF_WEEK.find(d => d.key === statsDay)?.label || ""})`
+                    : "Especial Trasnoche Cadena 🌙 (Semanal)"}
+                </Text>
+                <Text style={styles.trasnocheModernSubtitle}>
+                  Funciones a partir de las 23:30 hs y trasnoches de madrugada en toda la red
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.trasnocheModernStatsGrid}>
+              <View style={styles.trasnocheModernCol}>
+                <Text style={styles.trasnocheModernVal}>
+                  {trasnocheStats.totalSold.toLocaleString("es-AR")}
+                </Text>
+                <Text style={styles.trasnocheModernLbl}>Tickets Trasnoche Cadena</Text>
+              </View>
+
+              <View style={styles.trasnocheModernCol}>
+                <Text style={styles.trasnocheModernVal}>
+                  {trasnocheStats.avgOccupancy.toFixed(1)}%
+                </Text>
+                <Text style={styles.trasnocheModernLbl}>Ocupación Media</Text>
+              </View>
+
+              <View style={styles.trasnocheModernCol}>
+                <Text style={styles.trasnocheModernVal} numberOfLines={1}>
+                  {trasnocheStats.bestTheaterName}
+                </Text>
+                <Text style={styles.trasnocheModernLbl}>
+                  Líder Nocturno ({trasnocheStats.bestTheaterPercent.toFixed(1)}%)
+                </Text>
+              </View>
+            </View>
+          </View>
+        )}
+      </View>
 
       {/* Grid de Cines */}
       <Text style={styles.sectionTitle}>Seleccionar Cine</Text>
@@ -1596,5 +2255,575 @@ const styles = StyleSheet.create({
   gridSessionPercentText: {
     fontSize: 12,
     fontWeight: "bold",
+  },
+  // ─── Modern Company Intelligence Styles ─────────────────────
+  companyStatsModernContainer: {
+    marginBottom: THEME.spacing.xl,
+  },
+  companyStatsHeaderRow: {
+    backgroundColor: COLORS.card,
+    borderRadius: THEME.radius.md,
+    padding: 16,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  companyHeaderBadgePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    backgroundColor: COLORS.primarySoft,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+    marginBottom: 8,
+  },
+  companyHeaderBadgeText: {
+    fontSize: 10,
+    fontWeight: "900",
+    color: COLORS.primary,
+    marginLeft: 5,
+    letterSpacing: 0.5,
+  },
+  companyStatsMainTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: COLORS.text,
+  },
+  companyStatsMainSubtitle: {
+    fontSize: 12,
+    color: COLORS.textSoft,
+    marginTop: 2,
+  },
+  companyKpiGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+    marginBottom: 16,
+  },
+  companyKpiCard: {
+    flex: 1,
+    minWidth: 155,
+    backgroundColor: COLORS.card,
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderTopWidth: 3,
+    ...Platform.select({
+      web: { boxShadow: "0 2px 8px rgba(0,0,0,0.04)" },
+      default: { elevation: 2 },
+    }),
+  },
+  companyKpiTopRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  companyKpiIconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  companyKpiTag: {
+    backgroundColor: COLORS.primarySoft,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  companyKpiTagText: {
+    fontSize: 9.5,
+    fontWeight: "bold",
+    color: COLORS.primary,
+  },
+  companyKpiNumber: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: COLORS.text,
+    letterSpacing: -0.5,
+  },
+  companyKpiNumberText: {
+    fontSize: 15,
+    fontWeight: "bold",
+    color: COLORS.text,
+    marginVertical: 2,
+  },
+  companyKpiLabel: {
+    fontSize: 11,
+    color: COLORS.textSoft,
+    fontWeight: "600",
+    marginTop: 2,
+  },
+  companyKpiDivider: {
+    height: 1,
+    backgroundColor: COLORS.border,
+    marginVertical: 8,
+  },
+  companyKpiFooter: {
+    fontSize: 10.5,
+    color: COLORS.textSoft,
+  },
+  companyRecordBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.card,
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "rgba(239, 68, 68, 0.2)",
+    borderLeftWidth: 5,
+    borderLeftColor: "#EF4444",
+    marginBottom: 16,
+    ...Platform.select({
+      web: { boxShadow: "0 4px 12px rgba(239, 68, 68, 0.08)" },
+      default: { elevation: 2 },
+    }),
+  },
+  companyRecordFlameCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(239, 68, 68, 0.1)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  companyRecordBadgeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 2,
+  },
+  companyRecordBadgeLabel: {
+    fontSize: 9.5,
+    fontWeight: "900",
+    color: "#EF4444",
+    letterSpacing: 0.5,
+  },
+  companyRecordPill: {
+    backgroundColor: "#EF4444",
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  companyRecordPillText: {
+    fontSize: 9,
+    fontWeight: "bold",
+    color: "#FFFFFF",
+  },
+  companyRecordMovie: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: COLORS.text,
+  },
+  companyRecordDetails: {
+    fontSize: 11,
+    color: COLORS.textSoft,
+    marginTop: 2,
+  },
+  companyRecordNumbers: {
+    alignItems: "flex-end",
+    marginLeft: 10,
+  },
+  companyRecordTicketsSold: {
+    fontSize: 20,
+    fontWeight: "900",
+    color: "#EF4444",
+  },
+  companyRecordTicketsCap: {
+    fontSize: 10,
+    color: COLORS.textSoft,
+  },
+  companySubTabsContainer: {
+    marginBottom: 16,
+  },
+  companySubTabsScroll: {
+    flexDirection: "row",
+    gap: 8,
+    paddingVertical: 2,
+  },
+  companySubTabBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 20,
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  companySubTabBtnActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+    ...Platform.select({
+      web: { boxShadow: "0 2px 6px rgba(137, 4, 4, 0.25)" },
+      default: { elevation: 2 },
+    }),
+  },
+  companySubTabBtnText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: COLORS.textSoft,
+  },
+  companySubTabBtnTextActive: {
+    color: "#FFFFFF",
+    fontWeight: "bold",
+  },
+  companyAnalyticsCard: {
+    backgroundColor: COLORS.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 16,
+    marginBottom: 16,
+    ...Platform.select({
+      web: { boxShadow: "0 2px 8px rgba(0,0,0,0.03)" },
+      default: { elevation: 1 },
+    }),
+  },
+  companyAnalyticsCardHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 14,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  companyAnalyticsCardTitle: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: COLORS.text,
+  },
+  sorterContainer: {
+    flexDirection: "row",
+    backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F1F5F9)" : "#F1F5F9",
+    borderRadius: 6,
+    padding: 2,
+  },
+  sortBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  sortBtnActive: {
+    backgroundColor: COLORS.card,
+    ...Platform.select({
+      web: { boxShadow: "0 1px 3px rgba(0,0,0,0.1)" },
+      default: { elevation: 1 },
+    }),
+  },
+  sortBtnText: {
+    fontSize: 11,
+    color: COLORS.textSoft,
+    fontWeight: "600",
+  },
+  sortBtnTextActive: {
+    color: COLORS.text,
+    fontWeight: "bold",
+  },
+  leaderboardList: {
+    gap: 8,
+  },
+  leaderboardRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F8FAFC)" : "#F8FAFC",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 10,
+  },
+  leaderboardRowTop3: {
+    borderColor: "rgba(234, 179, 8, 0.3)",
+  },
+  leaderboardRowSelected: {
+    borderColor: COLORS.primary,
+    borderWidth: 1.5,
+    backgroundColor: "rgba(137, 4, 4, 0.02)",
+  },
+  leaderboardRankIcon: {
+    fontSize: 16,
+    width: 26,
+    textAlign: "center",
+  },
+  leaderboardIconCircle: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #E2E8F0)" : "#E2E8F0",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 10,
+  },
+  leaderboardTheaterName: {
+    fontSize: 13,
+    fontWeight: "bold",
+    color: COLORS.text,
+  },
+  leaderboardTicketsText: {
+    fontSize: 12.5,
+    fontWeight: "bold",
+    color: COLORS.text,
+  },
+  leaderboardShareText: {
+    fontSize: 10.5,
+    color: COLORS.textSoft,
+  },
+  leaderboardBarBg: {
+    height: 6,
+    backgroundColor: COLORS.border,
+    borderRadius: 3,
+    overflow: "hidden",
+  },
+  leaderboardBarFill: {
+    height: "100%",
+    borderRadius: 3,
+  },
+  leaderboardSubDetail: {
+    fontSize: 9.5,
+    color: COLORS.textSoft,
+  },
+  leaderboardOccText: {
+    fontSize: 10,
+    fontWeight: "bold",
+  },
+  topMoviesList: {
+    gap: 12,
+  },
+  topMovieRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  topMovieRank: {
+    fontSize: 16,
+    width: 24,
+    textAlign: "center",
+  },
+  topMovieInfoRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 4,
+  },
+  topMovieTitle: {
+    fontSize: 12.5,
+    fontWeight: "bold",
+    color: COLORS.text,
+    flex: 1,
+    marginRight: 8,
+  },
+  topMovieTickets: {
+    fontSize: 12,
+    fontWeight: "bold",
+    color: COLORS.text,
+  },
+  topMovieShare: {
+    fontSize: 10.5,
+    color: COLORS.textSoft,
+  },
+  topMovieBarBg: {
+    height: 7,
+    backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F1F5F9)" : "#F1F5F9",
+    borderRadius: 4,
+    overflow: "hidden",
+  },
+  topMovieBarFill: {
+    height: "100%",
+    borderRadius: 4,
+  },
+  topMovieFooterRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 3,
+  },
+  topMovieFooterText: {
+    fontSize: 9.5,
+    color: COLORS.textSoft,
+  },
+  topMovie3DChip: {
+    backgroundColor: "#EDE9FE",
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  topMovie3DChipText: {
+    fontSize: 9,
+    fontWeight: "bold",
+    color: "#7C3AED",
+  },
+  companyShiftsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  companyShiftCard: {
+    flex: 1,
+    minWidth: 130,
+    backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F8FAFC)" : "#F8FAFC",
+    borderRadius: 10,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  companyShiftHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 2,
+  },
+  companyShiftTitle: {
+    fontSize: 12,
+    fontWeight: "bold",
+    color: COLORS.text,
+  },
+  companyShiftSub: {
+    fontSize: 10,
+    color: COLORS.textSoft,
+    marginBottom: 6,
+  },
+  companyShiftSold: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: COLORS.primary,
+    marginBottom: 6,
+  },
+  companyShiftBarBg: {
+    height: 5,
+    backgroundColor: COLORS.border,
+    borderRadius: 3,
+    overflow: "hidden",
+    marginBottom: 6,
+  },
+  companyShiftBarFill: {
+    height: "100%",
+    backgroundColor: COLORS.primary,
+    borderRadius: 3,
+  },
+  companyShiftFooterRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  companyShiftFooterText: {
+    fontSize: 9.5,
+    color: COLORS.textSoft,
+  },
+  companyShiftOcc: {
+    fontSize: 9.5,
+    fontWeight: "bold",
+    color: "#059669",
+  },
+  companyDaysTitle: {
+    fontSize: 13,
+    fontWeight: "bold",
+    color: COLORS.text,
+  },
+  companyWeekendBadge: {
+    backgroundColor: "#D1FAE5",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  companyWeekendBadgeText: {
+    fontSize: 10,
+    fontWeight: "bold",
+    color: "#047857",
+  },
+  companyDaysList: {
+    gap: 8,
+  },
+  companyDayRow: {
+    width: "100%",
+  },
+  companyDayInfoRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 4,
+  },
+  companyDayName: {
+    fontSize: 11,
+    fontWeight: "bold",
+    color: COLORS.text,
+  },
+  companyDayTickets: {
+    fontSize: 11.5,
+    fontWeight: "bold",
+    color: COLORS.textSoft,
+  },
+  companyDayBarBg: {
+    height: 7,
+    backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F1F5F9)" : "#F1F5F9",
+    borderRadius: 4,
+    overflow: "hidden",
+  },
+  companyDayBarFill: {
+    height: "100%",
+    borderRadius: 4,
+  },
+  trasnocheModernCard: {
+    backgroundColor: "#1E293B",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#334155",
+    padding: 16,
+    marginBottom: 16,
+    ...Platform.select({
+      web: { boxShadow: "0 4px 16px rgba(0,0,0,0.15)" },
+      default: { elevation: 3 },
+    }),
+  },
+  trasnocheModernHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#334155",
+  },
+  trasnocheMoonCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(245, 158, 11, 0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  trasnocheModernTitle: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: "#F8FAFC",
+  },
+  trasnocheModernSubtitle: {
+    fontSize: 11,
+    color: "#94A3B8",
+    marginTop: 2,
+  },
+  trasnocheModernStatsGrid: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  trasnocheModernCol: {
+    flex: 1,
+    alignItems: "center",
+  },
+  trasnocheModernVal: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#F59E0B",
+  },
+  trasnocheModernLbl: {
+    fontSize: 10,
+    color: "#94A3B8",
+    marginTop: 4,
+    textAlign: "center",
   },
 });
