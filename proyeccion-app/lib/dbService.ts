@@ -504,9 +504,8 @@ export async function getDocs(dbRef: DbRef) {
       })) as any
     };
   } catch (err: any) {
-    console.error("[DB Service] Error al conectar con la API local, activando Modo Respaldo:", err.message);
-    setFallbackMode(true);
-    // Intentar leer de Firestore
+    console.warn("[DB Service] Error al conectar con la API local en getDocs, usando fallback a Firestore:", err.message);
+    // Intentar leer de Firestore sin alterar el estado global de conexión del servidor
     return await firestoreGetDocs(dbRef.firestoreRef);
   }
 }
@@ -561,8 +560,8 @@ export async function getDoc(dbRef: DbRef) {
       get: (field: string) => data[field]
     } as any;
   } catch (err: any) {
-    console.error("[DB Service] Error en getDoc al conectar con la API, usando Firestore:", err.message);
-    setFallbackMode(true);
+    console.warn("[DB Service] Error en getDoc al conectar con la API, usando Firestore:", err.message);
+    // Usar Firestore para este documento puntual sin marcar el servidor como offline
     return await firestoreGetDoc(dbRef.firestoreRef);
   }
 }
@@ -828,11 +827,6 @@ export function httpsCallable<RequestData = any, ResponseData = any>(
       clearTimeout(timeoutId);
 
       if (!res.ok) {
-        // Si es 5xx, el servidor o túnel está caído
-        if (res.status >= 500) {
-          console.warn(`[DB Service] Servidor respondió con HTTP ${res.status}. Activando modo lectura de respaldo.`);
-          setFallbackMode(true);
-        }
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.error || `Error HTTP: ${res.status}`);
       }
@@ -840,20 +834,7 @@ export function httpsCallable<RequestData = any, ResponseData = any>(
       const result = await res.json();
       return { data: (result && result.data !== undefined ? result.data : result) as ResponseData };
     } catch (err: any) {
-      console.error(`[DB Service] Falló la llamada a la función ${functionName} en la API:`, err.message);
-
-      const isConnError =
-        err.name === "AbortError" ||
-        err.message?.includes("Network request failed") ||
-        err.message?.includes("Failed to fetch") ||
-        err.message?.includes("NetworkError") ||
-        err.message?.includes("HTTP 5");
-
-      if (isConnError) {
-        console.warn(`[DB Service] Error de conexión detectado. Activando modo lectura.`);
-        setFallbackMode(true);
-      }
-
+      console.warn(`[DB Service] Falló la llamada a la función ${functionName} en la API:`, err.message);
       console.warn(`[DB Service] Intentando fallback directo a Firebase Cloud Functions para ${functionName}...`);
       const realCallable = firestoreHttpsCallable<RequestData, ResponseData>(functionsInstance, functionName);
       const res = await realCallable(data);
