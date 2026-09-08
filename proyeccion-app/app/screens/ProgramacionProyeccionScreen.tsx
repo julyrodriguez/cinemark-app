@@ -313,10 +313,6 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
   const [activeSalaLayout, setActiveSalaLayout] = useState<RoomLayout | null>(null);
 
-  // Dynamic widths for balanced centering on PC
-  const [headerButtonsWidth, setHeaderButtonsWidth] = useState(480);
-  const [tabsContentWidth, setTabsContentWidth] = useState(580);
-
   useEffect(() => {
     if (!cineId || !selectedShow) {
       setActiveSalaLayout(null);
@@ -3001,18 +2997,6 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
   const hasHeaderContent = !!formattedWeekLabel || !useApiData || (useApiData && !!apiError);
 
-  const rightButtonsTotalWidth = headerButtonsWidth > 0 ? headerButtonsWidth + 12 : 480;
-  const availableWidth = windowWidth - 28;
-  const leftSpacerWidth = !isMobile
-    ? Math.max(
-        0,
-        Math.min(
-          rightButtonsTotalWidth,
-          availableWidth - rightButtonsTotalWidth - (tabsContentWidth || 580)
-        )
-      )
-    : 0;
-
   return (
     <View style={styles.container}>
       {/* Header Info */}
@@ -3091,31 +3075,22 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
               flexDirection: "row",
               alignItems: "center",
               justifyContent: "space-between",
-              paddingLeft: 12,
-              paddingRight: 16,
+              paddingHorizontal: 16,
             }
           ]}>
-            {!isMobile && leftSpacerWidth > 0 && (
-              <View style={{ width: leftSpacerWidth, flexShrink: 0 }} />
+            {!isMobile && (
+              <View style={{ flex: 1, minWidth: 0 }} />
             )}
 
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              onContentSizeChange={(w) => {
-                if (w > 0 && Math.abs(w - tabsContentWidth) > 5) {
-                  setTabsContentWidth(w);
-                }
-              }}
-              contentContainerStyle={[
-                styles.tabBar,
-                !isMobile && {
-                  paddingHorizontal: 0,
-                  justifyContent: "center",
-                  flexGrow: 1,
-                }
-              ]}
-              style={!isMobile ? { flex: 1, minWidth: 0 } : undefined}
+              contentContainerStyle={styles.tabBar}
+              style={!isMobile ? {
+                flexShrink: 1,
+                flexGrow: 0,
+                minWidth: 0,
+              } : undefined}
             >
               {DAYS_OF_WEEK.map((day) => {
                 const isActive = selectedDay === day.key;
@@ -3133,20 +3108,17 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
               })}
             </ScrollView>
 
-            <View
-              onLayout={(e) => {
-                const w = e.nativeEvent.layout.width;
-                if (w > 0 && Math.abs(w - headerButtonsWidth) > 5) {
-                  setHeaderButtonsWidth(w);
-                }
-              }}
-              style={[
-                styles.headerButtonsRow,
-                { paddingVertical: 6, gap: 8 },
-                !isMobile && {
-                  flexShrink: 0,
-                  marginLeft: 12,
-                },
+            <View style={[
+              styles.headerButtonsRow,
+              { paddingVertical: 6, gap: 8 },
+              !isMobile && {
+                flex: 1,
+                flexShrink: 0,
+                minWidth: "max-content" as any,
+                flexDirection: "row",
+                justifyContent: "flex-end",
+                alignItems: "center",
+              },
               isMobile && {
                 flexDirection: "row",
                 flexWrap: "wrap",
