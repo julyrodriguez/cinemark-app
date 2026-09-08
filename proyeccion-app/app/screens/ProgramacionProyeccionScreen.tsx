@@ -313,6 +313,10 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
   const [activeSalaLayout, setActiveSalaLayout] = useState<RoomLayout | null>(null);
 
+  // Dynamic widths for balanced centering on PC
+  const [headerButtonsWidth, setHeaderButtonsWidth] = useState(480);
+  const [tabsContentWidth, setTabsContentWidth] = useState(580);
+
   useEffect(() => {
     if (!cineId || !selectedShow) {
       setActiveSalaLayout(null);
@@ -2997,6 +3001,18 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
 
   const hasHeaderContent = !!formattedWeekLabel || !useApiData || (useApiData && !!apiError);
 
+  const rightButtonsTotalWidth = headerButtonsWidth > 0 ? headerButtonsWidth + 12 : 480;
+  const availableWidth = windowWidth - 28;
+  const leftSpacerWidth = !isMobile
+    ? Math.max(
+        0,
+        Math.min(
+          rightButtonsTotalWidth,
+          availableWidth - rightButtonsTotalWidth - (tabsContentWidth || 580)
+        )
+      )
+    : 0;
+
   return (
     <View style={styles.container}>
       {/* Header Info */}
@@ -3079,14 +3095,24 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
               paddingRight: 16,
             }
           ]}>
+            {!isMobile && leftSpacerWidth > 0 && (
+              <View style={{ width: leftSpacerWidth, flexShrink: 0 }} />
+            )}
+
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
+              onContentSizeChange={(w) => {
+                if (w > 0 && Math.abs(w - tabsContentWidth) > 5) {
+                  setTabsContentWidth(w);
+                }
+              }}
               contentContainerStyle={[
                 styles.tabBar,
                 !isMobile && {
-                  paddingHorizontal: 8,
-                  justifyContent: windowWidth >= 1150 ? "center" : "flex-start",
+                  paddingHorizontal: 0,
+                  justifyContent: "center",
+                  flexGrow: 1,
                 }
               ]}
               style={!isMobile ? { flex: 1, minWidth: 0 } : undefined}
@@ -3107,13 +3133,20 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
               })}
             </ScrollView>
 
-            <View style={[
-              styles.headerButtonsRow,
-              { paddingVertical: 6, gap: 8 },
-              !isMobile && {
-                flexShrink: 0,
-                marginLeft: 12,
-              },
+            <View
+              onLayout={(e) => {
+                const w = e.nativeEvent.layout.width;
+                if (w > 0 && Math.abs(w - headerButtonsWidth) > 5) {
+                  setHeaderButtonsWidth(w);
+                }
+              }}
+              style={[
+                styles.headerButtonsRow,
+                { paddingVertical: 6, gap: 8 },
+                !isMobile && {
+                  flexShrink: 0,
+                  marginLeft: 12,
+                },
               isMobile && {
                 flexDirection: "row",
                 flexWrap: "wrap",
