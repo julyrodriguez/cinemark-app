@@ -3072,10 +3072,11 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
           <View style={[
             styles.tabBarContainer,
             !isMobile && {
-              position: "relative",
               flexDirection: "row",
               alignItems: "center",
-              justifyContent: "center",
+              justifyContent: "space-between",
+              paddingLeft: 12,
+              paddingRight: 16,
             }
           ]}>
             <ScrollView
@@ -3083,9 +3084,12 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={[
                 styles.tabBar,
-                !isMobile && { paddingHorizontal: 260 }
+                !isMobile && {
+                  paddingHorizontal: 8,
+                  justifyContent: windowWidth >= 1150 ? "center" : "flex-start",
+                }
               ]}
-              style={!isMobile ? { flex: 1 } : undefined}
+              style={!isMobile ? { flex: 1, minWidth: 0 } : undefined}
             >
               {DAYS_OF_WEEK.map((day) => {
                 const isActive = selectedDay === day.key;
@@ -3107,8 +3111,8 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
               styles.headerButtonsRow,
               { paddingVertical: 6, gap: 8 },
               !isMobile && {
-                position: "absolute",
-                right: 16,
+                flexShrink: 0,
+                marginLeft: 12,
               },
               isMobile && {
                 flexDirection: "row",
@@ -4866,6 +4870,11 @@ const styles = StyleSheet.create({
     borderBottomColor: COLORS.border,
   },
   statsCardTitle: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: COLORS.text,
+  },
+  statsAlertsTitle: {
     fontSize: 14,
     fontWeight: "bold",
     color: COLORS.text,
