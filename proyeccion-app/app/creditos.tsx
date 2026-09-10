@@ -5,7 +5,6 @@ import {
   deleteDoc,
   doc,
   DocumentData,
-  endAt,
   getDocs,
   limit as qLimit,
   orderBy,
@@ -13,7 +12,6 @@ import {
   QueryDocumentSnapshot,
   serverTimestamp,
   startAfter,
-  startAt,
   updateDoc,
 } from "@/lib/dbService";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -85,6 +83,106 @@ function normalizeHHMMSS(input: string): string | null {
   }
 
   return `${pad2(h)}:${pad2(m)}:${pad2(s)}`;
+}
+
+function normalizeSearchText(str: string): string {
+  if (!str) return "";
+  return str
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // sin acentos ni diacríticos
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ") // símbolos y puntuación a espacio
+    .replace(/\s+/g, " ") // colapsar espacios múltiples
+    .trim();
+}
+
+function searchCreditos(items: Credito[], queryStr: string): Credito[] {
+  const rawQuery = queryStr.trim();
+  if (!rawQuery) return [];
+
+  const normQuery = normalizeSearchText(rawQuery);
+  if (!normQuery) return [];
+
+  const queryTokens = normQuery.split(" ").filter((t) => t.length > 0);
+  const normQueryCompact = normQuery.replace(/\s+/g, "");
+
+  const scoredResults: { item: Credito; score: number }[] = [];
+
+  for (const item of items) {
+    const rawTitle = item.pelicula || "";
+    const normTitle = normalizeSearchText(rawTitle);
+    if (!normTitle) continue;
+
+    const normTitleCompact = normTitle.replace(/\s+/g, "");
+
+    const directSubstring = normTitle.includes(normQuery);
+    const allTokensMatch =
+      queryTokens.length > 0 && queryTokens.every((token) => normTitle.includes(token));
+    const compactMatch =
+      normQueryCompact.length >= 2 && normTitleCompact.includes(normQueryCompact);
+
+    // Si no coincide por subcadena, ni por todas las palabras, ni sin espacios, descartar
+    if (!directSubstring && !allTokensMatch && !compactMatch) {
+      continue;
+    }
+
+    let score = 0;
+
+    // 1. Coincidencia exacta completa
+    if (normTitle === normQuery || normTitleCompact === normQueryCompact) {
+      score += 1000;
+    }
+    // 2. El título empieza con la frase buscada
+    else if (normTitle.startsWith(normQuery) || normTitleCompact.startsWith(normQueryCompact)) {
+      score += 800;
+    }
+    // 3. Contiene la frase exacta buscada como subcadena en cualquier parte
+    else if (directSubstring) {
+      score += 600;
+    }
+    // 4. Coincidencia compacta ignorando espacios (ej: spider man vs spiderman)
+    else if (compactMatch) {
+      score += 500;
+    }
+    // 5. Contiene todas las palabras buscadas
+    else {
+      score += 400;
+    }
+
+    // Bonus por coincidencia al inicio de palabras del título
+    const titleWords = normTitle.split(" ").filter(Boolean);
+    let wordMatches = 0;
+    for (const token of queryTokens) {
+      if (titleWords.some((tw) => tw === token)) {
+        wordMatches += 2; // palabra idéntica
+      } else if (titleWords.some((tw) => tw.startsWith(token))) {
+        wordMatches += 1; // palabra que empieza con el token
+      }
+    }
+    score += wordMatches * 25;
+
+    // Pequeño bono a títulos más cortos (mayor relevancia)
+    const lengthDiff = Math.abs(normTitle.length - normQuery.length);
+    score -= Math.min(lengthDiff * 0.5, 50);
+
+    scoredResults.push({ item, score });
+  }
+
+  // Ordenar por relevancia descendente; si empatan, por fecha más reciente
+  scoredResults.sort((a, b) => {
+    if (b.score !== a.score) {
+      return b.score - a.score;
+    }
+    const tA =
+      a.item.createdAt?.toMillis?.() ??
+      (typeof a.item.createdAt === "number" ? a.item.createdAt : 0);
+    const tB =
+      b.item.createdAt?.toMillis?.() ??
+      (typeof b.item.createdAt === "number" ? b.item.createdAt : 0);
+    return tB - tA;
+  });
+
+  return scoredResults.map((r) => r.item);
 }
 
 const CreditoCard = ({
@@ -257,6 +355,9 @@ export default function CreditosScreen({ readOnly = false }: { readOnly?: boolea
   const [hasMore, setHasMore] = useState(true);
   const lastDocRef = useRef<QueryDocumentSnapshot<DocumentData> | null>(null);
 
+  const allCreditosCache = useRef<Credito[] | null>(null);
+  const loadingAllRef = useRef<Promise<Credito[]> | null>(null);
+
   const [search, setSearch] = useState("");
   const [searching, setSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<Credito[]>([]);
@@ -302,6 +403,32 @@ export default function CreditosScreen({ readOnly = false }: { readOnly?: boolea
     };
   };
 
+  const fetchAllCreditos = async (): Promise<Credito[]> => {
+    if (allCreditosCache.current) {
+      return allCreditosCache.current;
+    }
+    if (!cineId || !colRef) return [];
+    if (loadingAllRef.current) {
+      return loadingAllRef.current;
+    }
+
+    loadingAllRef.current = (async () => {
+      try {
+        const snap = await getDocs(colRef);
+        const list = snap.docs.map(mapDoc);
+        allCreditosCache.current = list;
+        return list;
+      } catch (e) {
+        console.error("[creditos] Error al cargar todos los créditos para el buscador:", e);
+        return [];
+      } finally {
+        loadingAllRef.current = null;
+      }
+    })();
+
+    return loadingAllRef.current;
+  };
+
   const loadFirstPage = async () => {
     if (sessionLoading) {
       setLoading(true);
@@ -320,6 +447,8 @@ export default function CreditosScreen({ readOnly = false }: { readOnly?: boolea
       setItems(data);
       lastDocRef.current = snap.docs[snap.docs.length - 1] ?? null;
       setHasMore(snap.docs.length === PAGE);
+      // Pre-cargar todos los créditos en segundo plano para que la búsqueda sea instantánea
+      fetchAllCreditos().catch(() => {});
     } catch (e) {
       console.error(e);
       Alert.alert("Créditos", "No se pudo cargar la lista.");
@@ -349,17 +478,19 @@ export default function CreditosScreen({ readOnly = false }: { readOnly?: boolea
   };
 
   useEffect(() => {
+    allCreditosCache.current = null;
     loadFirstPage();
   }, [cineId, sessionLoading, colRef]);
 
   const runSearch = async (term: string) => {
-    if (!cineId || !colRef) {
+    const trimmed = term.trim();
+    if (!trimmed) {
       setSearching(false);
       setSearchResults([]);
       return;
     }
-    const key = removeAccents(term).trim().toLowerCase();
-    if (key.length < 2) {
+
+    if (!cineId || !colRef) {
       setSearching(false);
       setSearchResults([]);
       return;
@@ -367,15 +498,9 @@ export default function CreditosScreen({ readOnly = false }: { readOnly?: boolea
 
     setSearching(true);
     try {
-      const qy = query(
-        colRef,
-        orderBy("peliculaLower"),
-        startAt(key),
-        endAt(key + "\uf8ff"),
-        qLimit(20)
-      );
-      const snap = await getDocs(qy);
-      setSearchResults(snap.docs.map(mapDoc));
+      const all = await fetchAllCreditos();
+      const matched = searchCreditos(all, trimmed);
+      setSearchResults(matched);
     } catch (e) {
       console.error(e);
       Alert.alert("Créditos", "No se pudo buscar.");
@@ -386,9 +511,15 @@ export default function CreditosScreen({ readOnly = false }: { readOnly?: boolea
 
   const onChangeSearch = (t: string) => {
     setSearch(t);
+    if (!t.trim()) {
+      setSearching(false);
+      setSearchResults([]);
+      clearTimeout(searchTimer.current);
+      return;
+    }
     setSearching(true);
     clearTimeout(searchTimer.current);
-    searchTimer.current = setTimeout(() => runSearch(t), 300);
+    searchTimer.current = setTimeout(() => runSearch(t), 200);
   };
 
   const resetForm = () => {
@@ -521,7 +652,8 @@ export default function CreditosScreen({ readOnly = false }: { readOnly?: boolea
           doc(db, CINES_COLLECTION, cineId, "creditos", editingId),
           payload
         );
-        if (search.trim().length >= 2) runSearch(search);
+        allCreditosCache.current = null;
+        if (search.trim().length > 0) runSearch(search);
         else loadFirstPage();
       } else {
         if (!cineId) return;
@@ -530,7 +662,8 @@ export default function CreditosScreen({ readOnly = false }: { readOnly?: boolea
           createdAt: serverTimestamp(),
           createdBy: user?.uid ?? null,
         });
-        if (search.trim().length >= 2) runSearch(search);
+        allCreditosCache.current = null;
+        if (search.trim().length > 0) runSearch(search);
         else loadFirstPage();
       }
 
@@ -552,7 +685,11 @@ export default function CreditosScreen({ readOnly = false }: { readOnly?: boolea
     try {
       await deleteDoc(doc(db, CINES_COLLECTION, cineId, "creditos", id));
 
-      if (search.trim().length >= 2) {
+      if (allCreditosCache.current) {
+        allCreditosCache.current = allCreditosCache.current.filter((x) => x.id !== id);
+      }
+
+      if (search.trim().length > 0) {
         setSearchResults((prev) => prev.filter((x) => x.id !== id));
       } else {
         setItems((prev) => prev.filter((x) => x.id !== id));
@@ -576,7 +713,7 @@ export default function CreditosScreen({ readOnly = false }: { readOnly?: boolea
     />
   );
 
-  const showingSearch = search.trim().length >= 2;
+  const showingSearch = search.trim().length > 0;
   const data = showingSearch ? searchResults : items;
 
   if (loading) {
