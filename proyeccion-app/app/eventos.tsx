@@ -36,6 +36,7 @@ import { buildSalasFromCount, getCineConfig } from "../lib/cineConfig";
 import { CINES_COLLECTION, db } from "../lib/firebaseConfig";
 import { COLORS, THEME } from "../lib/theme";
 import { useAuthUser } from "../lib/useAuthUser";
+import SEOHead from "@/components/SEOHead";
 import {
   formatDateInput,
   formatTimeInput,
@@ -574,7 +575,17 @@ export default function EventosScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <>
+      <SEOHead
+        title="Eventos y Funciones Especiales | Cines"
+        description="Gestión, programación y seguimiento de eventos corporativos, avant-premieres y funciones especiales en salas de cine."
+        pathname="/eventos"
+      />
+      <View
+        style={styles.container}
+        {...(Platform.OS === "web" ? ({ role: "main" } as any) : {})}
+        accessibilityRole="none"
+      >
       <FlatList
         data={eventos}
         keyExtractor={(item) => item.id}
@@ -1212,7 +1223,8 @@ export default function EventosScreen() {
           </View>
         </View>
       </Modal>
-    </View>
+      </View>
+    </>
   );
 }
 

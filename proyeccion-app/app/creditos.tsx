@@ -38,6 +38,7 @@ import {
 import { auth, db, CINES_COLLECTION } from "../lib/firebaseConfig";
 import { COLORS, THEME } from "../lib/theme";
 import { useAuthUser } from "../lib/useAuthUser";
+import SEOHead from "@/components/SEOHead";
 
 const EXTRA = { success: "#16A34A", danger: "#DC2626" };
 
@@ -726,7 +727,17 @@ export default function CreditosScreen({ readOnly = false }: { readOnly?: boolea
   }
 
   return (
-    <View style={styles.container}>
+    <>
+      <SEOHead
+        title="Créditos y Postcréditos | Cines"
+        description="Base de datos y buscador inteligente de tiempos de créditos finales y postcréditos para encendido de luces de sala en proyección."
+        pathname="/creditos"
+      />
+      <View
+        style={styles.container}
+        {...(Platform.OS === "web" ? ({ role: "main" } as any) : {})}
+        accessibilityRole="none"
+      >
       <View style={styles.topArea}>
         <View style={styles.searchWrap}>
           <MaterialCommunityIcons name="magnify" size={20} color={COLORS.muted} style={{ marginRight: 8 }} />
@@ -1018,7 +1029,8 @@ export default function CreditosScreen({ readOnly = false }: { readOnly?: boolea
           </View>
         </KeyboardAvoidingView>
       </Modal>
-    </View>
+      </View>
+    </>
   );
 }
 

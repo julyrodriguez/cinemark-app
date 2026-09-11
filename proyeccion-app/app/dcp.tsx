@@ -47,6 +47,7 @@ import { getCineConfig } from "../lib/cineConfig";
 import { COLORS, THEME } from "../lib/theme";
 import { useAuthUser } from "../lib/useAuthUser";
 import { Dcp } from "../lib/types";
+import SEOHead from "@/components/SEOHead";
 
 /* ── helpers ── */
 
@@ -848,7 +849,17 @@ export default function DcpScreen({ readOnly = false }: { readOnly?: boolean }) 
   /* ── main render ── */
 
   return (
-    <View style={styles.container}>
+    <>
+      <SEOHead
+        title="Control de DCP y KDM | Cines"
+        description="Monitoreo, ingesta y control de copias digitales DCP y llaves de seguridad KDM para salas de cine."
+        pathname="/dcp"
+      />
+      <View
+        style={styles.container}
+        {...(Platform.OS === "web" ? ({ role: "main" } as any) : {})}
+        accessibilityRole="none"
+      >
       <ScrollView contentContainerStyle={styles.listContent}>
         {loading && activos.length === 0 ? (
           <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 40 }} />
@@ -1313,7 +1324,8 @@ export default function DcpScreen({ readOnly = false }: { readOnly?: boolean }) 
           </View>
         </View>
       </Modal>
-    </View>
+      </View>
+    </>
   );
 }
 

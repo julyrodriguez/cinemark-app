@@ -21,6 +21,7 @@ import {
 } from "../lib/firebaseConfig";
 import { COLORS } from "../lib/theme";
 import { sanitizeCineId } from "@/shared/utils";
+import SEOHead from "@/components/SEOHead";
 
 export default function Login() {
   const [username, setUsername] = useState("");
@@ -102,15 +103,25 @@ export default function Login() {
   if (authed) return <Redirect href="/" />;
 
   return (
-    <KeyboardAvoidingView
-      style={styles.flex}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-    >
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
+    <>
+      <SEOHead
+        title="Iniciar Sesión | Cines - Gestión de Proyección"
+        description="Portal de acceso seguro al sistema de gestión de salas de cine, control de proyecciones, programación semanal y mantenimiento técnico."
+        pathname="/login"
+      />
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
-        <View style={styles.container}>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View
+            style={styles.container}
+            {...(Platform.OS === "web" ? ({ role: "main" } as any) : {})}
+            accessibilityRole="none"
+          >
           <View style={styles.hero}>
             <View style={styles.logoCircle}>
               <MaterialCommunityIcons
@@ -233,6 +244,7 @@ export default function Login() {
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
+    </>
   );
 }
 

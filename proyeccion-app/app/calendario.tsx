@@ -34,6 +34,7 @@ import {
 import { COLORS, THEME } from "../lib/theme";
 import { useAuthUser } from "../lib/useAuthUser";
 import { sanitizeCineId, pad2, toLocalYmd, monthRange } from "@/shared/utils";
+import SEOHead from "@/components/SEOHead";
 
 LocaleConfig.locales["es"] = {
   monthNames: [
@@ -554,7 +555,17 @@ export default function CalendarTab({ readOnly = false }: { readOnly?: boolean }
   };
 
   return (
-    <View style={{ flex: 1 }}>
+    <>
+      <SEOHead
+        title="Calendario de Proyección | Cines"
+        description="Calendario de proyecciones, tareas técnicas, inspecciones y eventos programados en salas de cine."
+        pathname="/calendario"
+      />
+      <View
+        style={{ flex: 1 }}
+        {...(Platform.OS === "web" ? ({ role: "main" } as any) : {})}
+        accessibilityRole="none"
+      >
       {isDesktop ? (
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16 }}>
           {renderDesktopCalendar()}
@@ -758,7 +769,8 @@ export default function CalendarTab({ readOnly = false }: { readOnly?: boolean }
           </View>
         </View>
       </Modal>
-    </View>
+      </View>
+    </>
   );
 }
 

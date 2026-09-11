@@ -17,6 +17,8 @@ export default function PageContainer({ children }: Props) {
         styles.outer,
         { backgroundColor: isWeb ? THEME.colors.bg : THEME.colors.bgMobile },
       ]}
+      {...(isWeb ? ({ role: "main" } as any) : {})}
+      accessibilityRole="none"
     >
       <View
         style={[

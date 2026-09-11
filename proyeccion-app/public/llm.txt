@@ -1,0 +1,45 @@
+# Cines - Sistema Integral de Gestión de Proyección Cinematográfica
+
+> Plataforma web y móvil para la administración operativa, técnica y de programación de complejos cinematográficos.
+
+## Información General y Acceso
+- **Nombre**: Cines (Proyección App)
+- **Propósito**: Gestión técnica de salas de cine, control de proyecciones, horarios de créditos y postcréditos, mantenimiento de lámparas xenón/láser, inventario DCP/KDM, devoluciones RMA y programación semanal.
+- **Requisito de Acceso**: Todas las funcionalidades operativas requieren autenticación mediante Firebase Auth con cuentas autorizadas por complejo de cine. Los usuarios no autenticados deben ingresar mediante el portal de login.
+- **Portal de Acceso Público**: `/login`
+- **Sitemap**: https://cines.vacaslocas.com.ar/sitemap.xml
+
+## Módulos Principales del Sistema
+
+### 1. Inicio de Sesión (`/login`)
+Portal de autenticación seguro para proyeccionistas, coordinadores de cine y supervisores técnicos. Requiere correo y contraseña autorizados.
+
+### 2. Panel de Control de Proyección (`/`)
+- **Programación Semanal**: Visualización interactiva de la grilla horaria por sala, funciones simultáneas, eventos y películas. Permite cruce automatizado con créditos e impresión de hojas de función con horarios de luces.
+- **Marketing y Trailers**: Control de trailers programados, pósters digitales y banners publicitarios.
+- **Ingesta DCP**: Verificación de copias digitales cargadas en servidores de proyección.
+- **Control de Salas**: Chequeo de estado de butacas (leves, moderadas, graves) y observaciones generales por sala.
+
+### 3. Créditos y Postcréditos (`/creditos`)
+Base de datos centralizada de tiempos de inicio de créditos finales y postcréditos (secuencias de encendido y apagado de luces de sala para proyeccionistas).
+- Incluye buscador inteligente en tiempo real con normalización de títulos, búsqueda por subcadenas y palabras clave (ej: "calle oak" encuentra "El final de la calle oak").
+
+### 4. Calendario de Proyección (`/calendario`)
+Vista calendario mensual y semanal para coordinar eventos corporativos, avant-premieres, proyecciones privadas y tareas técnicas preventivas.
+
+### 5. Mantenimiento y Lámparas (`/mantenimientos`)
+- Seguimiento de horas acumuladas de lámparas xenón y proyectores láser.
+- Control de cambios de lámparas, ajuste de potencia y registro de fallas.
+- Planilla de control semanal de salas (calidad de proyección, sonido, temperatura y filtros).
+
+### 6. Control de DCP y KDM (`/dcp`)
+Monitoreo de estado de copias digitales (Digital Cinema Package) e ingesta de llaves KDM (Key Delivery Message), alertando vencimientos y autorizaciones por sala.
+
+### 7. Eventos Especiales (`/eventos`)
+Planificación y seguimiento de funciones privadas, eventos corporativos, conferencias y festivales de cine con asignación de duración para el staff.
+
+### 8. Gestión de RMA y Garantías (`/rma`)
+Control de equipamiento técnico averiado enviado a reparación, reclamos de garantía (RMA) a distribuidores y seguimiento logístico.
+
+### 9. Administración de Complejos (`/admin-cines`)
+Configuración de cines, cantidad de salas, nombres de complejos y asignación de permisos de usuario.

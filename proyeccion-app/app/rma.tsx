@@ -30,9 +30,11 @@ import PageTitle from "@/components/PageTitle";
 import { auth, db, CINES_COLLECTION } from "../lib/firebaseConfig";
 import { COLORS, THEME } from "../lib/theme";
 import { useAuthUser } from "../lib/useAuthUser";
+import { Platform } from "react-native";
 
 import RmaItem from "../components/rmaItem";
 import { Rma } from "../lib/types";
+import SEOHead from "@/components/SEOHead";
 
 export default function RmaTab({ readOnly = false }: { readOnly?: boolean }) {
   const { user, cineId, loading: sessionLoading, displayName } = useAuthUser();
@@ -168,7 +170,17 @@ export default function RmaTab({ readOnly = false }: { readOnly?: boolean }) {
   };
 
   return (
-    <View style={{ flex: 1 }}>
+    <>
+      <SEOHead
+        title="Gestión de RMA y Garantías | Cines"
+        description="Seguimiento de devoluciones técnicas, garantías oficiales y estado de reparación de equipos de cine."
+        pathname="/rma"
+      />
+      <View
+        style={{ flex: 1 }}
+        {...(Platform.OS === "web" ? ({ role: "main" } as any) : {})}
+        accessibilityRole="none"
+      >
 
       {loading ? (
         <View style={styles.center}>
@@ -352,7 +364,8 @@ export default function RmaTab({ readOnly = false }: { readOnly?: boolean }) {
           </View>
         </View>
       </Modal>
-    </View>
+      </View>
+    </>
   );
 }
 

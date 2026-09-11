@@ -27,7 +27,11 @@ export default function TopNav({ active }: Props) {
   }
 
   return (
-    <View style={[st.wrap, isWeb && st.wrapWeb]}>
+    <View
+      style={[st.wrap, isWeb && st.wrapWeb]}
+      {...(isWeb ? ({ role: "navigation" } as any) : {})}
+      accessibilityRole="tablist"
+    >
       <View style={[st.innerWrap, isWeb && { maxWidth: contentMaxWidth }]}>
         <ScrollView
           horizontal={!isWeb}

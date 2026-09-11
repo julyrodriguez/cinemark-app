@@ -1,0 +1,21 @@
+# robots.txt for Cines - Sistema de Gestión de Proyección
+# https://cines.vacaslocas.com.ar
+
+User-agent: *
+Allow: /
+Allow: /login
+Allow: /manifest.json
+Allow: /og-image.jpg
+Allow: /og-image.png
+Allow: /logo192.png
+Allow: /logo512.png
+Allow: /llms.txt
+Allow: /llm.txt
+
+# Rutas internas protegidas por autenticación
+Disallow: /admin-cines
+Disallow: /_expo/
+Disallow: /api/
+
+# Sitemap index
+Sitemap: https://cines.vacaslocas.com.ar/sitemap.xml

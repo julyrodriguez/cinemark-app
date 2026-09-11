@@ -19,6 +19,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import NavHeader from "@/components/NavHeader";
 import CineProfileModal from "@/components/cineProfileModal";
 import { IpAccessGate } from "@/components/IpAccessGate";
+import SEOHead from "@/components/SEOHead";
 import { auth, db, CINES_COLLECTION } from "../lib/firebaseConfig";
 import {
   doc,
@@ -1043,43 +1044,57 @@ export default function Home() {
   ];
 
   return (
-    <View style={styles.mainAppRow}>
-      {/* 1. Sidebar para Web/Desktop */}
-      {!isMobile && (
+    <>
+      <SEOHead
+        title="Panel de Proyección | Cines"
+        description="Panel central de control y gestión de proyección cinematográfica. Programación semanal, control de salas, eventos, trailers y copias DCP."
+        pathname="/"
+      />
+      <View style={styles.mainAppRow}>
+        {/* 1. Sidebar para Web/Desktop */}
+        {!isMobile && (
+          <View
+            style={sidebarStyle}
+            {...(Platform.OS === "web" ? ({ role: "navigation" } as any) : {})}
+            accessibilityRole="none"
+            {...({
+              onMouseEnter: () => setIsHovered(true),
+              onMouseLeave: () => setIsHovered(false),
+            } as any)}
+          >
+            {renderSidebarContent()}
+          </View>
+        )}
+
+        {/* 2. Backdrop para Drawer Móvil */}
+        {isMobile && isDrawerOpen && (
+          <TouchableOpacity
+            style={styles.backdrop}
+            onPress={() => setIsDrawerOpen(false)}
+            activeOpacity={1}
+          />
+        )}
+
+        {/* 3. Panel de Drawer Móvil */}
+        {isMobile && (
+          <View
+            style={[
+              styles.drawer,
+              { left: isDrawerOpen ? 0 : -280 }
+            ]}
+            {...(Platform.OS === "web" ? ({ role: "navigation" } as any) : {})}
+            accessibilityRole="none"
+          >
+            {renderSidebarContent(true)}
+          </View>
+        )}
+
+        {/* 4. Contenedor de Contenido Principal */}
         <View
-          style={sidebarStyle}
-          {...({
-            onMouseEnter: () => setIsHovered(true),
-            onMouseLeave: () => setIsHovered(false),
-          } as any)}
+          style={styles.mainContentContainer}
+          {...(Platform.OS === "web" ? ({ role: "main" } as any) : {})}
+          accessibilityRole="none"
         >
-          {renderSidebarContent()}
-        </View>
-      )}
-
-      {/* 2. Backdrop para Drawer Móvil */}
-      {isMobile && isDrawerOpen && (
-        <TouchableOpacity
-          style={styles.backdrop}
-          onPress={() => setIsDrawerOpen(false)}
-          activeOpacity={1}
-        />
-      )}
-
-      {/* 3. Panel de Drawer Móvil */}
-      {isMobile && (
-        <View
-          style={[
-            styles.drawer,
-            { left: isDrawerOpen ? 0 : -280 }
-          ]}
-        >
-          {renderSidebarContent(true)}
-        </View>
-      )}
-
-      {/* 4. Contenedor de Contenido Principal */}
-      <View style={styles.mainContentContainer}>
         <NavHeader
           title={cineLabel}
           onPressSettings={() => setProfileVisible(true)}
@@ -1257,7 +1272,8 @@ export default function Home() {
           </View>
         </View>
       </Modal>
-    </View>
+      </View>
+    </>
   );
 }
 

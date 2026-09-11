@@ -251,7 +251,11 @@ export default function NavHeader({
   const isDark = themeMode === "dark";
 
   return (
-    <View style={[s.wrap, isWeb ? s.wrapWeb : s.wrapMobile]}>
+    <View
+      style={[s.wrap, isWeb ? s.wrapWeb : s.wrapMobile]}
+      {...(isWeb ? ({ role: "banner" } as any) : {})}
+      accessibilityRole="header"
+    >
       <View style={s.row}>
         {/* Botón de menú en dispositivos móviles */}
         <View style={s.side}>

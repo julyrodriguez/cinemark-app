@@ -16,6 +16,7 @@ import NavHeader from "@/components/NavHeader";
 import PageContainer from "@/components/PageContainer";
 import PageTitle from "@/components/PageTitle";
 import SectionCard from "@/components/SectionCard";
+import SEOHead from "@/components/SEOHead";
 import {
   adminChangeCinePassword,
   adminCreateCine,
@@ -479,12 +480,21 @@ export default function AdminCinesScreen() {
   }
 
   return (
-    <View
-      style={[
-        s.container,
-        { backgroundColor: isWeb ? THEME.colors.bg : THEME.colors.bgMobile },
-      ]}
-    >
+    <>
+      <SEOHead
+        title="Administración de Cines | Cines"
+        description="Panel de administración general para la gestión de complejos de cine, salas y asignación de usuarios."
+        pathname="/admin-cines"
+        noIndex
+      />
+      <View
+        style={[
+          s.container,
+          { backgroundColor: isWeb ? THEME.colors.bg : THEME.colors.bgMobile },
+        ]}
+        {...(isWeb ? ({ role: "main" } as any) : {})}
+        accessibilityRole="none"
+      >
       <NavHeader title="Admin Cines" subtitle="Gestión de cines y usuarios" />
 
  <ScrollView
@@ -1090,7 +1100,8 @@ export default function AdminCinesScreen() {
           </View>
         </View>
       </Modal>
-    </View>
+      </View>
+    </>
   );
 }
 

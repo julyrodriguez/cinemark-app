@@ -19,6 +19,7 @@ import {
 
 import PageContainer from "@/components/PageContainer";
 import SectionCard from "@/components/SectionCard";
+import SEOHead from "@/components/SEOHead";
 import { CINES_COLLECTION, db, functions } from "@/lib/firebaseConfig";
 import { COLORS, THEME } from "@/lib/theme";
 import { useAuthUser } from "@/lib/useAuthUser";
@@ -396,7 +397,14 @@ export default function OficinasCalendarioScreen() {
   }
 
   return (
-  <View style={s.container}>
+    <>
+      <SEOHead
+        title="Calendario de Oficinas | Cines"
+        description="Calendario de coordinación operativa central para oficinas de administración de cines."
+        pathname="/oficinas-calendario"
+        noIndex
+      />
+      <View style={s.container}>
     <PageContainer >
       <SectionCard style={s.controlsCard}>
         <View style={s.controlsWrap}>
@@ -640,10 +648,10 @@ export default function OficinasCalendarioScreen() {
           })}
         </ScrollView>
       )}
-    </PageContainer>
-  </View>
-);
-
+      </PageContainer>
+    </View>
+    </>
+  );
 }
 
 const s = StyleSheet.create({

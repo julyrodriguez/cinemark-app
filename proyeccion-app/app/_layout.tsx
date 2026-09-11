@@ -1,3 +1,4 @@
+import Head from "expo-router/head";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { useEffect, useState } from "react";
 import { Platform, View, ActivityIndicator } from "react-native";
@@ -7,11 +8,13 @@ import { auth } from "@/lib/firebaseConfig";
 export default function Layout() {
   const router = useRouter();
   const segments = useSegments();
-  const [initializing, setInitializing] = useState(true);
+  const [initializing, setInitializing] = useState(typeof window !== "undefined");
 
   useEffect(() => {
     if (Platform.OS === "web") {
-      document.title = "Cines";
+      if (!document.title) {
+        document.title = "Cines - Gestión de Proyección";
+      }
 
       // Vincular manifest.json de forma dinámica si no está presente
       if (!document.getElementById("pwa-manifest")) {
@@ -53,8 +56,12 @@ export default function Layout() {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       const currentPath = segments.join("/");
       const isLoginPage = currentPath === "login" || segments[0] === "login";
+      const isNotFoundPage =
+        currentPath === "+not-found" ||
+        segments[0] === "+not-found" ||
+        segments.includes("+not-found");
       
-      if (!user && !isLoginPage) {
+      if (!user && !isLoginPage && !isNotFoundPage) {
         // Usuario no autenticado intentando acceder a ruta protegida
         router.replace("/login");
       } else if (user && isLoginPage) {
@@ -74,19 +81,32 @@ export default function Layout() {
   // Mostrar pantalla de carga mientras se verifica la autenticación
   if (initializing) {
     return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#fff" }}>
-        <ActivityIndicator size="large" color="#007AFF" />
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#0A0F1D" }}>
+        <ActivityIndicator size="large" color="#38BDF8" />
       </View>
     );
   }
 
   return (
-    <Stack
-      screenOptions={{
-        headerShown: false,
-        title: "Cine",
-        animation: "fade",
-      }}
-    />
+    <>
+      <Head>
+        <meta charSet="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+        <meta name="theme-color" content="#0A0F1D" />
+        <link rel="icon" type="image/png" href="/logo192.png" />
+      </Head>
+      <View
+        style={{ flex: 1 }}
+        {...(Platform.OS === "web" ? ({ role: "application" } as any) : {})}
+      >
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            title: "Cine",
+            animation: "fade",
+          }}
+        />
+      </View>
+    </>
   );
 }

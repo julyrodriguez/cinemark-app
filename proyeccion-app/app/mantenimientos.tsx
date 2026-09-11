@@ -36,6 +36,7 @@ import { auth, db, CINES_COLLECTION } from "../lib/firebaseConfig";
 import { COLORS, THEME } from "../lib/theme";
 import { useAuthUser } from "../lib/useAuthUser";
 import { useAppLayout } from "../lib/useAppLayout";
+import SEOHead from "@/components/SEOHead";
 
 export interface Mantenimiento {
   id: string;
@@ -1252,7 +1253,17 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
   };
 
   return (
-    <View style={[styles.container, { padding: isMobile ? 8 : 16 }]}>
+    <>
+      <SEOHead
+        title="Mantenimiento y Lámparas | Cines"
+        description="Control de mantenimiento preventivo, seguimiento de horas de lámparas de proyectores y chequeo semanal de salas de cine."
+        pathname="/mantenimientos"
+      />
+      <View
+        style={[styles.container, { padding: isMobile ? 8 : 16 }]}
+        {...(Platform.OS === "web" ? ({ role: "main" } as any) : {})}
+        accessibilityRole="none"
+      >
 
       {/* Subtab Navigation */}
       <View style={[styles.tabBar, { marginBottom: isMobile ? 12 : 16 }]}>
@@ -1601,7 +1612,8 @@ export default function MantenimientosScreen({ readOnly = false }: { readOnly?: 
           </View>
         </TouchableWithoutFeedback>
       </Modal>
-    </View>
+      </View>
+    </>
   );
 }
 

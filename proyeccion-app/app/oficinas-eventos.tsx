@@ -36,6 +36,7 @@ import { COLORS, THEME } from "@/lib/theme";
 import { useAuthUser } from "@/lib/useAuthUser";
 import PageContainer from "@/components/PageContainer";
 import SectionCard from "@/components/SectionCard";
+import SEOHead from "@/components/SEOHead";
 import {
   formatDateInput,
   formatTimeInput,
@@ -345,7 +346,14 @@ export default function OficinasEventosScreen() {
   }
 
   return (
-    <View style={s.container}>
+    <>
+      <SEOHead
+        title="Eventos de Oficinas | Cines"
+        description="Registro y seguimiento centralizado de eventos y funciones especiales coordinadas desde oficinas de cine."
+        pathname="/oficinas-eventos"
+        noIndex
+      />
+      <View style={s.container}>
       <PageContainer>
         <SectionCard style={{ marginBottom: 16 }}>
           <View style={s.header}>
@@ -704,7 +712,8 @@ export default function OficinasEventosScreen() {
           </View>
         </TouchableWithoutFeedback>
       </Modal>
-    </View>
+      </View>
+    </>
   );
 }
 
