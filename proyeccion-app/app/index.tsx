@@ -42,6 +42,8 @@ import RmaTab from "./screens/RmaTab";
 import DcpTab from "./screens/DcpTab";
 import OficinasCalendarioScreen from "./oficinas-calendario";
 import OficinasEventosScreen from "./oficinas-eventos";
+import CoordinadoresPoziScreen from "./screens/CoordinadoresPoziScreen";
+import CoordinadoresProgramacionScreen from "./screens/CoordinadoresProgramacionScreen";
 import CoordinadoresQuimicosScreen from "./screens/CoordinadoresQuimicosScreen";
 import CoordinadoresLentesScreen from "./screens/CoordinadoresLentesScreen";
 import CoordinadoresProximamenteScreen from "./screens/CoordinadoresProximamenteScreen";
@@ -61,7 +63,7 @@ import CustomPostersScreen from "./screens/CustomPostersScreen";
 type MainTab = "PROGRAMACIÓN" | "CALENDARIO" | "EVENTOS" | "PROYECCIÓN" | "SERVICIOS" | "COORDINADORES" | "COMPAÑÍA" | "FEEDBACK";
 type ProyeccionTab = "RMA" | "MANTENIMIENTOS" | "CREDITOS" | "DCP" | "TRAILERS_SEMANALES" | "CHEQUEO_COPIAS" | "CONTROL_SEMANAL" | "LAMPARAS" | "CIERRE_MES";
 type MarketingSubTab = "MKT" | "PROGRAMACION" | "CONTROL_SALAS" | "MAPA_BANNERS" | "CUSTOM_POSTERS";
-type CoordinadoresSubTab = "QUIMICOS" | "LENTES_3D" | "PROXIMAMENTE";
+type CoordinadoresSubTab = "POZI" | "PROGRAMACION" | "QUIMICOS" | "LENTES_3D" | "PROXIMAMENTE";
 
 const MAIN_TAB_META = {
   PROGRAMACIÓN: { label: "Programación", icon: "calendar-clock" },
@@ -94,6 +96,8 @@ const SUB_TABS = {
     { key: "CUSTOM_POSTERS", label: "Pósters Custom", icon: "image-plus" },
   ],
   COORDINADORES: [
+    { key: "POZI", label: "POZI", icon: "account-clock-outline" },
+    { key: "PROGRAMACION", label: "Programación", icon: "calendar-clock" },
     { key: "QUIMICOS", label: "Químicos", icon: "flask-outline" },
     { key: "LENTES_3D", label: "Lentes 3D", icon: "glasses" },
     { key: "PROXIMAMENTE", label: "Productos", icon: "package-variant-closed" },
@@ -185,7 +189,7 @@ export default function Home() {
   const [mainTab, setMainTab] = useState<MainTab>("PROGRAMACIÓN");
   const [proyeccionTab, setProyeccionTab] = useState<ProyeccionTab>("LAMPARAS");
   const [marketingTab, setMarketingTab] = useState<MarketingSubTab>("PROGRAMACION");
-  const [coordinadoresTab, setCoordinadoresTab] = useState<CoordinadoresSubTab>("QUIMICOS");
+  const [coordinadoresTab, setCoordinadoresTab] = useState<CoordinadoresSubTab>("POZI");
 
   const [isHovered, setIsHovered] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -771,7 +775,7 @@ export default function Home() {
                     // Auto-seleccionar primer subtab
                     if (tab === "PROYECCIÓN") setProyeccionTab("LAMPARAS");
                     if (tab === "SERVICIOS") setMarketingTab("PROGRAMACION");
-                    if (tab === "COORDINADORES") setCoordinadoresTab("QUIMICOS");
+                    if (tab === "COORDINADORES") setCoordinadoresTab("POZI");
 
                     if (isDrawer && !hasSubmenu) {
                       setIsDrawerOpen(false);
@@ -1000,6 +1004,8 @@ export default function Home() {
       return (
         <View style={styles.screenWrap}>
           <View style={styles.subContent}>
+            {coordinadoresTab === "POZI" && <CoordinadoresPoziScreen />}
+            {coordinadoresTab === "PROGRAMACION" && <CoordinadoresProgramacionScreen />}
             {coordinadoresTab === "QUIMICOS" && <CoordinadoresQuimicosScreen />}
             {coordinadoresTab === "LENTES_3D" && <CoordinadoresLentesScreen />}
             {coordinadoresTab === "PROXIMAMENTE" && <CoordinadoresProximamenteScreen />}
