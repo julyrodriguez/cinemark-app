@@ -1,17 +1,88 @@
 import * as XLSX from "xlsx";
 
+export const POZI_CATEGORIAS = {
+  OV: {
+    codigo: "OV",
+    nombre: "Ventas",
+    desc: "Empleado de Ventas",
+    color: "#1D4ED8",
+    bg: "#EFF6FF",
+    border: "#BFDBFE",
+  },
+  OS: {
+    codigo: "OS",
+    nombre: "Servicios",
+    desc: "Empleado de Servicios",
+    color: "#7C3AED",
+    bg: "#F5F3FF",
+    border: "#DDD6FE",
+  },
+  OT: {
+    codigo: "OT",
+    nombre: "Técnico",
+    desc: "Técnico",
+    color: "#D97706",
+    bg: "#FFFBEB",
+    border: "#FDE68A",
+  },
+  OC: {
+    codigo: "OC",
+    nombre: "Encargado",
+    desc: "Encargado",
+    color: "#DC2626",
+    bg: "#FEF2F2",
+    border: "#FECACA",
+  },
+  EI: {
+    codigo: "EI",
+    nombre: "EI (Ventas/Serv)",
+    desc: "Ventas o Servicios (EI)",
+    color: "#0D9488",
+    bg: "#F0FDFA",
+    border: "#99F6E4",
+  },
+} as const;
+
+export type PoziCategoriaCodigo = keyof typeof POZI_CATEGORIAS;
+
+/**
+ * Normaliza y valida una categoría de POZI (OV, OS, OT, OC, EI).
+ * Si no tiene una de estas categorías válidas, devuelve null para ser ignorado.
+ */
+export function normalizarCategoria(raw: unknown): PoziCategoriaCodigo | null {
+  if (raw === undefined || raw === null) return null;
+  const str = String(raw).trim().toUpperCase();
+  if (!str) return null;
+
+  // Coincidencias directas por código
+  if (str === "OV" || str.startsWith("OV ") || str.startsWith("OV-") || str.startsWith("OV/")) return "OV";
+  if (str === "OS" || str.startsWith("OS ") || str.startsWith("OS-") || str.startsWith("OS/")) return "OS";
+  if (str === "OT" || str.startsWith("OT ") || str.startsWith("OT-") || str.startsWith("OT/")) return "OT";
+  if (str === "OC" || str.startsWith("OC ") || str.startsWith("OC-") || str.startsWith("OC/")) return "OC";
+  if (str === "EI" || str.startsWith("EI ") || str.startsWith("EI-") || str.startsWith("EI/")) return "EI";
+
+  // Búsqueda por descripción
+  if (str.includes("VENTA")) return "OV";
+  if (str.includes("SERVICIO")) return "OS";
+  if (str.includes("TECNIC") || str.includes("TÉCNIC")) return "OT";
+  if (str.includes("ENCARGAD") || str.includes("COORDINAD")) return "OC";
+  if (str.includes("INICIAL") || str.includes("ENTRENAMIENTO")) return "EI";
+
+  return null;
+}
+
 export type PoziEmployee = {
   id: string;
   nombre: string;
-  categoria: string;
+  categoria: PoziCategoriaCodigo | string;
   entra: string;
   sale: string;
   horasTrabajadas: number;
   duracionBreak: 20 | 40;
   estadoBreak: "PENDIENTE" | "EN_BREAK" | "FINALIZADO";
   breakInicio?: string | null;      // Hora en que se fue "HH:mm"
-  breakRegreso?: string | null;     // Hora a la que debería regresar "HH:mm"
-  breakFin?: string | null;         // Hora de regreso real si se registra
+  breakRegreso?: string | null;     // Hora calculada a la que debe regresar "HH:mm"
+  breakFin?: string | null;
   breakIniciadoAt?: number | null;  // Timestamp en ms
   breakFinalizadoAt?: number | null;
   encargado?: string | null;
@@ -134,6 +205,7 @@ export function calculateBreakDuration(workHours: number): 20 | 40 {
 
 /**
  * Parsea un ArrayBuffer de un archivo Excel de POZI.
+ * Descarta automáticamente filas sin una categoría válida (OV, OS, OT, OC, EI).
  */
 export function parsePoziExcel(buffer: ArrayBuffer, fileName: string): PoziParsedResult {
   const workbook = XLSX.read(buffer, {
@@ -229,7 +301,7 @@ export function parsePoziExcel(buffer: ArrayBuffer, fileName: string): PoziParse
       }
     }
 
-    // Si encontramos al menos nombre o (entra y sale)
+    // Si encontramos al menos 2 columnas
     const matchesCount = [foundCat !== -1, foundNombre !== -1, foundEntra !== -1, foundSale !== -1].filter(Boolean).length;
     if (matchesCount >= 2) {
       headerRowIndex = r;
@@ -241,10 +313,13 @@ export function parsePoziExcel(buffer: ArrayBuffer, fileName: string): PoziParse
     }
   }
 
-  // Si no se detectaron encabezados por texto, intentar fallback posicional básico
+  // Fallback si no detectó por nombres de encabezados
   if (headerRowIndex === -1) {
-    // Tomar fila 0 como encabezado
     headerRowIndex = 0;
+  }
+  // Si catColIndex no fue encontrado, chequear la columna 1 (segunda columna)
+  if (catColIndex === -1 && matrix[0] && matrix[0].length > 1) {
+    catColIndex = 1;
   }
 
   // Recorrer filas de datos
@@ -255,22 +330,41 @@ export function parsePoziExcel(buffer: ArrayBuffer, fileName: string): PoziParse
     const row = matrix[r] || [];
     if (!row || row.length === 0) continue;
 
-    // Verificar si la fila tiene algún dato no vacío
     const hasAny = row.some((c) => c !== undefined && c !== null && String(c).trim() !== "");
     if (!hasAny) continue;
 
+    // Obtener valor de Categoría
     let catVal = catColIndex !== -1 ? row[catColIndex] : "";
+    let catNorm = normalizarCategoria(catVal);
+
+    // Si la celda de catColIndex no era válida, buscar en las primeras 4 columnas de la fila
+    if (!catNorm) {
+      for (let c = 0; c < Math.min(row.length, 5); c++) {
+        if (c !== entraColIndex && c !== saleColIndex) {
+          const testCat = normalizarCategoria(row[c]);
+          if (testCat) {
+            catNorm = testCat;
+            break;
+          }
+        }
+      }
+    }
+
+    // SI NO TIENE UNA CATEGORÍA VÁLIDA (OV, OS, OT, OC, EI) => IGNORAR Y NO SUMAR
+    if (!catNorm) {
+      continue;
+    }
+
     let nombreVal = nombreColIndex !== -1 ? row[nombreColIndex] : "";
     let entraVal = entraColIndex !== -1 ? row[entraColIndex] : "";
     let saleVal = saleColIndex !== -1 ? row[saleColIndex] : "";
 
-    // Si nombreVal no se encontró por índice, buscar en celdas de texto
+    // Si nombre no fue encontrado, buscar celda de texto que no sea horas ni números
     if (!nombreVal) {
       for (let c = 0; c < row.length; c++) {
         if (c !== catColIndex && c !== entraColIndex && c !== saleColIndex) {
           const str = String(row[c] || "").trim();
-          // Si tiene más de 3 letras y no es un número simple
-          if (str.length > 3 && isNaN(Number(str)) && !str.includes(":") && !str.toLowerCase().includes("total")) {
+          if (str.length >= 3 && isNaN(Number(str)) && !str.includes(":") && !normalizarCategoria(str)) {
             nombreVal = str;
             break;
           }
@@ -283,7 +377,6 @@ export function parsePoziExcel(buffer: ArrayBuffer, fileName: string): PoziParse
       continue;
     }
 
-    const categoria = String(catVal || "General").trim() || "General";
     const entra = normalizeExcelTime(entraVal);
     const sale = normalizeExcelTime(saleVal);
 
@@ -295,13 +388,14 @@ export function parsePoziExcel(buffer: ArrayBuffer, fileName: string): PoziParse
     empleados.push({
       id: empId,
       nombre,
-      categoria,
+      categoria: catNorm,
       entra,
       sale,
       horasTrabajadas,
       duracionBreak,
       estadoBreak: "PENDIENTE",
       breakInicio: null,
+      breakRegreso: null,
       breakFin: null,
       breakIniciadoAt: null,
       encargado: null,
@@ -311,7 +405,7 @@ export function parsePoziExcel(buffer: ArrayBuffer, fileName: string): PoziParse
     if (filasCrudasPrevisualizacion.length < 50) {
       filasCrudasPrevisualizacion.push({
         fila: r + 1,
-        categoria,
+        categoria: catNorm,
         nombre,
         entraRaw: entraVal,
         saleRaw: saleVal,
@@ -323,7 +417,6 @@ export function parsePoziExcel(buffer: ArrayBuffer, fileName: string): PoziParse
     }
   }
 
-  // Generar resumen en texto plano para que el usuario pueda copiarlo o promptearlo
   const sampleData = empleados.slice(0, 10).map((e) => ({
     nombre: e.nombre,
     categoria: e.categoria,
@@ -337,14 +430,8 @@ export function parsePoziExcel(buffer: ArrayBuffer, fileName: string): PoziParse
     {
       archivo: fileName,
       hoja: sheetName,
-      totalEmpleadosDetectados: empleados.length,
+      totalEmpleadosValidos: empleados.length,
       filaEncabezadosDetectada: headerRowIndex + 1,
-      indicesColumnas: {
-        cat: catColIndex,
-        nombre: nombreColIndex,
-        entra: entraColIndex,
-        sale: saleColIndex,
-      },
       muestraPrimeros10: sampleData,
     },
     null,
