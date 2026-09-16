@@ -1,11 +1,8 @@
 // app/screens/CoordinadoresProgramacionScreen.tsx
 
-import * as DocumentPicker from "expo-document-picker";
-import * as Sharing from "expo-sharing";
 import React, { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Platform,
   ScrollView,
   StyleSheet,
@@ -21,23 +18,15 @@ import dayjs from "dayjs";
 import {
   collection,
   doc,
-  getDoc,
   onSnapshot,
 } from "@/lib/dbService";
-import { toDate } from "@/shared/utils";
 import { db, CINES_COLLECTION } from "../../lib/firebaseConfig";
 import { useAuthUser } from "../../lib/useAuthUser";
 import { useAppLayout } from "../../lib/useAppLayout";
 import { COLORS, THEME } from "../../lib/theme";
-import {
-  buildDailyProgramming,
-  generateProgramacionWorkbook,
-  parseWeeklyProgrammingExcel,
-} from "../../lib/programacion/excel";
-import { parseWeeklyProgrammingPDF } from "../../lib/programacion/pdf";
+import { buildDailyProgramming } from "../../lib/programacion/excel";
 import {
   DailyShow,
-  ProgramacionBuildResult,
   WeekdayKey,
   WEEKDAY_LABELS,
   WeeklyMovieRow,
@@ -80,99 +69,97 @@ const MONTH_LABELS_ES = [
 ];
 
 function buildDateLabel(startDate: Date | null, day: WeekdayKey): string {
-  const label = WEEKDAY_LABELS[day];
-  if (!startDate) return label.toUpperCase();
+  if (!startDate || isNaN(startDate.getTime())) {
+    return `${WEEKDAY_LABELS[day].toUpperCase()} (SEMANA ACTUAL)`;
+  }
+  const offset = DAY_OFFSETS[day] ?? 0;
+  const target = new Date(startDate);
+  target.setDate(startDate.getDate() + offset);
 
-  const offset = DAY_OFFSETS[day];
-  const d = new Date(startDate);
-  d.setDate(d.getDate() + offset);
+  const dayName = WEEKDAY_LABELS[day].toUpperCase();
+  const dayNum = target.getDate();
+  const monthName = MONTH_LABELS_ES[target.getMonth()].toUpperCase();
+  const yearNum = target.getFullYear();
 
-  const dd = String(d.getDate()).padStart(2, "0");
-  const month = MONTH_LABELS_ES[d.getMonth()];
-  const yyyy = d.getFullYear();
-
-  return `${label} ${dd} de ${month.charAt(0).toUpperCase() + month.slice(1)} de ${yyyy}`.toUpperCase();
+  return `${dayName} ${dayNum} DE ${monthName} DE ${yearNum}`;
 }
 
 function buildShortDate(startDate: Date | null, day: WeekdayKey): string {
-  if (!startDate) return "";
-  const offset = DAY_OFFSETS[day];
-  const d = new Date(startDate);
-  d.setDate(d.getDate() + offset);
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  if (!startDate || isNaN(startDate.getTime())) return "";
+  const offset = DAY_OFFSETS[day] ?? 0;
+  const target = new Date(startDate);
+  target.setDate(startDate.getDate() + offset);
+  const dd = String(target.getDate()).padStart(2, "0");
+  const mm = String(target.getMonth() + 1).padStart(2, "0");
   return `${dd}/${mm}`;
 }
 
 function getCinematicWeekdayKey(date: Date = new Date()): WeekdayKey {
-  let d = dayjs(date);
-  if (d.hour() < 6) {
-    d = d.subtract(1, "day");
+  const adjusted = new Date(date);
+  if (adjusted.getHours() < 6) {
+    adjusted.setDate(adjusted.getDate() - 1);
   }
-  const dayNum = d.day();
-  const map: Record<number, WeekdayKey> = {
-    0: "domingo",
-    1: "lunes",
-    2: "martes",
-    3: "miercoles",
-    4: "jueves",
-    5: "viernes",
-    6: "sabado",
-  };
-  return map[dayNum];
-}
-
-function getMovieWeekStart(date: Date): string {
-  const localDate = new Date(date.getTime() - (3 * 60 * 60 * 1000));
-  if (localDate.getUTCHours() < 6) {
-    localDate.setTime(localDate.getTime() - 24 * 60 * 60 * 1000);
+  const jsDay = adjusted.getDay();
+  switch (jsDay) {
+    case 4: return "jueves";
+    case 5: return "viernes";
+    case 6: return "sabado";
+    case 0: return "domingo";
+    case 1: return "lunes";
+    case 2: return "martes";
+    case 3: return "miercoles";
+    default: return "jueves";
   }
-  const dayNum = localDate.getUTCDay();
-  const daysToSubtract = dayNum <= 3 ? dayNum + 3 : dayNum - 4;
-  const thurDate = new Date(localDate.getTime() - daysToSubtract * 24 * 60 * 60 * 1000);
-  const yyyy = thurDate.getUTCFullYear();
-  const mm = String(thurDate.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(thurDate.getUTCDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
 }
 
-function addMinutesToTimeStr(timeStr: string, minsToAdd: number): string {
-  if (!timeStr) return "";
-  const [hStr, mStr] = timeStr.split(":");
-  let totalMinutes = Number(hStr) * 60 + Number(mStr) + minsToAdd;
-  totalMinutes = ((totalMinutes % 1440) + 1440) % 1440;
-  const newH = Math.floor(totalMinutes / 60);
-  const newM = totalMinutes % 60;
-  return `${String(newH).padStart(2, "0")}:${String(newM).padStart(2, "0")}`;
+function getMovieWeekStart(baseDate: Date = new Date()): string {
+  const current = new Date(baseDate);
+  if (current.getHours() < 6) {
+    current.setDate(current.getDate() - 1);
+  }
+  const dayOfWeek = current.getDay();
+  const daysSinceThursday = (dayOfWeek - 4 + 7) % 7;
+  const thursday = new Date(current);
+  thursday.setDate(current.getDate() - daysSinceThursday);
+  const y = thursday.getFullYear();
+  const m = String(thursday.getMonth() + 1).padStart(2, "0");
+  const d = String(thursday.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
 
-function buildEventWeeklyRows(eventos: any[], weekStart: string): WeeklyMovieRow[] {
+function buildEventWeeklyRows(eventos: any[], weekStartStr: string): WeeklyMovieRow[] {
+  if (!eventos || eventos.length === 0 || !weekStartStr) return [];
+  const [sy, sm, sd] = weekStartStr.split("-").map(Number);
+  const thursday = new Date(sy, sm - 1, sd, 6, 0, 0);
+  const nextThursday = new Date(thursday);
+  nextThursday.setDate(nextThursday.getDate() + 7);
+
   const rowsMap: Record<string, WeeklyMovieRow> = {};
 
-  eventos.forEach((evt) => {
-    if (!evt.sala || String(evt.sala).trim() === "") return;
-    if (evt.duracion === undefined || evt.duracion === null || String(evt.duracion).trim() === "") return;
-
-    const eventDate = toDate(evt.diaHora);
-    const eventWeekStart = getMovieWeekStart(eventDate);
-    if (eventWeekStart !== weekStart) return;
+  eventos.forEach((ev) => {
+    let eventDate: Date | null = null;
+    if (ev.fechaInicio) {
+      eventDate = new Date(ev.fechaInicio);
+    } else if (ev.fecha) {
+      eventDate = new Date(ev.fecha);
+    }
+    if (!eventDate || isNaN(eventDate.getTime())) return;
+    if (eventDate < thursday || eventDate >= nextThursday) return;
 
     const eventDayKey = getCinematicWeekdayKey(eventDate);
-    const startHours = String(eventDate.getHours()).padStart(2, "0");
-    const startMins = String(eventDate.getMinutes()).padStart(2, "0");
-    const inicio = `${startHours}:${startMins}`;
-    const duration = Number(evt.duracion);
-    const fin = addMinutesToTimeStr(inicio, duration);
+    const salaNum = Number(ev.sala || ev.numeroSala || 1);
+    const movieTitle = (ev.nombre || ev.titulo || "EVENTO").toUpperCase();
+    const calif = ev.calificacion || "ATP";
+    const horaIni = ev.horaInicio || ev.inicio || "00:00";
+    const horaFn = ev.horaFin || ev.fin || "00:00";
+    const horarioStr = `${horaIni}-${horaFn}`;
 
-    const timeRangeStr = `${inicio} - ${fin}`;
-    const peliculaName = `[EVENTO] ${evt.pelicula || "EVENTO"}`.toUpperCase();
-    const key = `${evt.sala}_${peliculaName}`;
-
+    const key = `evento-${salaNum}-${movieTitle}`;
     if (!rowsMap[key]) {
       rowsMap[key] = {
-        sala: Number(evt.sala),
-        pelicula: peliculaName,
-        calificacion: "",
+        sala: salaNum,
+        pelicula: `[EV] ${movieTitle}`,
+        calificacion: calif,
         horariosPorDia: {
           jueves: [],
           viernes: [],
@@ -184,25 +171,12 @@ function buildEventWeeklyRows(eventos: any[], weekStart: string): WeeklyMovieRow
         },
       };
     }
-
-    rowsMap[key].horariosPorDia[eventDayKey].push(timeRangeStr);
+    if (!rowsMap[key].horariosPorDia[eventDayKey].includes(horarioStr)) {
+      rowsMap[key].horariosPorDia[eventDayKey].push(horarioStr);
+    }
   });
 
   return Object.values(rowsMap);
-}
-
-function downloadArrayBufferOnWeb(buffer: ArrayBuffer, fileName: string) {
-  const blob = new Blob([buffer], {
-    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = fileName;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
 }
 
 function isRestrictedRating(rating: string): boolean {
@@ -240,10 +214,6 @@ export default function CoordinadoresProgramacionScreen() {
   } | null>(null);
   const [loadingWeekly, setLoadingWeekly] = useState(true);
 
-  // Archivo local alternativo si se decide cargar otro
-  const [localRows, setLocalRows] = useState<WeeklyMovieRow[] | null>(null);
-  const [localStartDate, setLocalStartDate] = useState<string | null>(null);
-
   // Créditos desde Firebase (activados por defecto según solicitado)
   const [creditosList, setCreditosList] = useState<any[]>([]);
   const [includeCreditos, setIncludeCreditos] = useState(true);
@@ -254,11 +224,7 @@ export default function CoordinadoresProgramacionScreen() {
   // Filtro de búsqueda rápida en pantalla
   const [filtroTexto, setFiltroTexto] = useState("");
 
-  // Estado de descarga/exportación
-  const [exportingExcel, setExportingExcel] = useState(false);
-
   // ── MODO VISTA RESUMIDA MOBILE & CONTROL DE COLUMNAS ─────────────────────
-  // En móviles por defecto se activa la vista resumida para evitar scroll a la derecha
   const [vistaResumida, setVistaResumida] = useState<boolean>(() => isMobile);
 
   // Toggles de personalización de columnas
@@ -366,10 +332,9 @@ export default function CoordinadoresProgramacionScreen() {
 
   // ── 4. Fecha base de la semana ───────────────────────────────────────────
   const weekStartStr = useMemo(() => {
-    if (localStartDate) return localStartDate;
     if (savedWeekly?.startDate) return savedWeekly.startDate;
     return getMovieWeekStart(new Date());
-  }, [localStartDate, savedWeekly]);
+  }, [savedWeekly]);
 
   const startDateObj = useMemo(() => {
     if (!weekStartStr) return null;
@@ -382,19 +347,25 @@ export default function CoordinadoresProgramacionScreen() {
     return buildDateLabel(startDateObj, selectedDay);
   }, [startDateObj, selectedDay]);
 
-  // ── 5. Filas a usar (Guardadas por defecto, o locales si se cargaron) ─────
+  // ── 5. Filas guardadas en Firebase ───────────────────────────────────────
   const weeklyRowsToUse = useMemo(() => {
-    if (localRows && localRows.length > 0) return localRows;
     return savedWeekly?.weeklyRows || [];
-  }, [localRows, savedWeekly]);
+  }, [savedWeekly]);
 
-  // ── 6. Generación del reporte diario idéntico a Servicios ─────────────────
-  const dailyData: ProgramacionBuildResult = useMemo(() => {
+  // ── 6. Generar estructura del día para la vista diaria ───────────────────
+  const dailyData = useMemo(() => {
+    if (weeklyRowsToUse.length === 0) {
+      return {
+        dateLabel: dateLabelCompleto,
+        entrada: [],
+        salida: [],
+        maxRows: 0,
+        cambioSalaKeys: new Set<string>(),
+      };
+    }
     const eventRows = buildEventWeeklyRows(eventos, weekStartStr);
-    const combinedRows = [...weeklyRowsToUse, ...eventRows];
-
     return buildDailyProgramming(
-      combinedRows,
+      [...weeklyRowsToUse, ...eventRows],
       selectedDay,
       dateLabelCompleto,
       creditosList,
@@ -489,7 +460,7 @@ export default function CoordinadoresProgramacionScreen() {
     return () => clearTimeout(timeout);
   }, [loadingWeekly, targetIdx, filtroTexto, scrollToTargetRow]);
 
-  // ── 8. Extraer info del pie de página (Películas 3D y Cambio de Poster) ───
+  // ── 9. Extraer info del pie de página (Películas 3D y Cambio de Poster) ───
   const peliculas3D = useMemo(() => {
     const set3D = new Set<string>();
     dailyData.entrada.forEach((s) => {
@@ -511,971 +482,831 @@ export default function CoordinadoresProgramacionScreen() {
     return list;
   }, [dailyData]);
 
-  // ── 9. Descargar Excel oficial con créditos ──────────────────────────────
-  const handleDescargarExcel = async () => {
-    if (weeklyRowsToUse.length === 0) {
-      Alert.alert("Sin datos", "No hay programación cargada para exportar.");
-      return;
-    }
-
-    try {
-      setExportingExcel(true);
-      const eventRows = buildEventWeeklyRows(eventos, weekStartStr);
-      const generated = await generateProgramacionWorkbook({
-        weeklyRows: [...weeklyRowsToUse, ...eventRows],
-        day: selectedDay,
-        dateLabel: dateLabelCompleto,
-        includeCreditos,
-        creditosList,
-      });
-
-      const dayLabel = WEEKDAY_LABELS[selectedDay];
-      const fileName = `Programacion ${includeCreditos ? "con Creditos " : ""}${dayLabel} ${buildShortDate(
-        startDateObj,
-        selectedDay
-      ).replace("/", "-")}.xlsx`;
-
-      if (Platform.OS === "web") {
-        downloadArrayBufferOnWeb(generated.buffer, fileName);
-      } else {
-        if (generated.uri) {
-          await Sharing.shareAsync(generated.uri);
-        } else {
-          Alert.alert("Descarga completa", `Archivo generado: ${fileName}`);
-        }
-      }
-    } catch (err: any) {
-      console.error("[CoordinadoresProg] Error descargando Excel:", err);
-      Alert.alert("Error", "No se pudo generar el archivo Excel.");
-    } finally {
-      setExportingExcel(false);
-    }
-  };
-
-  // ── 10. Cargar archivo alternativo manualmente ───────────────────────────
-  const handlePickAlternateFile = async () => {
-    try {
-      const res = await DocumentPicker.getDocumentAsync({
-        type: [
-          "application/vnd.ms-excel",
-          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          "application/octet-stream",
-          "application/pdf",
-        ],
-        copyToCacheDirectory: true,
-        multiple: false,
-      });
-
-      if (res.canceled) return;
-      const file = res.assets?.[0];
-      if (!file?.uri) return;
-
-      const isPdf = file.name?.toLowerCase().endsWith(".pdf") || file.mimeType === "application/pdf";
-      if (isPdf) {
-        const { rows, startDate } = await parseWeeklyProgrammingPDF(file.uri);
-        if (rows && rows.length > 0) {
-          setLocalRows(rows);
-          if (startDate) setLocalStartDate(dayjs(startDate).format("YYYY-MM-DD"));
-        } else {
-          Alert.alert("Formato no compatible", "El archivo PDF no contiene datos válidos.");
-        }
-      } else {
-        const { rows, startDate } = await parseWeeklyProgrammingExcel(file.uri);
-        if (rows && rows.length > 0) {
-          setLocalRows(rows);
-          if (startDate) setLocalStartDate(dayjs(startDate).format("YYYY-MM-DD"));
-        } else {
-          Alert.alert("Formato no compatible", "El archivo Excel no contiene datos de programación válidos.");
-        }
-      }
-    } catch (e: any) {
-      console.error("[CoordinadoresProg] Error cargando archivo:", e);
-      Alert.alert("Error", "Ocurrió un error al leer el archivo.");
-    }
-  };
-
-  // Imprimir directo en navegador
-  const handleImprimir = () => {
-    if (Platform.OS === "web" && typeof window !== "undefined") {
-      window.print();
-    } else {
-      handleDescargarExcel();
-    }
-  };
-
   return (
-    <View style={{ flex: 1, backgroundColor: "#F1F5F9" }}>
+    <View style={styles.screenWrapper}>
       <ScrollView ref={mainScrollRef} style={styles.container} contentContainerStyle={styles.content}>
-      {/* ── BARRA SUPERIOR / HEADER ── */}
-      <View style={styles.header}>
-        <View style={styles.headerTitleRow}>
-          <View style={styles.iconCircle}>
-            <MaterialCommunityIcons name="clipboard-text-play-outline" size={24} color="#166534" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <Text style={styles.title}>Programación del Día</Text>
-              <View style={styles.badgeExcel}>
-                <MaterialCommunityIcons name="file-excel-box" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
-                <Text style={styles.badgeExcelText}>VISTA EXCEL</Text>
-              </View>
+        {/* ── BARRA SUPERIOR / HEADER ── */}
+        <View style={styles.header}>
+          <View style={styles.headerTitleRow}>
+            <View style={styles.iconCircle}>
+              <MaterialCommunityIcons name="clipboard-text-play-outline" size={24} color="#166534" />
             </View>
-            <Text style={styles.subtitle}>
-              Réplica visual de la hoja de programación con créditos automáticos de Proyección
-            </Text>
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <Text style={styles.title}>Programación del Día</Text>
+                <View style={styles.badgeExcel}>
+                  <MaterialCommunityIcons name="file-excel-box" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
+                  <Text style={styles.badgeExcelText}>VISTA EXCEL</Text>
+                </View>
+              </View>
+              <Text style={styles.subtitle}>
+                Réplica visual de la hoja de programación con créditos automáticos de Proyección
+              </Text>
+            </View>
           </View>
         </View>
 
-        {/* Acciones principales */}
-        <View style={styles.topActions}>
-          <TouchableOpacity
-            onPress={handleDescargarExcel}
-            style={[styles.btnExcel, exportingExcel && { opacity: 0.7 }]}
-            activeOpacity={0.8}
-            disabled={exportingExcel}
-          >
-            {exportingExcel ? (
-              <ActivityIndicator size="small" color="#FFFFFF" style={{ marginRight: 6 }} />
-            ) : (
-              <MaterialCommunityIcons name="download" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
-            )}
-            <Text style={styles.btnExcelText}>Descargar Excel (.xlsx)</Text>
-          </TouchableOpacity>
-
-          {Platform.OS === "web" && (
-            <TouchableOpacity onPress={handleImprimir} style={styles.btnPrint} activeOpacity={0.8}>
-              <MaterialCommunityIcons name="printer" size={16} color={COLORS.text} style={{ marginRight: 6 }} />
-              <Text style={styles.btnPrintText}>Imprimir</Text>
-            </TouchableOpacity>
-          )}
-
-          <TouchableOpacity
-            onPress={handlePickAlternateFile}
-            style={styles.btnAltFile}
-            activeOpacity={0.8}
-            title="Cargar otro Excel o PDF si deseas ver una semana diferente"
-          >
-            <MaterialCommunityIcons name="file-upload-outline" size={15} color={COLORS.muted} />
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* ── BARRA DE ESTADO DEL REPORTE GUARDADO ── */}
-      <View style={styles.statusBar}>
-        <View style={styles.statusLeft}>
-          <MaterialCommunityIcons
-            name={savedWeekly ? "check-decagram" : "alert-circle-outline"}
-            size={18}
-            color={savedWeekly ? "#166534" : "#D97706"}
-            style={{ marginRight: 6 }}
-          />
-          <Text style={styles.statusText}>
-            {savedWeekly ? (
-              <>
-                Reporte guardado:{" "}
-                <Text style={{ fontWeight: "700", color: "#166534" }}>
-                  Semana del {dayjs(savedWeekly.startDate).format("DD/MM/YYYY")}
-                </Text>
-                {savedWeekly.savedAt && (
-                  <Text style={{ color: COLORS.muted }}>
-                    {" "}
-                    ({dayjs(savedWeekly.savedAt).format("DD/MM HH:mm")})
+        {/* ── BARRA DE ESTADO DEL REPORTE GUARDADO ── */}
+        <View style={styles.statusBar}>
+          <View style={styles.statusLeft}>
+            <MaterialCommunityIcons
+              name={savedWeekly ? "check-decagram" : "alert-circle-outline"}
+              size={18}
+              color={savedWeekly ? "#166534" : "#D97706"}
+              style={{ marginRight: 6 }}
+            />
+            <Text style={styles.statusText}>
+              {savedWeekly ? (
+                <>
+                  Reporte guardado:{" "}
+                  <Text style={{ fontWeight: "700", color: "#166534" }}>
+                    Semana del {dayjs(savedWeekly.startDate).format("DD/MM/YYYY")}
                   </Text>
-                )}
-              </>
-            ) : loadingWeekly ? (
-              "Buscando reporte guardado en el cine..."
-            ) : (
-              "No se encontró un reporte guardado activo. Puedes subir un Excel o PDF."
-            )}
-          </Text>
-        </View>
-
-        {/* Switch de Créditos */}
-        <View style={styles.switchContainer}>
-          <MaterialCommunityIcons
-            name="clock-time-four"
-            size={16}
-            color={includeCreditos ? "#B45309" : COLORS.muted}
-            style={{ marginRight: 4 }}
-          />
-          <Text style={[styles.switchLabel, includeCreditos && { color: "#B45309", fontWeight: "700" }]}>
-            Créditos: {includeCreditos ? "ACTIVADOS" : "DESACTIVADOS"}
-          </Text>
-          <Switch
-            value={includeCreditos}
-            onValueChange={setIncludeCreditos}
-            trackColor={{ false: "#CBD5E1", true: "#FDE68A" }}
-            thumbColor={includeCreditos ? "#D97706" : "#FFFFFF"}
-            style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
-          />
-        </View>
-      </View>
-
-      {/* ── SELECTOR DE DÍA DE LA SEMANA ── */}
-      <View style={styles.daySelectorCard}>
-        {!isWeb && width < 480 ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dayScrollContent}>
-            {DAYS.map((day) => {
-              const isSel = selectedDay === day;
-              const shortDate = buildShortDate(startDateObj, day);
-              return (
-                <TouchableOpacity
-                  key={day}
-                  onPress={() => setSelectedDay(day)}
-                  style={[styles.dayTabMobileScroll, isSel && styles.dayTabActive]}
-                  activeOpacity={0.75}
-                >
-                  <Text numberOfLines={1} style={[styles.dayTabTitle, isSel && styles.dayTabTitleActive]}>
-                    {WEEKDAY_LABELS[day]}
-                  </Text>
-                  {shortDate.length > 0 && (
-                    <Text numberOfLines={1} style={[styles.dayTabDate, isSel && styles.dayTabDateActive]}>
-                      {shortDate}
+                  {savedWeekly.savedAt && (
+                    <Text style={{ color: COLORS.muted }}>
+                      {" "}
+                      ({dayjs(savedWeekly.savedAt).format("DD/MM HH:mm")})
                     </Text>
                   )}
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        ) : (
-          <View style={styles.dayTabsRow}>
-            {DAYS.map((day) => {
-              const isSel = selectedDay === day;
-              const shortDate = buildShortDate(startDateObj, day);
-              const label = width < 720 ? WEEKDAY_SHORT[day] : WEEKDAY_LABELS[day];
-              return (
-                <TouchableOpacity
-                  key={day}
-                  onPress={() => setSelectedDay(day)}
-                  style={[styles.dayTab, isSel && styles.dayTabActive]}
-                  activeOpacity={0.75}
-                >
-                  <Text
-                    numberOfLines={1}
-                    ellipsizeMode="tail"
-                    style={[
-                      styles.dayTabTitle,
-                      isSel && styles.dayTabTitleActive,
-                      width < 720 && { fontSize: 10 },
-                    ]}
+                </>
+              ) : loadingWeekly ? (
+                "Buscando reporte guardado en el cine..."
+              ) : (
+                "No se encontró un reporte guardado activo para este cine."
+              )}
+            </Text>
+          </View>
+
+          {/* Switch de Créditos */}
+          <View style={styles.switchContainer}>
+            <MaterialCommunityIcons
+              name="clock-time-four"
+              size={16}
+              color={includeCreditos ? "#B45309" : COLORS.muted}
+              style={{ marginRight: 4 }}
+            />
+            <Text style={[styles.switchLabel, includeCreditos && { color: "#B45309", fontWeight: "700" }]}>
+              Créditos: {includeCreditos ? "ACTIVADOS" : "DESACTIVADOS"}
+            </Text>
+            <Switch
+              value={includeCreditos}
+              onValueChange={setIncludeCreditos}
+              trackColor={{ false: COLORS.border, true: "#FDE68A" }}
+              thumbColor={includeCreditos ? "#D97706" : "#FFFFFF"}
+              style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
+            />
+          </View>
+        </View>
+
+        {/* ── SELECTOR DE DÍA DE LA SEMANA ── */}
+        <View style={styles.daySelectorCard}>
+          {!isWeb && width < 480 ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dayScrollContent}>
+              {DAYS.map((day) => {
+                const isSel = selectedDay === day;
+                const shortDate = buildShortDate(startDateObj, day);
+                return (
+                  <TouchableOpacity
+                    key={day}
+                    onPress={() => setSelectedDay(day)}
+                    style={[styles.dayTabMobileScroll, isSel && styles.dayTabActive]}
+                    activeOpacity={0.75}
                   >
-                    {label}
-                  </Text>
-                  {shortDate.length > 0 && (
+                    <Text numberOfLines={1} style={[styles.dayTabTitle, isSel && styles.dayTabTitleActive]}>
+                      {WEEKDAY_LABELS[day]}
+                    </Text>
+                    {shortDate.length > 0 && (
+                      <Text numberOfLines={1} style={[styles.dayTabDate, isSel && styles.dayTabDateActive]}>
+                        {shortDate}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          ) : (
+            <View style={styles.dayTabsRow}>
+              {DAYS.map((day) => {
+                const isSel = selectedDay === day;
+                const shortDate = buildShortDate(startDateObj, day);
+                const label = width < 720 ? WEEKDAY_SHORT[day] : WEEKDAY_LABELS[day];
+                return (
+                  <TouchableOpacity
+                    key={day}
+                    onPress={() => setSelectedDay(day)}
+                    style={[styles.dayTab, isSel && styles.dayTabActive]}
+                    activeOpacity={0.75}
+                  >
                     <Text
                       numberOfLines={1}
+                      ellipsizeMode="tail"
                       style={[
-                        styles.dayTabDate,
-                        isSel && styles.dayTabDateActive,
-                        width < 720 && { fontSize: 8.5 },
+                        styles.dayTabTitle,
+                        isSel && styles.dayTabTitleActive,
+                        width < 720 && { fontSize: 10 },
                       ]}
                     >
-                      {shortDate}
+                      {label}
                     </Text>
-                  )}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        )}
-      </View>
+                    {shortDate.length > 0 && (
+                      <Text
+                        numberOfLines={1}
+                        style={[
+                          styles.dayTabDate,
+                          isSel && styles.dayTabDateActive,
+                          width < 720 && { fontSize: 8.5 },
+                        ]}
+                      >
+                        {shortDate}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
+        </View>
 
-      {/* ── BARRA DE HERRAMIENTAS: BOTÓN VISTA RESUMIDA Y CONTROL DE COLUMNAS ── */}
-      <View style={styles.viewToolbar}>
-        {/* Botón destacado de alternar entre Vista Resumida Mobile y Hoja Completa */}
-        <TouchableOpacity
-          onPress={() => setVistaResumida(!vistaResumida)}
-          style={[styles.btnToggleVista, vistaResumida && styles.btnToggleVistaActive]}
-          activeOpacity={0.8}
-        >
-          <MaterialCommunityIcons
-            name={vistaResumida ? "cellphone-check" : "table-large"}
-            size={16}
-            color={vistaResumida ? "#FFFFFF" : "#166534"}
-            style={{ marginRight: 6 }}
-          />
-          <Text style={[styles.btnToggleVistaText, vistaResumida && styles.btnToggleVistaTextActive]}>
-            {vistaResumida ? "Vista Resumida Mobile (Sin scroll)" : "Vista Hoja Completa Excel"}
-          </Text>
-          <View style={[styles.pillBadgeMode, vistaResumida && styles.pillBadgeModeActive]}>
-            <Text style={[styles.pillBadgeModeText, vistaResumida && styles.pillBadgeModeTextActive]}>
-              {vistaResumida ? "100% Pantalla" : "Scroll Horizontal"}
-            </Text>
-          </View>
-        </TouchableOpacity>
-
-        {/* Botón rápido para saltar al horario actual / próximo ingreso */}
-        {isToday && targetShow && (
+        {/* ── BARRA DE HERRAMIENTAS: BOTÓN VISTA RESUMIDA Y CONTROL DE COLUMNAS ── */}
+        <View style={styles.viewToolbar}>
+          {/* Botón destacado de alternar entre Vista Resumida Mobile y Hoja Completa */}
           <TouchableOpacity
-            onPress={() => scrollToTargetRow(true)}
-            style={styles.btnJumpNow}
+            onPress={() => setVistaResumida(!vistaResumida)}
+            style={[styles.btnToggleVista, vistaResumida && styles.btnToggleVistaActive]}
             activeOpacity={0.8}
-            title="Ir al ingreso que está por suceder ahora"
-          >
-            <MaterialCommunityIcons name="clock-fast" size={15} color="#166534" style={{ marginRight: 5 }} />
-            <Text style={styles.btnJumpNowText}>
-              Ir a ahora ({targetShow.inicio})
-            </Text>
-          </TouchableOpacity>
-        )}
-
-        {/* Barra de personalización de columnas y secciones (visible en cualquier momento) */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.colFiltersScroll}>
-          {/* Segmento de Secciones */}
-          <View style={styles.sectionPills}>
-            <TouchableOpacity
-              onPress={() => setModoSeccion("AMBAS")}
-              style={[styles.sectionPill, modoSeccion === "AMBAS" && styles.sectionPillActive]}
-            >
-              <Text style={[styles.sectionPillText, modoSeccion === "AMBAS" && styles.sectionPillTextActive]}>
-                ⇄ Ambas
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => setModoSeccion("ENTRADAS")}
-              style={[styles.sectionPill, modoSeccion === "ENTRADAS" && styles.sectionPillActive]}
-            >
-              <Text style={[styles.sectionPillText, modoSeccion === "ENTRADAS" && styles.sectionPillTextActive]}>
-                ⬇ Solo Entradas
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => setModoSeccion("SALIDAS")}
-              style={[styles.sectionPill, modoSeccion === "SALIDAS" && styles.sectionPillActive]}
-            >
-              <Text style={[styles.sectionPillText, modoSeccion === "SALIDAS" && styles.sectionPillTextActive]}>
-                ⬆ Solo Salidas
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.toolbarDivider} />
-
-          {/* Ocultar / Mostrar Nombre de Película */}
-          <TouchableOpacity
-            onPress={() => setColPelicula(!colPelicula)}
-            style={[styles.colTogglePill, !colPelicula && styles.colTogglePillOff]}
           >
             <MaterialCommunityIcons
-              name={colPelicula ? "filmstrip" : "filmstrip-off"}
-              size={13}
-              color={colPelicula ? "#166534" : "#DC2626"}
-              style={{ marginRight: 4 }}
+              name={vistaResumida ? "cellphone-check" : "table-large"}
+              size={16}
+              color={vistaResumida ? "#FFFFFF" : "#166534"}
+              style={{ marginRight: 6 }}
             />
-            <Text style={[styles.colTogglePillText, !colPelicula && styles.colTogglePillTextOff]}>
-              Películas: {colPelicula ? "Visibles" : "Ocultas"}
+            <Text style={[styles.btnToggleVistaText, vistaResumida && styles.btnToggleVistaTextActive]}>
+              {vistaResumida ? "Vista Resumida Mobile (Sin scroll)" : "Vista Hoja Completa Excel"}
             </Text>
+            <View style={[styles.pillBadgeMode, vistaResumida && styles.pillBadgeModeActive]}>
+              <Text style={[styles.pillBadgeModeText, vistaResumida && styles.pillBadgeModeTextActive]}>
+                {vistaResumida ? "100% Pantalla" : "Scroll Horizontal"}
+              </Text>
+            </View>
           </TouchableOpacity>
 
-          {/* Ocultar / Mostrar Calificación */}
-          <TouchableOpacity
-            onPress={() => setColCalif(!colCalif)}
-            style={[styles.colTogglePill, !colCalif && styles.colTogglePillOff]}
-          >
-            <MaterialCommunityIcons
-              name={colCalif ? "tag-outline" : "tag-off-outline"}
-              size={13}
-              color={colCalif ? "#166534" : "#DC2626"}
-              style={{ marginRight: 4 }}
-            />
-            <Text style={[styles.colTogglePillText, !colCalif && styles.colTogglePillTextOff]}>
-              Calif: {colCalif ? "Visible" : "Oculta"}
-            </Text>
-          </TouchableOpacity>
-
-          {/* Ocultar / Mostrar Créditos */}
-          {includeCreditos && (
+          {/* Botón rápido para saltar al horario actual / próximo ingreso */}
+          {isToday && targetShow && (
             <TouchableOpacity
-              onPress={() => setColCreditos(!colCreditos)}
-              style={[styles.colTogglePill, !colCreditos && styles.colTogglePillOff]}
+              onPress={() => scrollToTargetRow(true)}
+              style={styles.btnJumpNow}
+              activeOpacity={0.8}
+              title="Ir al ingreso que está por suceder ahora"
+            >
+              <MaterialCommunityIcons name="clock-fast" size={15} color="#166534" style={{ marginRight: 5 }} />
+              <Text style={styles.btnJumpNowText}>
+                Ir a ahora ({targetShow.inicio})
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Barra de personalización de columnas y secciones (visible en cualquier momento) */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.colFiltersScroll}>
+            {/* Segmento de Secciones */}
+            <View style={styles.sectionPills}>
+              <TouchableOpacity
+                onPress={() => setModoSeccion("AMBAS")}
+                style={[styles.sectionPill, modoSeccion === "AMBAS" && styles.sectionPillActive]}
+              >
+                <Text style={[styles.sectionPillText, modoSeccion === "AMBAS" && styles.sectionPillTextActive]}>
+                  ⇄ Ambas
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setModoSeccion("ENTRADAS")}
+                style={[styles.sectionPill, modoSeccion === "ENTRADAS" && styles.sectionPillActive]}
+              >
+                <Text style={[styles.sectionPillText, modoSeccion === "ENTRADAS" && styles.sectionPillTextActive]}>
+                  ⬇ Solo Entradas
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setModoSeccion("SALIDAS")}
+                style={[styles.sectionPill, modoSeccion === "SALIDAS" && styles.sectionPillActive]}
+              >
+                <Text style={[styles.sectionPillText, modoSeccion === "SALIDAS" && styles.sectionPillTextActive]}>
+                  ⬆ Solo Salidas
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.toolbarDivider} />
+
+            {/* Pill Toggle: Nombre de Película */}
+            <TouchableOpacity
+              onPress={() => setColPelicula(!colPelicula)}
+              style={[styles.colTogglePill, !colPelicula && styles.colTogglePillOff]}
+              activeOpacity={0.7}
             >
               <MaterialCommunityIcons
-                name={colCreditos ? "clock-outline" : "clock-time-three-outline"}
-                size={13}
-                color={colCreditos ? "#B45309" : "#DC2626"}
+                name={colPelicula ? "movie-open-check" : "movie-off-outline"}
+                size={14}
+                color={colPelicula ? "#166534" : COLORS.muted}
                 style={{ marginRight: 4 }}
               />
-              <Text style={[styles.colTogglePillText, !colCreditos && styles.colTogglePillTextOff]}>
-                Créditos: {colCreditos ? "Visible" : "Oculto"}
+              <Text style={[styles.colTogglePillText, !colPelicula && styles.colTogglePillTextOff]}>
+                Película: {colPelicula ? "Visible" : "Oculta"}
               </Text>
             </TouchableOpacity>
+
+            {/* Pill Toggle: Calificación */}
+            <TouchableOpacity
+              onPress={() => setColCalif(!colCalif)}
+              style={[styles.colTogglePill, !colCalif && styles.colTogglePillOff]}
+              activeOpacity={0.7}
+            >
+              <MaterialCommunityIcons
+                name={colCalif ? "tag-check" : "tag-off"}
+                size={14}
+                color={colCalif ? "#166534" : COLORS.muted}
+                style={{ marginRight: 4 }}
+              />
+              <Text style={[styles.colTogglePillText, !colCalif && styles.colTogglePillTextOff]}>
+                Calif: {colCalif ? "Visible" : "Oculta"}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Pill Toggle: Créditos */}
+            {includeCreditos && (
+              <TouchableOpacity
+                onPress={() => setColCreditos(!colCreditos)}
+                style={[styles.colTogglePill, !colCreditos && styles.colTogglePillOff]}
+                activeOpacity={0.7}
+              >
+                <MaterialCommunityIcons
+                  name={colCreditos ? "clock-check-outline" : "clock-remove-outline"}
+                  size={14}
+                  color={colCreditos ? "#166534" : COLORS.muted}
+                  style={{ marginRight: 4 }}
+                />
+                <Text style={[styles.colTogglePillText, !colCreditos && styles.colTogglePillTextOff]}>
+                  Créditos: {colCreditos ? "Visible" : "Oculto"}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </ScrollView>
+        </View>
+
+        {/* Buscador rápido de películas o salas */}
+        <View style={styles.searchBar}>
+          <MaterialCommunityIcons name="magnify" size={16} color={COLORS.muted} style={{ marginRight: 6 }} />
+          <TextInput
+            placeholder="Buscar película, sala o función..."
+            placeholderTextColor={COLORS.muted}
+            value={filtroTexto}
+            onChangeText={setFiltroTexto}
+            style={styles.searchInput}
+          />
+          {filtroTexto.length > 0 && (
+            <TouchableOpacity onPress={() => setFiltroTexto("")}>
+              <MaterialCommunityIcons name="close-circle" size={16} color={COLORS.muted} />
+            </TouchableOpacity>
           )}
-        </ScrollView>
-      </View>
-
-      {/* Buscador rápido de películas o salas */}
-      <View style={styles.searchBar}>
-        <MaterialCommunityIcons name="magnify" size={16} color={COLORS.muted} style={{ marginRight: 6 }} />
-        <TextInput
-          placeholder="Buscar película, sala o función..."
-          placeholderTextColor={COLORS.muted}
-          value={filtroTexto}
-          onChangeText={setFiltroTexto}
-          style={styles.searchInput}
-        />
-        {filtroTexto.length > 0 && (
-          <TouchableOpacity onPress={() => setFiltroTexto("")}>
-            <MaterialCommunityIcons name="close-circle" size={16} color={COLORS.muted} />
-          </TouchableOpacity>
-        )}
-        <View style={styles.searchCountBadge}>
-          <Text style={styles.searchCountText}>
-            {dailyData.entrada.length} funciones
-          </Text>
-        </View>
-      </View>
-
-      {/* ── CONTENIDO PRINCIPAL: VISTA RESUMIDA MOBILE O HOJA EXCEL ── */}
-      {loadingWeekly ? (
-        <View style={styles.loadingBox}>
-          <ActivityIndicator size="large" color="#166534" />
-          <Text style={styles.loadingText}>Cargando programación del reporte guardado...</Text>
-        </View>
-      ) : weeklyRowsToUse.length === 0 ? (
-        <View style={styles.emptyCard}>
-          <MaterialCommunityIcons name="file-excel-outline" size={48} color={COLORS.muted} style={{ marginBottom: 10 }} />
-          <Text style={styles.emptyTitle}>No hay programación semanal cargada</Text>
-          <Text style={styles.emptyDesc}>
-            Para generar esta vista, sube el archivo Excel en Servicios &gt; Programaciones o cárgalo directamente aquí.
-          </Text>
-          <TouchableOpacity onPress={handlePickAlternateFile} style={styles.btnExcel} activeOpacity={0.8}>
-            <MaterialCommunityIcons name="upload" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
-            <Text style={styles.btnExcelText}>Cargar archivo Excel</Text>
-          </TouchableOpacity>
-        </View>
-      ) : vistaResumida ? (
-        /* ══════════════════════════════════════════════════════════════════
-           MODO VISTA RESUMIDA MOBILE (100% ANCHO, SIN SCROLL HORIZONTAL)
-           ══════════════════════════════════════════════════════════════════ */
-        <View
-          style={styles.compactContainer}
-          onLayout={(e) => {
-            tableContainerYRef.current = e.nativeEvent.layout.y;
-          }}
-        >
-          {/* Cabecera compacta con la fecha del día */}
-          <View style={styles.compactHeaderBanner}>
-            <Text style={styles.compactHeaderTitle}>{dateLabelCompleto}</Text>
-            <Text style={styles.compactHeaderSub}>
-              {modoSeccion === "AMBAS" ? "Entradas y Salidas apareadas" : modoSeccion === "ENTRADAS" ? "Listado de Entradas" : "Listado de Salidas"}
-              {!colPelicula && " • Nombres de película ocultos"}
+          <View style={styles.searchCountBadge}>
+            <Text style={styles.searchCountText}>
+              {dailyData.entrada.length} funciones
             </Text>
           </View>
-
-          {/* Listado según el modo de sección seleccionado */}
-          {maxRows === 0 ? (
-            <View style={styles.excelEmptyRow}>
-              <Text style={styles.excelEmptyRowText}>
-                {filtroTexto ? "No hay funciones que coincidan con la búsqueda." : "Sin funciones programadas para este día."}
-              </Text>
-            </View>
-          ) : modoSeccion === "AMBAS" ? (
-            /* SUB-MODO AMBAS: Filas apareadas lado a lado sin desbordar el ancho del móvil */
-            <View style={styles.compactList}>
-              {/* Rótulos de columnas compactas */}
-              <View style={styles.compactColumnLabelsRow}>
-                <View style={styles.compactSideLeftHeader}>
-                  <Text style={styles.compactColLabelText}>ENTRADA (INICIO • SALA)</Text>
-                </View>
-                <View style={styles.compactArrowBox} />
-                <View style={styles.compactSideRightHeader}>
-                  <Text style={styles.compactColLabelText}>SALIDA (SALA • CRÉD • FIN)</Text>
-                </View>
-              </View>
-
-              {Array.from({ length: maxRows }).map((_, idx) => {
-                const inShow = entradaFiltrada[idx];
-                const outShow = salidaFiltrada[idx];
-
-                const is3D = inShow?.pelicula?.toUpperCase().includes("3D");
-                const inKey = inShow ? `${inShow.sala}-${inShow.inicio}-${inShow.fin}-${inShow.pelicula}` : "";
-                const isPosterChange = inShow ? dailyData.cambioSalaKeys.has(inKey) : false;
-                const isRestricted = inShow ? isRestrictedRating(inShow.calificacion) : false;
-
-                const outIs3D = outShow?.pelicula?.toUpperCase().includes("3D");
-                const isTarget = isToday && idx === targetIdx;
-
-                return (
-                  <View
-                    key={`comp-row-${idx}`}
-                    onLayout={(e) => {
-                      rowOffsetsRef.current[idx] = e.nativeEvent.layout.y;
-                    }}
-                    style={[
-                      styles.compactItemRow,
-                      idx % 2 === 1 && styles.compactItemRowZebra,
-                      isTarget && styles.compactItemRowTarget,
-                    ]}
-                  >
-                    {/* Línea 1: Horarios y Salas */}
-                    <View style={styles.compactTimeRow}>
-                      {/* Lado Entrada */}
-                      <View style={styles.compactSideLeft}>
-                        {inShow ? (
-                          <>
-                            <View style={styles.compactBadgeInicio}>
-                              <Text style={styles.compactBadgeInicioText}>{inShow.inicio}</Text>
-                            </View>
-                            {isTarget && (
-                              <View style={styles.badgeAhora}>
-                                <Text style={styles.badgeAhoraText}>AHORA</Text>
-                              </View>
-                            )}
-                            <View style={styles.compactBadgeSala}>
-                              <Text style={styles.compactBadgeSalaText}>S{inShow.sala}</Text>
-                            </View>
-                            {colCalif && inShow.calificacion ? (
-                              <View style={[styles.compactBadgeCalif, isRestricted && styles.compactBadgeCalifRestricted]}>
-                                <Text style={[styles.compactBadgeCalifText, isRestricted && styles.compactBadgeCalifTextRestricted]}>
-                                  {inShow.calificacion}
-                                </Text>
-                              </View>
-                            ) : null}
-                          </>
-                        ) : (
-                          <Text style={styles.compactDashText}>-</Text>
-                        )}
-                      </View>
-
-                      {/* Flecha divisoria */}
-                      <View style={styles.compactArrowBox}>
-                        <MaterialCommunityIcons name="arrow-right-thin" size={16} color="#94A3B8" />
-                      </View>
-
-                      {/* Lado Salida */}
-                      <View style={styles.compactSideRight}>
-                        {outShow ? (
-                          <>
-                            <View style={styles.compactBadgeSala}>
-                              <Text style={styles.compactBadgeSalaText}>S{outShow.sala}</Text>
-                            </View>
-                            {includeCreditos && colCreditos ? (
-                              <View
-                                style={[
-                                  styles.compactBadgeCreditos,
-                                  !outShow.creditosHoraReloj && styles.compactBadgeMuted,
-                                ]}
-                              >
-                                <Text
-                                  style={[
-                                    styles.compactBadgeCreditosText,
-                                    !outShow.creditosHoraReloj && { color: COLORS.muted },
-                                  ]}
-                                >
-                                  {outShow.creditosHoraReloj || "-"}
-                                </Text>
-                              </View>
-                            ) : null}
-                            <View style={styles.compactBadgeFin}>
-                              <Text style={styles.compactBadgeFinText}>{outShow.fin}</Text>
-                            </View>
-                          </>
-                        ) : (
-                          <Text style={styles.compactDashText}>-</Text>
-                        )}
-                      </View>
-                    </View>
-
-                    {/* Línea 2: Título de película (si está activado) */}
-                    {colPelicula && (inShow || outShow) && (
-                      <View style={styles.compactMovieLine}>
-                        <View style={{ flex: 1, flexDirection: "row", alignItems: "center" }}>
-                          {inShow && (
-                            <Text
-                              style={[styles.compactMovieTitleText, is3D && styles.compactMovieTitle3D]}
-                              numberOfLines={1}
-                            >
-                              {inShow.pelicula}
-                            </Text>
-                          )}
-                          {isPosterChange && (
-                            <View style={styles.posterBadgeMini}>
-                              <Text style={styles.posterBadgeMiniText}>★</Text>
-                            </View>
-                          )}
-                        </View>
-
-                        {/* Si la salida tiene una película distinta o la entrada está vacía */}
-                        {outShow && (!inShow || outShow.pelicula !== inShow.pelicula) && (
-                          <View style={{ flex: 1, paddingLeft: 6, alignItems: "flex-end" }}>
-                            <Text
-                              style={[styles.compactMovieTitleTextRight, outIs3D && styles.compactMovieTitle3D]}
-                              numberOfLines={1}
-                            >
-                              Fin: {outShow.pelicula}
-                            </Text>
-                          </View>
-                        )}
-                      </View>
-                    )}
-                  </View>
-                );
-              })}
-            </View>
-          ) : modoSeccion === "ENTRADAS" ? (
-            /* SUB-MODO SOLO ENTRADAS */
-            <View style={styles.compactList}>
-              {entradaFiltrada.map((show, idx) => {
-                const is3D = show.pelicula?.toUpperCase().includes("3D");
-                const inKey = `${show.sala}-${show.inicio}-${show.fin}-${show.pelicula}`;
-                const isPosterChange = dailyData.cambioSalaKeys.has(inKey);
-                const isRestricted = isRestrictedRating(show.calificacion);
-                const isTarget = isToday && idx === targetIdx;
-
-                return (
-                  <View
-                    key={`in-card-${idx}`}
-                    onLayout={(e) => {
-                      rowOffsetsRef.current[idx] = e.nativeEvent.layout.y;
-                    }}
-                    style={[
-                      styles.singleSectionRow,
-                      idx % 2 === 1 && styles.singleSectionRowZebra,
-                      isTarget && styles.compactItemRowTarget,
-                    ]}
-                  >
-                    <View style={styles.singleRowTop}>
-                      <View style={styles.compactBadgeInicio}>
-                        <Text style={styles.compactBadgeInicioText}>{show.inicio}</Text>
-                      </View>
-                      {isTarget && (
-                        <View style={styles.badgeAhora}>
-                          <Text style={styles.badgeAhoraText}>AHORA</Text>
-                        </View>
-                      )}
-                      <View style={styles.compactBadgeSala}>
-                        <Text style={styles.compactBadgeSalaText}>Sala {show.sala}</Text>
-                      </View>
-                      {colCalif && show.calificacion ? (
-                        <View style={[styles.compactBadgeCalif, isRestricted && styles.compactBadgeCalifRestricted]}>
-                          <Text style={[styles.compactBadgeCalifText, isRestricted && styles.compactBadgeCalifTextRestricted]}>
-                            {show.calificacion}
-                          </Text>
-                        </View>
-                      ) : null}
-                    </View>
-
-                    {colPelicula && (
-                      <View style={{ flexDirection: "row", alignItems: "center", marginTop: 3 }}>
-                        <Text style={[styles.singleRowMovieText, is3D && styles.compactMovieTitle3D]} numberOfLines={1}>
-                          {show.pelicula}
-                        </Text>
-                        {isPosterChange && (
-                          <View style={styles.posterBadgeMini}>
-                            <Text style={styles.posterBadgeMiniText}>★ Cambio póster</Text>
-                          </View>
-                        )}
-                      </View>
-                    )}
-                  </View>
-                );
-              })}
-            </View>
-          ) : (
-            /* SUB-MODO SOLO SALIDAS */
-            <View style={styles.compactList}>
-              {salidaFiltrada.map((show, idx) => {
-                const is3D = show.pelicula?.toUpperCase().includes("3D");
-                const isTarget = isToday && idx === targetIdx;
-
-                return (
-                  <View
-                    key={`out-card-${idx}`}
-                    onLayout={(e) => {
-                      rowOffsetsRef.current[idx] = e.nativeEvent.layout.y;
-                    }}
-                    style={[
-                      styles.singleSectionRow,
-                      idx % 2 === 1 && styles.singleSectionRowZebra,
-                      isTarget && styles.compactItemRowTarget,
-                    ]}
-                  >
-                    <View style={styles.singleRowTop}>
-                      <View style={styles.compactBadgeSala}>
-                        <Text style={styles.compactBadgeSalaText}>Sala {show.sala}</Text>
-                      </View>
-                      {isTarget && (
-                        <View style={styles.badgeAhora}>
-                          <Text style={styles.badgeAhoraText}>AHORA</Text>
-                        </View>
-                      )}
-                      {includeCreditos && colCreditos && (
-                        <View style={[styles.compactBadgeCreditos, !show.creditosHoraReloj && styles.compactBadgeMuted]}>
-                          <MaterialCommunityIcons name="clock-outline" size={11} color="#B45309" style={{ marginRight: 2 }} />
-                          <Text style={styles.compactBadgeCreditosText}>
-                            {show.creditosHoraReloj ? `Créd: ${show.creditosHoraReloj}` : "Créd: -"}
-                          </Text>
-                        </View>
-                      )}
-                      <View style={styles.compactBadgeFin}>
-                        <Text style={styles.compactBadgeFinText}>Fin: {show.fin}</Text>
-                      </View>
-                    </View>
-
-                    {colPelicula && (
-                      <View style={{ marginTop: 3 }}>
-                        <Text style={[styles.singleRowMovieText, is3D && styles.compactMovieTitle3D]} numberOfLines={1}>
-                          {show.pelicula}
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                );
-              })}
-            </View>
-          )}
-
-          {/* Leyenda compacta en pie de página */}
-          <View style={styles.compactFooterBox}>
-            {peliculas3D.length > 0 && (
-              <Text style={styles.compactFooterLine}>
-                <Text style={{ fontWeight: "700", color: "#374151" }}>Películas 3D: </Text>
-                {peliculas3D.join(", ")}
-              </Text>
-            )}
-            {cambiosDePoster.length > 0 && (
-              <Text style={styles.compactFooterLine}>
-                <Text style={{ fontWeight: "700", color: "#B45309" }}>★ Cambios de póster: </Text>
-                {cambiosDePoster.map((c) => `S${c.sala} (${c.inicio})`).join(", ")}
-              </Text>
-            )}
-          </View>
         </View>
-      ) : (
-        /* ══════════════════════════════════════════════════════════════════
-           MODO HOJA COMPLETA EXCEL (RÉPLICA EXACTA CON SCROLL HORIZONTAL)
-           ══════════════════════════════════════════════════════════════════ */
-        <ScrollView horizontal={isMobile} showsHorizontalScrollIndicator={true} style={styles.excelScroll}>
+
+        {/* ── CONTENIDO PRINCIPAL: VISTA RESUMIDA MOBILE O HOJA EXCEL ── */}
+        {loadingWeekly ? (
+          <View style={styles.loadingBox}>
+            <ActivityIndicator size="large" color="#166534" />
+            <Text style={styles.loadingText}>Cargando programación del reporte guardado...</Text>
+          </View>
+        ) : weeklyRowsToUse.length === 0 ? (
+          <View style={styles.emptyCard}>
+            <MaterialCommunityIcons name="file-excel-outline" size={48} color={COLORS.muted} style={{ marginBottom: 10 }} />
+            <Text style={styles.emptyTitle}>No hay programación semanal cargada</Text>
+            <Text style={styles.emptyDesc}>
+              Para visualizar esta programación, guarda el reporte en Servicios &gt; Programaciones.
+            </Text>
+          </View>
+        ) : vistaResumida ? (
+          /* ══════════════════════════════════════════════════════════════════
+             MODO VISTA RESUMIDA MOBILE (100% ANCHO, SIN SCROLL HORIZONTAL)
+             ══════════════════════════════════════════════════════════════════ */
           <View
-            style={[styles.excelSheetContainer, { minWidth: isMobile ? 860 : "100%" }]}
+            style={styles.compactContainer}
             onLayout={(e) => {
               tableContainerYRef.current = e.nativeEvent.layout.y;
             }}
           >
-            {/* ── FILA 1: FECHA Y TÍTULO MERGED (FONDO GRIS CLARO EXCEL) ── */}
-            <View style={styles.excelTopHeader}>
-              <Text style={styles.excelTopHeaderText}>{dateLabelCompleto}</Text>
+            {/* Cabecera compacta con la fecha del día */}
+            <View style={styles.compactHeaderBanner}>
+              <Text style={styles.compactHeaderTitle}>{dateLabelCompleto}</Text>
+              <Text style={styles.compactHeaderSub}>
+                {modoSeccion === "AMBAS" ? "Entradas y Salidas apareadas" : modoSeccion === "ENTRADAS" ? "Listado de Entradas" : "Listado de Salidas"}
+                {!colPelicula && " • Nombres de película ocultos"}
+              </Text>
             </View>
 
-            {/* ── FILA 2: SECCIONES MERGED (ENTRADA / SALIDA) ── */}
-            <View style={styles.excelSectionRow}>
-              <View style={[styles.excelSectionBlock, { flex: 5 }]}>
-                <Text style={styles.excelSectionBlockText}>ENTRADA</Text>
-              </View>
-              <View style={styles.excelDividerColumn} />
-              <View style={[styles.excelSectionBlock, { flex: 5 }]}>
-                <Text style={styles.excelSectionBlockText}>SALIDA</Text>
-              </View>
-            </View>
-
-            {/* ── FILA 3: CABECERA DE COLUMNAS ── */}
-            <View style={styles.excelColumnsHeaderRow}>
-              {/* ENTRADA COLUMNAS */}
-              <View style={styles.excelColGroupEntrada}>
-                <Text style={[styles.excelTh, { width: 55 }]}>INICIO</Text>
-                <Text style={[styles.excelTh, { width: 44 }]}>SALA</Text>
-                <Text style={[styles.excelTh, { width: 28 }]}>H</Text>
-                <Text style={[styles.excelTh, { flex: 1, textAlign: "left", paddingLeft: 8 }]}>PELÍCULA</Text>
-                {colCalif && <Text style={[styles.excelTh, { width: 50 }]}>CALIF</Text>}
-              </View>
-
-              {/* SEPARADOR CENTRAL EXCEL */}
-              <View style={styles.excelDividerColumn} />
-
-              {/* SALIDA COLUMNAS */}
-              <View style={styles.excelColGroupSalida}>
-                <Text style={[styles.excelTh, { width: 44 }]}>SALA</Text>
-                {includeCreditos && colCreditos && (
-                  <Text style={[styles.excelTh, { width: 68, color: "#B45309", fontWeight: "800" }]}>CRÉDITOS</Text>
-                )}
-                <Text style={[styles.excelTh, { width: 55, color: "#DC2626" }]}>FIN</Text>
-                <Text style={[styles.excelTh, { flex: 1, textAlign: "left", paddingLeft: 8 }]}>PELÍCULA</Text>
-              </View>
-            </View>
-
-            {/* ── FILAS DE DATOS DE LA HOJA EXCEL ── */}
+            {/* Listado según el modo de sección seleccionado */}
             {maxRows === 0 ? (
               <View style={styles.excelEmptyRow}>
                 <Text style={styles.excelEmptyRowText}>
                   {filtroTexto ? "No hay funciones que coincidan con la búsqueda." : "Sin funciones programadas para este día."}
                 </Text>
               </View>
-            ) : (
-              Array.from({ length: maxRows }).map((_, idx) => {
-                const inShow: DailyShow | undefined = entradaFiltrada[idx];
-                const outShow: DailyShow | undefined = salidaFiltrada[idx];
+            ) : modoSeccion === "AMBAS" ? (
+              /* SUB-MODO AMBAS: Filas apareadas lado a lado sin desbordar el ancho del móvil */
+              <View style={styles.compactList}>
+                {/* Rótulos de columnas compactas */}
+                <View style={styles.compactColumnLabelsRow}>
+                  <View style={styles.compactSideLeftHeader}>
+                    <Text style={styles.compactColLabelText}>ENTRADA (INICIO • SALA)</Text>
+                  </View>
+                  <View style={styles.compactArrowBox} />
+                  <View style={styles.compactSideRightHeader}>
+                    <Text style={styles.compactColLabelText}>SALIDA (SALA • CRÉD • FIN)</Text>
+                  </View>
+                </View>
 
-                const is3D = inShow?.pelicula?.toUpperCase().includes("3D");
-                const inKey = inShow ? `${inShow.sala}-${inShow.inicio}-${inShow.fin}-${inShow.pelicula}` : "";
-                const isPosterChange = inShow ? dailyData.cambioSalaKeys.has(inKey) : false;
-                const isRestricted = inShow ? isRestrictedRating(inShow.calificacion) : false;
+                {Array.from({ length: maxRows }).map((_, idx) => {
+                  const inShow = entradaFiltrada[idx];
+                  const outShow = salidaFiltrada[idx];
 
-                const outIs3D = outShow?.pelicula?.toUpperCase().includes("3D");
-                const isTarget = isToday && idx === targetIdx;
+                  const is3D = inShow?.pelicula?.toUpperCase().includes("3D");
+                  const inKey = inShow ? `${inShow.sala}-${inShow.inicio}-${inShow.fin}-${inShow.pelicula}` : "";
+                  const isPosterChange = inShow ? dailyData.cambioSalaKeys.has(inKey) : false;
+                  const isRestricted = inShow ? isRestrictedRating(inShow.calificacion) : false;
 
-                return (
-                  <View
-                    key={`row-${idx}`}
-                    onLayout={(e) => {
-                      rowOffsetsRef.current[idx] = e.nativeEvent.layout.y;
-                    }}
-                    style={[
-                      styles.excelDataRow,
-                      idx % 2 === 1 && styles.excelDataRowZebra,
-                      isTarget && styles.excelDataRowTarget,
-                    ]}
-                  >
-                    {/* ── LADO ENTRADA ── */}
-                    <View style={styles.excelColGroupEntrada}>
-                      {inShow ? (
-                        <>
-                          <View style={[styles.excelCell, { width: 55 }]}>
-                            <Text style={styles.excelTextInicio}>{inShow.inicio}</Text>
-                          </View>
-                          <View style={[styles.excelCell, { width: 44 }]}>
-                            <Text style={styles.excelTextSala}>{inShow.sala}</Text>
-                          </View>
-                          <View style={[styles.excelCell, { width: 28 }]}>
-                            <Text style={styles.excelTextHab}>H</Text>
-                          </View>
-                          <View
-                            style={[
-                              styles.excelCell,
-                              styles.excelCellMovie,
-                              { flex: 1 },
-                              is3D && styles.excelCellMovie3D,
-                            ]}
-                          >
-                            <Text
-                              style={[styles.excelTextMovie, is3D && styles.excelTextMovie3D]}
-                              numberOfLines={1}
-                            >
-                              {colPelicula ? inShow.pelicula : `Sala ${inShow.sala} (Película oculta)`}
-                            </Text>
+                  const outIs3D = outShow?.pelicula?.toUpperCase().includes("3D");
+                  const isTarget = isToday && idx === targetIdx;
+
+                  return (
+                    <View
+                      key={`comp-row-${idx}`}
+                      onLayout={(e) => {
+                        rowOffsetsRef.current[idx] = e.nativeEvent.layout.y;
+                      }}
+                      style={[
+                        styles.compactItemRow,
+                        idx % 2 === 1 && styles.compactItemRowZebra,
+                        isTarget && styles.compactItemRowTarget,
+                      ]}
+                    >
+                      {/* Línea 1: Horarios y Salas */}
+                      <View style={styles.compactTimeRow}>
+                        {/* Lado Entrada */}
+                        <View style={styles.compactSideLeft}>
+                          {inShow ? (
+                            <>
+                              <View style={styles.compactBadgeInicio}>
+                                <Text style={styles.compactBadgeInicioText}>{inShow.inicio}</Text>
+                              </View>
+                              {isTarget && (
+                                <View style={styles.badgeAhora}>
+                                  <Text style={styles.badgeAhoraText}>AHORA</Text>
+                                </View>
+                              )}
+                              <View style={styles.compactBadgeSala}>
+                                <Text style={styles.compactBadgeSalaText}>S{inShow.sala}</Text>
+                              </View>
+                              {colCalif && inShow.calificacion ? (
+                                <View style={[styles.compactBadgeCalif, isRestricted && styles.compactBadgeCalifRestricted]}>
+                                  <Text style={[styles.compactBadgeCalifText, isRestricted && styles.compactBadgeCalifTextRestricted]}>
+                                    {inShow.calificacion}
+                                  </Text>
+                                </View>
+                              ) : null}
+                            </>
+                          ) : (
+                            <Text style={styles.compactDashText}>-</Text>
+                          )}
+                        </View>
+
+                        {/* Flecha divisoria */}
+                        <View style={styles.compactArrowBox}>
+                          <MaterialCommunityIcons name="arrow-right-thin" size={16} color={COLORS.muted} />
+                        </View>
+
+                        {/* Lado Salida */}
+                        <View style={styles.compactSideRight}>
+                          {outShow ? (
+                            <>
+                              <View style={styles.compactBadgeSala}>
+                                <Text style={styles.compactBadgeSalaText}>S{outShow.sala}</Text>
+                              </View>
+                              {includeCreditos && colCreditos ? (
+                                <View
+                                  style={[
+                                    styles.compactBadgeCreditos,
+                                    !outShow.creditosHoraReloj && styles.compactBadgeMuted,
+                                  ]}
+                                >
+                                  <Text
+                                    style={[
+                                      styles.compactBadgeCreditosText,
+                                      !outShow.creditosHoraReloj && { color: COLORS.muted },
+                                    ]}
+                                  >
+                                    {outShow.creditosHoraReloj || "-"}
+                                  </Text>
+                                </View>
+                              ) : null}
+                              <View style={styles.compactBadgeFin}>
+                                <Text style={styles.compactBadgeFinText}>{outShow.fin}</Text>
+                              </View>
+                            </>
+                          ) : (
+                            <Text style={styles.compactDashText}>-</Text>
+                          )}
+                        </View>
+                      </View>
+
+                      {/* Línea 2: Título de película (si está activado) */}
+                      {colPelicula && (inShow || outShow) && (
+                        <View style={styles.compactMovieLine}>
+                          <View style={{ flex: 1, flexDirection: "row", alignItems: "center" }}>
+                            {inShow && (
+                              <Text
+                                style={[styles.compactMovieTitleText, is3D && styles.compactMovieTitle3D]}
+                                numberOfLines={1}
+                              >
+                                {inShow.pelicula}
+                              </Text>
+                            )}
                             {isPosterChange && (
-                              <View style={styles.posterChangeBadge} title="Cambio de póster en sala">
-                                <Text style={styles.posterChangeBadgeText}>★</Text>
+                              <View style={styles.posterBadgeMini}>
+                                <Text style={styles.posterBadgeMiniText}>★</Text>
                               </View>
                             )}
                           </View>
-                          {colCalif && (
-                            <View style={[styles.excelCell, { width: 50 }, isRestricted && styles.excelCellCalifRestricted]}>
-                              <Text style={[styles.excelTextCalif, isRestricted && styles.excelTextCalifRestricted]}>
-                                {inShow.calificacion || "-"}
+
+                          {/* Si la salida tiene una película distinta o la entrada está vacía */}
+                          {outShow && (!inShow || outShow.pelicula !== inShow.pelicula) && (
+                            <View style={{ flex: 1, paddingLeft: 6, alignItems: "flex-end" }}>
+                              <Text
+                                style={[styles.compactMovieTitleTextRight, outIs3D && styles.compactMovieTitle3D]}
+                                numberOfLines={1}
+                              >
+                                Fin: {outShow.pelicula}
                               </Text>
                             </View>
                           )}
-                        </>
-                      ) : (
-                        <>
-                          <View style={[styles.excelCell, { width: 55 }]} />
-                          <View style={[styles.excelCell, { width: 44 }]} />
-                          <View style={[styles.excelCell, { width: 28 }]} />
-                          <View style={[styles.excelCell, { flex: 1 }]} />
-                          {colCalif && <View style={[styles.excelCell, { width: 50 }]} />}
-                        </>
+                        </View>
                       )}
                     </View>
+                  );
+                })}
+              </View>
+            ) : modoSeccion === "ENTRADAS" ? (
+              /* SUB-MODO SOLO ENTRADAS */
+              <View style={styles.compactList}>
+                {entradaFiltrada.map((show, idx) => {
+                  const is3D = show.pelicula?.toUpperCase().includes("3D");
+                  const inKey = `${show.sala}-${show.inicio}-${show.fin}-${show.pelicula}`;
+                  const isPosterChange = dailyData.cambioSalaKeys.has(inKey);
+                  const isRestricted = isRestrictedRating(show.calificacion);
+                  const isTarget = isToday && idx === targetIdx;
 
-                    {/* SEPARADOR CENTRAL */}
-                    <View style={styles.excelDividerColumn} />
-
-                    {/* ── LADO SALIDA ── */}
-                    <View style={styles.excelColGroupSalida}>
-                      {outShow ? (
-                        <>
-                          <View style={[styles.excelCell, { width: 44 }]}>
-                            <Text style={styles.excelTextSala}>{outShow.sala}</Text>
+                  return (
+                    <View
+                      key={`in-card-${idx}`}
+                      onLayout={(e) => {
+                        rowOffsetsRef.current[idx] = e.nativeEvent.layout.y;
+                      }}
+                      style={[
+                        styles.singleSectionRow,
+                        idx % 2 === 1 && styles.singleSectionRowZebra,
+                        isTarget && styles.compactItemRowTarget,
+                      ]}
+                    >
+                      <View style={styles.singleRowTop}>
+                        <View style={styles.compactBadgeInicio}>
+                          <Text style={styles.compactBadgeInicioText}>{show.inicio}</Text>
+                        </View>
+                        {isTarget && (
+                          <View style={styles.badgeAhora}>
+                            <Text style={styles.badgeAhoraText}>AHORA</Text>
                           </View>
+                        )}
+                        <View style={styles.compactBadgeSala}>
+                          <Text style={styles.compactBadgeSalaText}>Sala {show.sala}</Text>
+                        </View>
+                        {colCalif && show.calificacion ? (
+                          <View style={[styles.compactBadgeCalif, isRestricted && styles.compactBadgeCalifRestricted]}>
+                            <Text style={[styles.compactBadgeCalifText, isRestricted && styles.compactBadgeCalifTextRestricted]}>
+                              {show.calificacion}
+                            </Text>
+                          </View>
+                        ) : null}
+                      </View>
 
-                          {includeCreditos && colCreditos && (
+                      {colPelicula && (
+                        <View style={{ flexDirection: "row", alignItems: "center", marginTop: 3 }}>
+                          <Text style={[styles.singleRowMovieText, is3D && styles.compactMovieTitle3D]} numberOfLines={1}>
+                            {show.pelicula}
+                          </Text>
+                          {isPosterChange && (
+                            <View style={styles.posterBadgeMini}>
+                              <Text style={styles.posterBadgeMiniText}>★ Cambio póster</Text>
+                            </View>
+                          )}
+                        </View>
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+            ) : (
+              /* SUB-MODO SOLO SALIDAS */
+              <View style={styles.compactList}>
+                {salidaFiltrada.map((show, idx) => {
+                  const is3D = show.pelicula?.toUpperCase().includes("3D");
+                  const isTarget = isToday && idx === targetIdx;
+
+                  return (
+                    <View
+                      key={`out-card-${idx}`}
+                      onLayout={(e) => {
+                        rowOffsetsRef.current[idx] = e.nativeEvent.layout.y;
+                      }}
+                      style={[
+                        styles.singleSectionRow,
+                        idx % 2 === 1 && styles.singleSectionRowZebra,
+                        isTarget && styles.compactItemRowTarget,
+                      ]}
+                    >
+                      <View style={styles.singleRowTop}>
+                        <View style={styles.compactBadgeSala}>
+                          <Text style={styles.compactBadgeSalaText}>Sala {show.sala}</Text>
+                        </View>
+                        {isTarget && (
+                          <View style={styles.badgeAhora}>
+                            <Text style={styles.badgeAhoraText}>AHORA</Text>
+                          </View>
+                        )}
+                        {includeCreditos && colCreditos && (
+                          <View style={[styles.compactBadgeCreditos, !show.creditosHoraReloj && styles.compactBadgeMuted]}>
+                            <MaterialCommunityIcons name="clock-outline" size={11} color="#B45309" style={{ marginRight: 2 }} />
+                            <Text style={styles.compactBadgeCreditosText}>
+                              {show.creditosHoraReloj ? `Créd: ${show.creditosHoraReloj}` : "Créd: -"}
+                            </Text>
+                          </View>
+                        )}
+                        <View style={styles.compactBadgeFin}>
+                          <Text style={styles.compactBadgeFinText}>Fin: {show.fin}</Text>
+                        </View>
+                      </View>
+
+                      {colPelicula && (
+                        <View style={{ marginTop: 3 }}>
+                          <Text style={[styles.singleRowMovieText, is3D && styles.compactMovieTitle3D]} numberOfLines={1}>
+                            {show.pelicula}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+
+            {/* Leyenda compacta en pie de página */}
+            <View style={styles.compactFooterBox}>
+              {peliculas3D.length > 0 && (
+                <Text style={styles.compactFooterLine}>
+                  <Text style={{ fontWeight: "700", color: COLORS.text }}>Películas 3D: </Text>
+                  {peliculas3D.join(", ")}
+                </Text>
+              )}
+              {cambiosDePoster.length > 0 && (
+                <Text style={styles.compactFooterLine}>
+                  <Text style={{ fontWeight: "700", color: "#B45309" }}>★ Cambios de póster: </Text>
+                  {cambiosDePoster.map((c) => `S${c.sala} (${c.inicio})`).join(", ")}
+                </Text>
+              )}
+            </View>
+          </View>
+        ) : (
+          /* ══════════════════════════════════════════════════════════════════
+             MODO HOJA COMPLETA EXCEL (RÉPLICA EXACTA CON SCROLL HORIZONTAL)
+             ══════════════════════════════════════════════════════════════════ */
+          <ScrollView horizontal={isMobile} showsHorizontalScrollIndicator={true} style={styles.excelScroll}>
+            <View
+              style={[styles.excelSheetContainer, { minWidth: isMobile ? 860 : "100%" }]}
+              onLayout={(e) => {
+                tableContainerYRef.current = e.nativeEvent.layout.y;
+              }}
+            >
+              {/* ── FILA 1: FECHA Y TÍTULO MERGED (FONDO GRIS CLARO EXCEL) ── */}
+              <View style={styles.excelTopHeader}>
+                <Text style={styles.excelTopHeaderText}>{dateLabelCompleto}</Text>
+              </View>
+
+              {/* ── FILA 2: SECCIONES MERGED (ENTRADA / SALIDA) ── */}
+              <View style={styles.excelSectionRow}>
+                <View style={[styles.excelSectionBlock, { flex: 5 }]}>
+                  <Text style={styles.excelSectionBlockText}>ENTRADA</Text>
+                </View>
+                <View style={styles.excelDividerColumn} />
+                <View style={[styles.excelSectionBlock, { flex: 5 }]}>
+                  <Text style={styles.excelSectionBlockText}>SALIDA</Text>
+                </View>
+              </View>
+
+              {/* ── FILA 3: CABECERA DE COLUMNAS ── */}
+              <View style={styles.excelColumnsHeaderRow}>
+                {/* ENTRADA COLUMNAS */}
+                <View style={styles.excelColGroupEntrada}>
+                  <Text style={[styles.excelTh, { width: 55 }]}>INICIO</Text>
+                  <Text style={[styles.excelTh, { width: 44 }]}>SALA</Text>
+                  <Text style={[styles.excelTh, { width: 28 }]}>H</Text>
+                  <Text style={[styles.excelTh, { flex: 1, textAlign: "left", paddingLeft: 8 }]}>PELÍCULA</Text>
+                  {colCalif && <Text style={[styles.excelTh, { width: 50 }]}>CALIF</Text>}
+                </View>
+
+                {/* SEPARADOR CENTRAL EXCEL */}
+                <View style={styles.excelDividerColumn} />
+
+                {/* SALIDA COLUMNAS */}
+                <View style={styles.excelColGroupSalida}>
+                  <Text style={[styles.excelTh, { width: 44 }]}>SALA</Text>
+                  {includeCreditos && colCreditos && (
+                    <Text style={[styles.excelTh, { width: 68, color: "#B45309", fontWeight: "800" }]}>CRÉDITOS</Text>
+                  )}
+                  <Text style={[styles.excelTh, { width: 55, color: "#DC2626" }]}>FIN</Text>
+                  <Text style={[styles.excelTh, { flex: 1, textAlign: "left", paddingLeft: 8 }]}>PELÍCULA</Text>
+                </View>
+              </View>
+
+              {/* ── FILAS DE DATOS DE LA HOJA EXCEL ── */}
+              {maxRows === 0 ? (
+                <View style={styles.excelEmptyRow}>
+                  <Text style={styles.excelEmptyRowText}>
+                    {filtroTexto ? "No hay funciones que coincidan con la búsqueda." : "Sin funciones programadas para este día."}
+                  </Text>
+                </View>
+              ) : (
+                Array.from({ length: maxRows }).map((_, idx) => {
+                  const inShow: DailyShow | undefined = entradaFiltrada[idx];
+                  const outShow: DailyShow | undefined = salidaFiltrada[idx];
+
+                  const is3D = inShow?.pelicula?.toUpperCase().includes("3D");
+                  const inKey = inShow ? `${inShow.sala}-${inShow.inicio}-${inShow.fin}-${inShow.pelicula}` : "";
+                  const isPosterChange = inShow ? dailyData.cambioSalaKeys.has(inKey) : false;
+                  const isRestricted = inShow ? isRestrictedRating(inShow.calificacion) : false;
+
+                  const outIs3D = outShow?.pelicula?.toUpperCase().includes("3D");
+                  const isTarget = isToday && idx === targetIdx;
+
+                  return (
+                    <View
+                      key={`row-${idx}`}
+                      onLayout={(e) => {
+                        rowOffsetsRef.current[idx] = e.nativeEvent.layout.y;
+                      }}
+                      style={[
+                        styles.excelDataRow,
+                        idx % 2 === 1 && styles.excelDataRowZebra,
+                        isTarget && styles.excelDataRowTarget,
+                      ]}
+                    >
+                      {/* ── LADO ENTRADA ── */}
+                      <View style={styles.excelColGroupEntrada}>
+                        {inShow ? (
+                          <>
+                            <View style={[styles.excelCell, { width: 55 }]}>
+                              <Text style={styles.excelTextInicio}>{inShow.inicio}</Text>
+                            </View>
+                            <View style={[styles.excelCell, { width: 44 }]}>
+                              <Text style={styles.excelTextSala}>{inShow.sala}</Text>
+                            </View>
+                            <View style={[styles.excelCell, { width: 28 }]}>
+                              <Text style={styles.excelTextHab}>H</Text>
+                            </View>
                             <View
                               style={[
                                 styles.excelCell,
-                                { width: 68 },
-                                outShow.creditosHoraReloj ? styles.excelCellCreditos : null,
+                                styles.excelCellMovie,
+                                { flex: 1 },
+                                is3D && styles.excelCellMovie3D,
                               ]}
                             >
                               <Text
-                                style={[
-                                  styles.excelTextCreditos,
-                                  !outShow.creditosHoraReloj && { color: COLORS.muted },
-                                ]}
+                                style={[styles.excelTextMovie, is3D && styles.excelTextMovie3D]}
+                                numberOfLines={1}
                               >
-                                {outShow.creditosHoraReloj || "-"}
+                                {colPelicula ? inShow.pelicula : `Sala ${inShow.sala}`}
+                              </Text>
+                              {isPosterChange && (
+                                <View style={styles.posterChangeBadge}>
+                                  <Text style={styles.posterChangeBadgeText}>★</Text>
+                                </View>
+                              )}
+                            </View>
+                            {colCalif && (
+                              <View style={[styles.excelCell, { width: 50 }, isRestricted && styles.excelCellCalifRestricted]}>
+                                <Text style={[styles.excelTextCalif, isRestricted && styles.excelTextCalifRestricted]}>
+                                  {inShow.calificacion || "-"}
+                                </Text>
+                              </View>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            <View style={[styles.excelCell, { width: 55 }]} />
+                            <View style={[styles.excelCell, { width: 44 }]} />
+                            <View style={[styles.excelCell, { width: 28 }]} />
+                            <View style={[styles.excelCell, { flex: 1 }]} />
+                            {colCalif && <View style={[styles.excelCell, { width: 50 }]} />}
+                          </>
+                        )}
+                      </View>
+
+                      {/* SEPARADOR CENTRAL EXCEL */}
+                      <View style={styles.excelDividerColumn} />
+
+                      {/* ── LADO SALIDA ── */}
+                      <View style={styles.excelColGroupSalida}>
+                        {outShow ? (
+                          <>
+                            <View style={[styles.excelCell, { width: 44 }]}>
+                              <Text style={styles.excelTextSala}>{outShow.sala}</Text>
+                            </View>
+                            {includeCreditos && colCreditos && (
+                              <View style={[styles.excelCell, styles.excelCellCreditos, { width: 68 }]}>
+                                <Text style={styles.excelTextCreditos}>
+                                  {outShow.creditosHoraReloj || "-"}
+                                </Text>
+                              </View>
+                            )}
+                            <View style={[styles.excelCell, styles.excelCellFin, { width: 55 }]}>
+                              <Text style={styles.excelTextFin}>{outShow.fin}</Text>
+                            </View>
+                            <View
+                              style={[
+                                styles.excelCell,
+                                styles.excelCellMovie,
+                                { flex: 1 },
+                                outIs3D && styles.excelCellMovie3D,
+                              ]}
+                            >
+                              <Text
+                                style={[styles.excelTextMovie, outIs3D && styles.excelTextMovie3D]}
+                                numberOfLines={1}
+                              >
+                                {colPelicula ? outShow.pelicula : `Sala ${outShow.sala}`}
                               </Text>
                             </View>
-                          )}
-
-                          <View style={[styles.excelCell, styles.excelCellFin, { width: 55 }]}>
-                            <Text style={styles.excelTextFin}>{outShow.fin}</Text>
-                          </View>
-
-                          <View
-                            style={[
-                              styles.excelCell,
-                              styles.excelCellMovie,
-                              { flex: 1 },
-                              outIs3D && styles.excelCellMovie3D,
-                            ]}
-                          >
-                            <Text
-                              style={[styles.excelTextMovie, outIs3D && styles.excelTextMovie3D]}
-                              numberOfLines={1}
-                            >
-                              {colPelicula ? outShow.pelicula : `Sala ${outShow.sala}`}
-                            </Text>
-                          </View>
-                        </>
-                      ) : (
-                        <>
-                          <View style={[styles.excelCell, { width: 44 }]} />
-                          {includeCreditos && colCreditos && <View style={[styles.excelCell, { width: 68 }]} />}
-                          <View style={[styles.excelCell, { width: 55 }]} />
-                          <View style={[styles.excelCell, { flex: 1 }]} />
-                        </>
-                      )}
+                          </>
+                        ) : (
+                          <>
+                            <View style={[styles.excelCell, { width: 44 }]} />
+                            {includeCreditos && colCreditos && <View style={[styles.excelCell, { width: 68 }]} />}
+                            <View style={[styles.excelCell, { width: 55 }]} />
+                            <View style={[styles.excelCell, { flex: 1 }]} />
+                          </>
+                        )}
+                      </View>
                     </View>
+                  );
+                })
+              )}
+
+              {/* ── PIE DE PÁGINA OFICIAL EXCEL (LÍNEAS DE LEYENDA) ── */}
+              <View style={styles.excelLegendContainer}>
+                {/* PELÍCULAS 3D */}
+                <View style={styles.excelLegendRow}>
+                  <View style={styles.excelLegendTag}>
+                    <Text style={styles.excelLegendTagText}>PELÍCULAS 3D</Text>
                   </View>
-                );
-              })
-            )}
-
-            {/* ── PIE DE PÁGINA OFICIAL EXCEL (LÍNEAS DE LEYENDA) ── */}
-            <View style={styles.excelLegendContainer}>
-              {/* PELÍCULAS 3D */}
-              <View style={styles.excelLegendRow}>
-                <View style={styles.excelLegendTag}>
-                  <Text style={styles.excelLegendTagText}>PELÍCULAS 3D</Text>
+                  <Text style={styles.excelLegendContent} numberOfLines={2}>
+                    {peliculas3D.length > 0 ? peliculas3D.join("   |   ") : "Sin películas 3D programadas"}
+                  </Text>
                 </View>
-                <Text style={styles.excelLegendContent} numberOfLines={2}>
-                  {peliculas3D.length > 0 ? peliculas3D.join("   |   ") : "Sin películas 3D programadas"}
-                </Text>
-              </View>
 
-              {/* CAMBIO DE PÓSTER */}
-              <View style={styles.excelLegendRow}>
-                <View style={[styles.excelLegendTag, { backgroundColor: "#FEF3C7" }]}>
-                  <Text style={[styles.excelLegendTagText, { color: "#92400E" }]}>CAMBIO DE PÓSTER</Text>
+                {/* CAMBIO DE PÓSTER */}
+                <View style={styles.excelLegendRow}>
+                  <View style={[styles.excelLegendTag, { backgroundColor: "#FEF3C7" }]}>
+                    <Text style={[styles.excelLegendTagText, { color: "#92400E" }]}>CAMBIO DE PÓSTER</Text>
+                  </View>
+                  <Text style={styles.excelLegendContent} numberOfLines={2}>
+                    {cambiosDePoster.length > 0
+                      ? cambiosDePoster.map((c) => `Sala ${c.sala} (${c.inicio}): ${c.pelicula}`).join("   |   ")
+                      : "No hay cambios de película en una misma sala"}
+                  </Text>
                 </View>
-                <Text style={styles.excelLegendContent} numberOfLines={2}>
-                  {cambiosDePoster.length > 0
-                    ? cambiosDePoster.map((c) => `Sala ${c.sala} (${c.inicio}): ${c.pelicula}`).join("   |   ")
-                    : "No hay cambios de película en una misma sala"}
-                </Text>
-              </View>
 
-              {/* CALIFICACIONES */}
-              <View style={styles.excelLegendFooter}>
-                <Text style={styles.excelLegendFooterText}>
-                  G = Audiencia General (ATP)  |  SP = Supervisión Parental Sugerida (ATPR)  |  R-13 = Restringida menores de 13 años  |  R-17 = Restringida menores de 17 años  |  C = Solo apta mayores de 18 años
-                </Text>
+                {/* CALIFICACIONES */}
+                <View style={styles.excelLegendFooter}>
+                  <Text style={styles.excelLegendFooterText}>
+                    G = Audiencia General (ATP)  |  SP = Supervisión Parental Sugerida (ATPR)  |  R-13 = Restringida menores de 13 años  |  R-17 = Restringida menores de 17 años  |  C = Solo apta mayores de 18 años
+                  </Text>
+                </View>
               </View>
             </View>
-          </View>
-        </ScrollView>
-      )}
+          </ScrollView>
+        )}
       </ScrollView>
 
       {/* Botón flotante para saltar directamente a la hora actual */}
@@ -1497,9 +1328,13 @@ export default function CoordinadoresProgramacionScreen() {
 }
 
 const styles = StyleSheet.create({
+  screenWrapper: {
+    flex: 1,
+    backgroundColor: COLORS.bg,
+  },
   container: {
     flex: 1,
-    backgroundColor: "#F1F5F9",
+    backgroundColor: COLORS.bg,
   },
   content: {
     padding: 10,
@@ -1527,16 +1362,16 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 8,
-    backgroundColor: "#DCFCE7",
+    backgroundColor: COLORS.card,
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#86EFAC",
+    borderColor: COLORS.border,
   },
   title: {
     fontSize: 17,
     fontWeight: "800",
-    color: "#0F172A",
+    color: COLORS.text,
   },
   badgeExcel: {
     flexDirection: "row",
@@ -1557,55 +1392,15 @@ const styles = StyleSheet.create({
     color: COLORS.muted,
     marginTop: 1,
   },
-  topActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  btnExcel: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#166534",
-    paddingHorizontal: 11,
-    paddingVertical: 6,
-    borderRadius: THEME.radius.sm,
-  },
-  btnExcelText: {
-    color: "#FFFFFF",
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  btnPrint: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#CBD5E1",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: THEME.radius.sm,
-  },
-  btnPrintText: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: COLORS.text,
-  },
-  btnAltFile: {
-    padding: 6,
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#CBD5E1",
-    borderRadius: THEME.radius.sm,
-  },
 
   // Barra de estado del reporte guardado
   statusBar: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: COLORS.card,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
+    borderColor: COLORS.border,
     borderRadius: THEME.radius.sm,
     paddingHorizontal: 8,
     paddingVertical: 4,
@@ -1625,25 +1420,25 @@ const styles = StyleSheet.create({
   switchContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FFFBEB",
+    backgroundColor: COLORS.bgMobile,
     paddingHorizontal: 7,
     paddingVertical: 2,
     borderRadius: 4,
     borderWidth: 1,
-    borderColor: "#FDE68A",
+    borderColor: COLORS.border,
   },
   switchLabel: {
     fontSize: 10.5,
-    color: "#92400E",
+    color: COLORS.text,
     fontWeight: "600",
   },
 
   // Selector de días de la semana (100% responsive y centrado en web)
   daySelectorCard: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: COLORS.card,
     borderRadius: THEME.radius.sm,
     borderWidth: 1,
-    borderColor: "#CBD5E1",
+    borderColor: COLORS.border,
     padding: 4,
     marginBottom: 6,
     width: "100%",
@@ -1667,7 +1462,9 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#F8FAFC",
+    backgroundColor: COLORS.bgMobile,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   dayTabMobileScroll: {
     paddingHorizontal: 12,
@@ -1675,10 +1472,13 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#F8FAFC",
+    backgroundColor: COLORS.bgMobile,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   dayTabActive: {
     backgroundColor: "#166534",
+    borderColor: "#166534",
   },
   dayTabTitle: {
     fontSize: 11.5,
@@ -1703,9 +1503,9 @@ const styles = StyleSheet.create({
   viewToolbar: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: COLORS.card,
     borderWidth: 1,
-    borderColor: "#CBD5E1",
+    borderColor: COLORS.border,
     borderRadius: THEME.radius.sm,
     padding: 5,
     marginBottom: 6,
@@ -1715,9 +1515,9 @@ const styles = StyleSheet.create({
   btnToggleVista: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#F0FDF4",
+    backgroundColor: COLORS.bgMobile,
     borderWidth: 1.5,
-    borderColor: "#86EFAC",
+    borderColor: COLORS.border,
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: THEME.radius.sm,
@@ -1730,13 +1530,13 @@ const styles = StyleSheet.create({
   btnToggleVistaText: {
     fontSize: 11.5,
     fontWeight: "700",
-    color: "#166534",
+    color: COLORS.text,
   },
   btnToggleVistaTextActive: {
     color: "#FFFFFF",
   },
   pillBadgeMode: {
-    backgroundColor: "#DCFCE7",
+    backgroundColor: COLORS.card,
     paddingHorizontal: 5,
     paddingVertical: 1,
     borderRadius: 4,
@@ -1748,7 +1548,7 @@ const styles = StyleSheet.create({
   pillBadgeModeText: {
     fontSize: 9.5,
     fontWeight: "800",
-    color: "#166534",
+    color: COLORS.muted,
   },
   pillBadgeModeTextActive: {
     color: "#FFFFFF",
@@ -1756,9 +1556,9 @@ const styles = StyleSheet.create({
   btnJumpNow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#DCFCE7",
+    backgroundColor: COLORS.bgMobile,
     borderWidth: 1,
-    borderColor: "#86EFAC",
+    borderColor: "#166534",
     paddingHorizontal: 8,
     paddingVertical: 5,
     borderRadius: THEME.radius.sm,
@@ -1766,7 +1566,7 @@ const styles = StyleSheet.create({
   btnJumpNowText: {
     fontSize: 11,
     fontWeight: "700",
-    color: "#166534",
+    color: COLORS.text,
   },
   fabJumpNow: {
     position: "absolute",
@@ -1810,10 +1610,12 @@ const styles = StyleSheet.create({
   },
   sectionPills: {
     flexDirection: "row",
-    backgroundColor: "#F1F5F9",
+    backgroundColor: COLORS.bgMobile,
     padding: 2,
     borderRadius: 4,
     gap: 2,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   sectionPill: {
     paddingHorizontal: 7,
@@ -1821,7 +1623,7 @@ const styles = StyleSheet.create({
     borderRadius: 3,
   },
   sectionPillActive: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: COLORS.card,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
@@ -1834,45 +1636,45 @@ const styles = StyleSheet.create({
     color: COLORS.muted,
   },
   sectionPillTextActive: {
-    color: "#0F172A",
+    color: COLORS.text,
     fontWeight: "700",
   },
   toolbarDivider: {
     width: 1,
     height: 16,
-    backgroundColor: "#E2E8F0",
+    backgroundColor: COLORS.border,
     marginHorizontal: 2,
   },
   colTogglePill: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#F0FDF4",
+    backgroundColor: COLORS.bgMobile,
     borderWidth: 1,
-    borderColor: "#BBF7D0",
+    borderColor: "#166534",
     paddingHorizontal: 7,
     paddingVertical: 3,
     borderRadius: 4,
   },
   colTogglePillOff: {
-    backgroundColor: "#FEF2F2",
-    borderColor: "#FECACA",
+    backgroundColor: COLORS.bgMobile,
+    borderColor: COLORS.border,
   },
   colTogglePillText: {
     fontSize: 10.5,
     fontWeight: "600",
-    color: "#166534",
+    color: COLORS.text,
   },
   colTogglePillTextOff: {
-    color: "#DC2626",
+    color: COLORS.muted,
   },
 
   // Buscador rápido
   searchBar: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: COLORS.card,
     borderWidth: 1,
-    borderColor: "#CBD5E1",
+    borderColor: COLORS.border,
     borderRadius: THEME.radius.sm,
     paddingHorizontal: 8,
     paddingVertical: 4,
@@ -1885,7 +1687,7 @@ const styles = StyleSheet.create({
     outlineStyle: "none" as any,
   },
   searchCountBadge: {
-    backgroundColor: "#F1F5F9",
+    backgroundColor: COLORS.bgMobile,
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
@@ -1902,10 +1704,10 @@ const styles = StyleSheet.create({
     padding: 30,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: COLORS.card,
     borderRadius: THEME.radius.sm,
     borderWidth: 1,
-    borderColor: "#CBD5E1",
+    borderColor: COLORS.border,
   },
   loadingText: {
     marginTop: 8,
@@ -1915,10 +1717,10 @@ const styles = StyleSheet.create({
   emptyCard: {
     padding: 30,
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: COLORS.card,
     borderRadius: THEME.radius.sm,
     borderWidth: 1,
-    borderColor: "#CBD5E1",
+    borderColor: COLORS.border,
   },
   emptyTitle: {
     fontSize: 14,
@@ -1939,24 +1741,24 @@ const styles = StyleSheet.create({
   // ESTILOS: VISTA RESUMIDA MOBILE (100% RESPONSIVE SIN SCROLL HORIZONTAL)
   // ══════════════════════════════════════════════════════════════════════════
   compactContainer: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: COLORS.card,
     borderRadius: THEME.radius.sm,
     borderWidth: 1,
-    borderColor: "#CBD5E1",
+    borderColor: COLORS.border,
     overflow: "hidden",
   },
   compactHeaderBanner: {
-    backgroundColor: "#E2E8F0",
+    backgroundColor: COLORS.bgMobile,
     paddingVertical: 6,
     paddingHorizontal: 10,
     borderBottomWidth: 1,
-    borderBottomColor: "#CBD5E1",
+    borderBottomColor: COLORS.border,
     alignItems: "center",
   },
   compactHeaderTitle: {
     fontSize: 12,
     fontWeight: "800",
-    color: "#0F172A",
+    color: COLORS.text,
     letterSpacing: 0.5,
   },
   compactHeaderSub: {
@@ -1969,9 +1771,9 @@ const styles = StyleSheet.create({
   },
   compactColumnLabelsRow: {
     flexDirection: "row",
-    backgroundColor: "#F1F5F9",
+    backgroundColor: COLORS.bgMobile,
     borderBottomWidth: 1,
-    borderBottomColor: "#E2E8F0",
+    borderBottomColor: COLORS.border,
     paddingVertical: 3,
     paddingHorizontal: 8,
   },
@@ -1985,7 +1787,7 @@ const styles = StyleSheet.create({
   compactColLabelText: {
     fontSize: 9,
     fontWeight: "800",
-    color: "#475569",
+    color: COLORS.muted,
     letterSpacing: 0.5,
   },
 
@@ -1994,15 +1796,15 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     paddingHorizontal: 8,
     borderBottomWidth: 1,
-    borderBottomColor: "#E2E8F0",
+    borderBottomColor: COLORS.border,
   },
   compactItemRowZebra: {
-    backgroundColor: "#F8FAFC",
+    backgroundColor: COLORS.bgMobile,
   },
   compactItemRowTarget: {
-    backgroundColor: "#F0FDF4",
+    backgroundColor: Platform.OS === "web" ? ("rgba(16, 185, 129, 0.12)" as any) : "#F0FDF4",
     borderLeftWidth: 4,
-    borderLeftColor: "#166534",
+    borderLeftColor: "#10B981",
   },
   compactTimeRow: {
     flexDirection: "row",
@@ -2030,9 +1832,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   compactBadgeInicio: {
-    backgroundColor: "#F1F5F9",
+    backgroundColor: COLORS.bgMobile,
     borderWidth: 1,
-    borderColor: "#CBD5E1",
+    borderColor: COLORS.border,
     paddingHorizontal: 5,
     paddingVertical: 2,
     borderRadius: 3,
@@ -2040,11 +1842,13 @@ const styles = StyleSheet.create({
   compactBadgeInicioText: {
     fontSize: 11,
     fontWeight: "800",
-    color: "#0F172A",
+    color: COLORS.text,
     fontFamily: Platform.OS === "web" ? "Consolas, monospace" : "System",
   },
   compactBadgeSala: {
-    backgroundColor: "#E2E8F0",
+    backgroundColor: COLORS.bgMobile,
+    borderWidth: 1,
+    borderColor: COLORS.border,
     paddingHorizontal: 4,
     paddingVertical: 2,
     borderRadius: 3,
@@ -2052,10 +1856,10 @@ const styles = StyleSheet.create({
   compactBadgeSalaText: {
     fontSize: 10,
     fontWeight: "700",
-    color: "#1E293B",
+    color: COLORS.text,
   },
   compactBadgeCalif: {
-    backgroundColor: "#F1F5F9",
+    backgroundColor: COLORS.bgMobile,
     paddingHorizontal: 4,
     paddingVertical: 2,
     borderRadius: 3,
@@ -2066,7 +1870,7 @@ const styles = StyleSheet.create({
   compactBadgeCalifText: {
     fontSize: 9.5,
     fontWeight: "700",
-    color: "#475569",
+    color: COLORS.muted,
   },
   compactBadgeCalifTextRestricted: {
     color: "#FFFFFF",
@@ -2100,8 +1904,8 @@ const styles = StyleSheet.create({
     fontFamily: Platform.OS === "web" ? "Consolas, monospace" : "System",
   },
   compactBadgeMuted: {
-    backgroundColor: "#F1F5F9",
-    borderColor: "#E2E8F0",
+    backgroundColor: COLORS.bgMobile,
+    borderColor: COLORS.border,
   },
   compactDashText: {
     fontSize: 11,
@@ -2119,12 +1923,12 @@ const styles = StyleSheet.create({
   compactMovieTitleText: {
     fontSize: 10.5,
     fontWeight: "600",
-    color: "#1E293B",
+    color: COLORS.text,
   },
   compactMovieTitleTextRight: {
     fontSize: 10,
     fontWeight: "600",
-    color: "#64748B",
+    color: COLORS.muted,
   },
   compactMovieTitle3D: {
     backgroundColor: "#374151",
@@ -2151,10 +1955,10 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     paddingHorizontal: 8,
     borderBottomWidth: 1,
-    borderBottomColor: "#E2E8F0",
+    borderBottomColor: COLORS.border,
   },
   singleSectionRowZebra: {
-    backgroundColor: "#F8FAFC",
+    backgroundColor: COLORS.bgMobile,
   },
   singleRowTop: {
     flexDirection: "row",
@@ -2164,32 +1968,32 @@ const styles = StyleSheet.create({
   singleRowMovieText: {
     fontSize: 11,
     fontWeight: "600",
-    color: "#1E293B",
+    color: COLORS.text,
     flex: 1,
   },
   compactFooterBox: {
     padding: 8,
-    backgroundColor: "#F8FAFC",
+    backgroundColor: COLORS.bgMobile,
     borderTopWidth: 1,
-    borderTopColor: "#CBD5E1",
+    borderTopColor: COLORS.border,
     gap: 4,
   },
   compactFooterLine: {
     fontSize: 10,
-    color: "#475569",
+    color: COLORS.muted,
     lineHeight: 14,
   },
 
-  // ══════════════════════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════
   // ESTILOS: HOJA EXCEL VISUAL IDÉNTICA (VISTA COMPLETA)
-  // ══════════════════════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════
   excelScroll: {
     width: "100%",
   },
   excelSheetContainer: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: COLORS.card,
     borderWidth: 1.5,
-    borderColor: "#334155",
+    borderColor: COLORS.border,
     borderRadius: 2,
     shadowColor: "#000000",
     shadowOffset: { width: 0, height: 2 },
@@ -2200,9 +2004,9 @@ const styles = StyleSheet.create({
 
   // Encabezado 1: Fecha (Gris Claro Excel)
   excelTopHeader: {
-    backgroundColor: "#E2E8F0",
+    backgroundColor: COLORS.bgMobile,
     borderBottomWidth: 1.5,
-    borderBottomColor: "#334155",
+    borderBottomColor: COLORS.border,
     paddingVertical: 7,
     alignItems: "center",
     justifyContent: "center",
@@ -2210,7 +2014,7 @@ const styles = StyleSheet.create({
   excelTopHeaderText: {
     fontSize: 13,
     fontWeight: "800",
-    color: "#0F172A",
+    color: COLORS.text,
     letterSpacing: 0.8,
     fontFamily: Platform.OS === "web" ? "Calibri, Arial, sans-serif" : "System",
   },
@@ -2218,9 +2022,9 @@ const styles = StyleSheet.create({
   // Encabezado 2: ENTRADA / SALIDA
   excelSectionRow: {
     flexDirection: "row",
-    backgroundColor: "#CBD5E1",
+    backgroundColor: COLORS.bgMobile,
     borderBottomWidth: 1,
-    borderBottomColor: "#334155",
+    borderBottomColor: COLORS.border,
   },
   excelSectionBlock: {
     paddingVertical: 4,
@@ -2230,7 +2034,7 @@ const styles = StyleSheet.create({
   excelSectionBlockText: {
     fontSize: 12,
     fontWeight: "800",
-    color: "#0F172A",
+    color: COLORS.text,
     letterSpacing: 1,
     fontFamily: Platform.OS === "web" ? "Calibri, Arial, sans-serif" : "System",
   },
@@ -2238,9 +2042,9 @@ const styles = StyleSheet.create({
   // Encabezado 3: Columnas
   excelColumnsHeaderRow: {
     flexDirection: "row",
-    backgroundColor: "#E2E8F0",
+    backgroundColor: COLORS.bgMobile,
     borderBottomWidth: 1.5,
-    borderBottomColor: "#334155",
+    borderBottomColor: COLORS.border,
   },
   excelColGroupEntrada: {
     flex: 5,
@@ -2254,17 +2058,17 @@ const styles = StyleSheet.create({
   },
   excelDividerColumn: {
     width: 2,
-    backgroundColor: "#334155",
+    backgroundColor: COLORS.border,
     alignSelf: "stretch",
   },
   excelTh: {
     fontSize: 10,
     fontWeight: "800",
-    color: "#0F172A",
+    color: COLORS.text,
     textAlign: "center",
     paddingVertical: 4,
     borderRightWidth: 0.5,
-    borderRightColor: "#94A3B8",
+    borderRightColor: COLORS.border,
     fontFamily: Platform.OS === "web" ? "Calibri, Arial, sans-serif" : "System",
   },
 
@@ -2272,16 +2076,16 @@ const styles = StyleSheet.create({
   excelDataRow: {
     flexDirection: "row",
     borderBottomWidth: 0.5,
-    borderBottomColor: "#CBD5E1",
+    borderBottomColor: COLORS.border,
     minHeight: 25,
   },
   excelDataRowZebra: {
-    backgroundColor: "#F8FAFC",
+    backgroundColor: COLORS.bgMobile,
   },
   excelDataRowTarget: {
-    backgroundColor: "#DCFCE7",
+    backgroundColor: Platform.OS === "web" ? ("rgba(16, 185, 129, 0.15)" as any) : "#DCFCE7",
     borderLeftWidth: 4,
-    borderLeftColor: "#166534",
+    borderLeftColor: "#10B981",
   },
   excelEmptyRow: {
     padding: 24,
@@ -2296,7 +2100,7 @@ const styles = StyleSheet.create({
   // Celdas
   excelCell: {
     borderRightWidth: 0.5,
-    borderRightColor: "#CBD5E1",
+    borderRightColor: COLORS.border,
     paddingVertical: 2.5,
     paddingHorizontal: 4,
     justifyContent: "center",
@@ -2312,10 +2116,10 @@ const styles = StyleSheet.create({
     backgroundColor: "#374151",
   },
   excelCellFin: {
-    backgroundColor: "#FEF2F2",
+    backgroundColor: Platform.OS === "web" ? ("rgba(239, 68, 68, 0.12)" as any) : "#FEF2F2",
   },
   excelCellCreditos: {
-    backgroundColor: "#FEF3C7",
+    backgroundColor: Platform.OS === "web" ? ("rgba(245, 158, 11, 0.12)" as any) : "#FEF3C7",
   },
   excelCellCalifRestricted: {
     backgroundColor: "#000000",
@@ -2325,23 +2129,23 @@ const styles = StyleSheet.create({
   excelTextInicio: {
     fontSize: 11,
     fontWeight: "800",
-    color: "#0F172A",
+    color: COLORS.text,
     fontFamily: Platform.OS === "web" ? "Consolas, monospace" : "System",
   },
   excelTextSala: {
     fontSize: 11,
     fontWeight: "700",
-    color: "#0F172A",
+    color: COLORS.text,
   },
   excelTextHab: {
     fontSize: 10,
-    color: "#64748B",
+    color: COLORS.muted,
     fontWeight: "600",
   },
   excelTextMovie: {
     fontSize: 10.5,
     fontWeight: "700",
-    color: "#0F172A",
+    color: COLORS.text,
     flex: 1,
     fontFamily: Platform.OS === "web" ? "Calibri, Arial, sans-serif" : "System",
   },
@@ -2351,7 +2155,7 @@ const styles = StyleSheet.create({
   excelTextCalif: {
     fontSize: 10,
     fontWeight: "700",
-    color: "#334155",
+    color: COLORS.muted,
   },
   excelTextCalifRestricted: {
     color: "#FFFFFF",
@@ -2384,14 +2188,14 @@ const styles = StyleSheet.create({
   // Pie de página de la hoja (Leyenda Excel)
   excelLegendContainer: {
     borderTopWidth: 1.5,
-    borderTopColor: "#334155",
-    backgroundColor: "#F8FAFC",
+    borderTopColor: COLORS.border,
+    backgroundColor: COLORS.bgMobile,
   },
   excelLegendRow: {
     flexDirection: "row",
     alignItems: "center",
     borderBottomWidth: 0.5,
-    borderBottomColor: "#CBD5E1",
+    borderBottomColor: COLORS.border,
     paddingVertical: 4,
     paddingHorizontal: 6,
     gap: 8,
@@ -2412,16 +2216,18 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 10,
     fontWeight: "600",
-    color: "#334155",
+    color: COLORS.text,
   },
   excelLegendFooter: {
     paddingVertical: 4,
     paddingHorizontal: 8,
-    backgroundColor: "#F1F5F9",
+    backgroundColor: COLORS.bgMobile,
+    borderTopWidth: 0.5,
+    borderTopColor: COLORS.border,
   },
   excelLegendFooterText: {
     fontSize: 9,
-    color: "#64748B",
+    color: COLORS.muted,
     textAlign: "center",
   },
 });
