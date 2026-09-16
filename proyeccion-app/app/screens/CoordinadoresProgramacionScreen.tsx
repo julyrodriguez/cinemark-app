@@ -2,7 +2,7 @@
 
 import * as DocumentPicker from "expo-document-picker";
 import * as Sharing from "expo-sharing";
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -267,6 +267,28 @@ export default function CoordinadoresProgramacionScreen() {
   const [colCreditos, setColCreditos] = useState<boolean>(true);
   const [modoSeccion, setModoSeccion] = useState<"AMBAS" | "ENTRADAS" | "SALIDAS">("AMBAS");
 
+  // ── AUTO-SCROLL AL INGRESO PRÓXIMO / ACTUAL ──────────────────────────────
+  const mainScrollRef = useRef<ScrollView>(null);
+  const rowOffsetsRef = useRef<Record<number, number>>({});
+  const tableContainerYRef = useRef<number>(0);
+  const hasAutoScrolledRef = useRef<boolean>(false);
+
+  // Minutos cinematográficos actuales (actualizados cada 30 segundos)
+  const [currentMinutes, setCurrentMinutes] = useState<number>(() => {
+    const now = dayjs();
+    const m = now.hour() * 60 + now.minute();
+    return m < 360 ? m + 24 * 60 : m;
+  });
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = dayjs();
+      const m = now.hour() * 60 + now.minute();
+      setCurrentMinutes(m < 360 ? m + 24 * 60 : m);
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
   // ── 1. Cargar programación semanal guardada en Firebase ───────────────────
   useEffect(() => {
     if (!cineId) return;
@@ -407,6 +429,66 @@ export default function CoordinadoresProgramacionScreen() {
   // Cantidad máxima de filas para aparear la tabla lado a lado
   const maxRows = Math.max(entradaFiltrada.length, salidaFiltrada.length);
 
+  // ── 8. Determinar ingreso objetivo (el que está por suceder o en curso) ───
+  const isToday = selectedDay === getCinematicWeekdayKey();
+
+  const targetIdx = useMemo(() => {
+    if (!isToday) return -1;
+    if (modoSeccion === "SALIDAS") {
+      if (salidaFiltrada.length === 0) return -1;
+      const found = salidaFiltrada.findIndex((s) => s.sortFin >= currentMinutes - 10);
+      return found !== -1 ? found : salidaFiltrada.length - 1;
+    }
+    // Modo AMBAS y ENTRADAS: buscamos el primer show que inicie en el futuro o dentro de los últimos 15 min
+    if (entradaFiltrada.length === 0) return -1;
+    const found = entradaFiltrada.findIndex((s) => s.sortInicio >= currentMinutes - 15);
+    return found !== -1 ? found : entradaFiltrada.length - 1;
+  }, [isToday, modoSeccion, entradaFiltrada, salidaFiltrada, currentMinutes]);
+
+  const targetShow = useMemo(() => {
+    if (targetIdx < 0) return null;
+    return modoSeccion === "SALIDAS" ? salidaFiltrada[targetIdx] : entradaFiltrada[targetIdx];
+  }, [targetIdx, modoSeccion, entradaFiltrada, salidaFiltrada]);
+
+  // Función para deslizarse suavemente a la fila del horario actual
+  const scrollToTargetRow = useCallback((animated: boolean = true) => {
+    if (targetIdx < 0) return;
+
+    const measuredY = rowOffsetsRef.current[targetIdx];
+    const containerY = tableContainerYRef.current || 220;
+
+    let targetY: number;
+    if (measuredY !== undefined) {
+      targetY = containerY + measuredY;
+    } else {
+      const rowHeight = vistaResumida ? 48 : 26;
+      targetY = containerY + targetIdx * rowHeight;
+    }
+
+    const finalScrollY = Math.max(0, targetY - 80);
+    mainScrollRef.current?.scrollTo({ y: finalScrollY, animated });
+  }, [targetIdx, vistaResumida]);
+
+  // Reset del flag de auto-scroll cuando cambia el día, vista o modo
+  useEffect(() => {
+    hasAutoScrolledRef.current = false;
+    rowOffsetsRef.current = {};
+  }, [selectedDay, vistaResumida, modoSeccion]);
+
+  // Auto-scroll automático inicial al horario actual cuando los datos están listos
+  useEffect(() => {
+    if (loadingWeekly || targetIdx < 0 || hasAutoScrolledRef.current || filtroTexto.trim().length > 0) return;
+
+    const timeout = setTimeout(() => {
+      if (!hasAutoScrolledRef.current) {
+        scrollToTargetRow(true);
+        hasAutoScrolledRef.current = true;
+      }
+    }, 350);
+
+    return () => clearTimeout(timeout);
+  }, [loadingWeekly, targetIdx, filtroTexto, scrollToTargetRow]);
+
   // ── 8. Extraer info del pie de página (Películas 3D y Cambio de Poster) ───
   const peliculas3D = useMemo(() => {
     const set3D = new Set<string>();
@@ -522,7 +604,8 @@ export default function CoordinadoresProgramacionScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <View style={{ flex: 1, backgroundColor: "#F1F5F9" }}>
+      <ScrollView ref={mainScrollRef} style={styles.container} contentContainerStyle={styles.content}>
       {/* ── BARRA SUPERIOR / HEADER ── */}
       <View style={styles.header}>
         <View style={styles.headerTitleRow}>
@@ -722,6 +805,21 @@ export default function CoordinadoresProgramacionScreen() {
           </View>
         </TouchableOpacity>
 
+        {/* Botón rápido para saltar al horario actual / próximo ingreso */}
+        {isToday && targetShow && (
+          <TouchableOpacity
+            onPress={() => scrollToTargetRow(true)}
+            style={styles.btnJumpNow}
+            activeOpacity={0.8}
+            title="Ir al ingreso que está por suceder ahora"
+          >
+            <MaterialCommunityIcons name="clock-fast" size={15} color="#166534" style={{ marginRight: 5 }} />
+            <Text style={styles.btnJumpNowText}>
+              Ir a ahora ({targetShow.inicio})
+            </Text>
+          </TouchableOpacity>
+        )}
+
         {/* Barra de personalización de columnas y secciones (visible en cualquier momento) */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.colFiltersScroll}>
           {/* Segmento de Secciones */}
@@ -850,7 +948,12 @@ export default function CoordinadoresProgramacionScreen() {
         /* ══════════════════════════════════════════════════════════════════
            MODO VISTA RESUMIDA MOBILE (100% ANCHO, SIN SCROLL HORIZONTAL)
            ══════════════════════════════════════════════════════════════════ */
-        <View style={styles.compactContainer}>
+        <View
+          style={styles.compactContainer}
+          onLayout={(e) => {
+            tableContainerYRef.current = e.nativeEvent.layout.y;
+          }}
+        >
           {/* Cabecera compacta con la fecha del día */}
           <View style={styles.compactHeaderBanner}>
             <Text style={styles.compactHeaderTitle}>{dateLabelCompleto}</Text>
@@ -891,9 +994,20 @@ export default function CoordinadoresProgramacionScreen() {
                 const isRestricted = inShow ? isRestrictedRating(inShow.calificacion) : false;
 
                 const outIs3D = outShow?.pelicula?.toUpperCase().includes("3D");
+                const isTarget = isToday && idx === targetIdx;
 
                 return (
-                  <View key={`comp-row-${idx}`} style={[styles.compactItemRow, idx % 2 === 1 && styles.compactItemRowZebra]}>
+                  <View
+                    key={`comp-row-${idx}`}
+                    onLayout={(e) => {
+                      rowOffsetsRef.current[idx] = e.nativeEvent.layout.y;
+                    }}
+                    style={[
+                      styles.compactItemRow,
+                      idx % 2 === 1 && styles.compactItemRowZebra,
+                      isTarget && styles.compactItemRowTarget,
+                    ]}
+                  >
                     {/* Línea 1: Horarios y Salas */}
                     <View style={styles.compactTimeRow}>
                       {/* Lado Entrada */}
@@ -903,6 +1017,11 @@ export default function CoordinadoresProgramacionScreen() {
                             <View style={styles.compactBadgeInicio}>
                               <Text style={styles.compactBadgeInicioText}>{inShow.inicio}</Text>
                             </View>
+                            {isTarget && (
+                              <View style={styles.badgeAhora}>
+                                <Text style={styles.badgeAhoraText}>AHORA</Text>
+                              </View>
+                            )}
                             <View style={styles.compactBadgeSala}>
                               <Text style={styles.compactBadgeSalaText}>S{inShow.sala}</Text>
                             </View>
@@ -1002,13 +1121,29 @@ export default function CoordinadoresProgramacionScreen() {
                 const inKey = `${show.sala}-${show.inicio}-${show.fin}-${show.pelicula}`;
                 const isPosterChange = dailyData.cambioSalaKeys.has(inKey);
                 const isRestricted = isRestrictedRating(show.calificacion);
+                const isTarget = isToday && idx === targetIdx;
 
                 return (
-                  <View key={`in-card-${idx}`} style={[styles.singleSectionRow, idx % 2 === 1 && styles.singleSectionRowZebra]}>
+                  <View
+                    key={`in-card-${idx}`}
+                    onLayout={(e) => {
+                      rowOffsetsRef.current[idx] = e.nativeEvent.layout.y;
+                    }}
+                    style={[
+                      styles.singleSectionRow,
+                      idx % 2 === 1 && styles.singleSectionRowZebra,
+                      isTarget && styles.compactItemRowTarget,
+                    ]}
+                  >
                     <View style={styles.singleRowTop}>
                       <View style={styles.compactBadgeInicio}>
                         <Text style={styles.compactBadgeInicioText}>{show.inicio}</Text>
                       </View>
+                      {isTarget && (
+                        <View style={styles.badgeAhora}>
+                          <Text style={styles.badgeAhoraText}>AHORA</Text>
+                        </View>
+                      )}
                       <View style={styles.compactBadgeSala}>
                         <Text style={styles.compactBadgeSalaText}>Sala {show.sala}</Text>
                       </View>
@@ -1042,13 +1177,29 @@ export default function CoordinadoresProgramacionScreen() {
             <View style={styles.compactList}>
               {salidaFiltrada.map((show, idx) => {
                 const is3D = show.pelicula?.toUpperCase().includes("3D");
+                const isTarget = isToday && idx === targetIdx;
 
                 return (
-                  <View key={`out-card-${idx}`} style={[styles.singleSectionRow, idx % 2 === 1 && styles.singleSectionRowZebra]}>
+                  <View
+                    key={`out-card-${idx}`}
+                    onLayout={(e) => {
+                      rowOffsetsRef.current[idx] = e.nativeEvent.layout.y;
+                    }}
+                    style={[
+                      styles.singleSectionRow,
+                      idx % 2 === 1 && styles.singleSectionRowZebra,
+                      isTarget && styles.compactItemRowTarget,
+                    ]}
+                  >
                     <View style={styles.singleRowTop}>
                       <View style={styles.compactBadgeSala}>
                         <Text style={styles.compactBadgeSalaText}>Sala {show.sala}</Text>
                       </View>
+                      {isTarget && (
+                        <View style={styles.badgeAhora}>
+                          <Text style={styles.badgeAhoraText}>AHORA</Text>
+                        </View>
+                      )}
                       {includeCreditos && colCreditos && (
                         <View style={[styles.compactBadgeCreditos, !show.creditosHoraReloj && styles.compactBadgeMuted]}>
                           <MaterialCommunityIcons name="clock-outline" size={11} color="#B45309" style={{ marginRight: 2 }} />
@@ -1096,7 +1247,12 @@ export default function CoordinadoresProgramacionScreen() {
            MODO HOJA COMPLETA EXCEL (RÉPLICA EXACTA CON SCROLL HORIZONTAL)
            ══════════════════════════════════════════════════════════════════ */
         <ScrollView horizontal={isMobile} showsHorizontalScrollIndicator={true} style={styles.excelScroll}>
-          <View style={[styles.excelSheetContainer, { minWidth: isMobile ? 860 : "100%" }]}>
+          <View
+            style={[styles.excelSheetContainer, { minWidth: isMobile ? 860 : "100%" }]}
+            onLayout={(e) => {
+              tableContainerYRef.current = e.nativeEvent.layout.y;
+            }}
+          >
             {/* ── FILA 1: FECHA Y TÍTULO MERGED (FONDO GRIS CLARO EXCEL) ── */}
             <View style={styles.excelTopHeader}>
               <Text style={styles.excelTopHeaderText}>{dateLabelCompleto}</Text>
@@ -1156,9 +1312,20 @@ export default function CoordinadoresProgramacionScreen() {
                 const isRestricted = inShow ? isRestrictedRating(inShow.calificacion) : false;
 
                 const outIs3D = outShow?.pelicula?.toUpperCase().includes("3D");
+                const isTarget = isToday && idx === targetIdx;
 
                 return (
-                  <View key={`row-${idx}`} style={[styles.excelDataRow, idx % 2 === 1 && styles.excelDataRowZebra]}>
+                  <View
+                    key={`row-${idx}`}
+                    onLayout={(e) => {
+                      rowOffsetsRef.current[idx] = e.nativeEvent.layout.y;
+                    }}
+                    style={[
+                      styles.excelDataRow,
+                      idx % 2 === 1 && styles.excelDataRowZebra,
+                      isTarget && styles.excelDataRowTarget,
+                    ]}
+                  >
                     {/* ── LADO ENTRADA ── */}
                     <View style={styles.excelColGroupEntrada}>
                       {inShow ? (
@@ -1309,7 +1476,23 @@ export default function CoordinadoresProgramacionScreen() {
           </View>
         </ScrollView>
       )}
-    </ScrollView>
+      </ScrollView>
+
+      {/* Botón flotante para saltar directamente a la hora actual */}
+      {isToday && targetShow && (
+        <TouchableOpacity
+          onPress={() => scrollToTargetRow(true)}
+          style={styles.fabJumpNow}
+          activeOpacity={0.85}
+          title="Ir al ingreso actual"
+        >
+          <MaterialCommunityIcons name="target" size={16} color="#FFFFFF" style={{ marginRight: 5 }} />
+          <Text style={styles.fabJumpNowText}>
+            Ahora: {targetShow.inicio} (S{targetShow.sala})
+          </Text>
+        </TouchableOpacity>
+      )}
+    </View>
   );
 }
 
@@ -1570,6 +1753,56 @@ const styles = StyleSheet.create({
   pillBadgeModeTextActive: {
     color: "#FFFFFF",
   },
+  btnJumpNow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#DCFCE7",
+    borderWidth: 1,
+    borderColor: "#86EFAC",
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: THEME.radius.sm,
+  },
+  btnJumpNowText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#166534",
+  },
+  fabJumpNow: {
+    position: "absolute",
+    bottom: 16,
+    right: 16,
+    backgroundColor: "#166534",
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 13,
+    paddingVertical: 9,
+    borderRadius: 20,
+    elevation: 5,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    zIndex: 999,
+  },
+  fabJumpNowText: {
+    color: "#FFFFFF",
+    fontSize: 11.5,
+    fontWeight: "700",
+  },
+  badgeAhora: {
+    backgroundColor: "#166534",
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 3,
+    marginLeft: 3,
+  },
+  badgeAhoraText: {
+    color: "#FFFFFF",
+    fontSize: 8,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
   colFiltersScroll: {
     flexDirection: "row",
     alignItems: "center",
@@ -1765,6 +1998,11 @@ const styles = StyleSheet.create({
   },
   compactItemRowZebra: {
     backgroundColor: "#F8FAFC",
+  },
+  compactItemRowTarget: {
+    backgroundColor: "#F0FDF4",
+    borderLeftWidth: 4,
+    borderLeftColor: "#166534",
   },
   compactTimeRow: {
     flexDirection: "row",
@@ -2039,6 +2277,11 @@ const styles = StyleSheet.create({
   },
   excelDataRowZebra: {
     backgroundColor: "#F8FAFC",
+  },
+  excelDataRowTarget: {
+    backgroundColor: "#DCFCE7",
+    borderLeftWidth: 4,
+    borderLeftColor: "#166534",
   },
   excelEmptyRow: {
     padding: 24,
