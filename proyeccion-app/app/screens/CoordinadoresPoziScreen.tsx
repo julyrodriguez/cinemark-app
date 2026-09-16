@@ -260,35 +260,43 @@ export default function CoordinadoresPoziScreen() {
     persistirEmpleados(nuevaLista);
   };
 
+  // ── Helper de confirmación compatible con Web y Nativo ──────────────────
+  const confirmAction = (title: string, message: string, onConfirm: () => void) => {
+    if (Platform.OS === "web") {
+      const ok = typeof window !== "undefined" ? window.confirm(`${title}\n\n${message}`) : true;
+      if (ok) {
+        onConfirm();
+      }
+    } else {
+      Alert.alert(title, message, [
+        { text: "Cancelar", style: "cancel" },
+        { text: "Eliminar / Confirmar", style: "destructive", onPress: onConfirm },
+      ]);
+    }
+  };
+
   // ── Deshacer Salida a Break ────────────────────────────────────────────
   const handleReiniciarBreak = (empId: string) => {
-    Alert.alert(
+    confirmAction(
       "Deshacer Salida a Break",
       "¿Deseas restablecer a este empleado a estado Pendiente?",
-      [
-        { text: "Cancelar", style: "cancel" },
-        {
-          text: "Sí, restablecer",
-          style: "destructive",
-          onPress: () => {
-            const nuevaLista = empleados.map((e) => {
-              if (e.id === empId) {
-                return {
-                  ...e,
-                  estadoBreak: "PENDIENTE" as const,
-                  breakInicio: null,
-                  breakRegreso: null,
-                  breakFin: null,
-                  breakIniciadoAt: null,
-                  breakFinalizadoAt: null,
-                };
-              }
-              return e;
-            });
-            persistirEmpleados(nuevaLista);
-          },
-        },
-      ]
+      () => {
+        const nuevaLista = empleados.map((e) => {
+          if (e.id === empId) {
+            return {
+              ...e,
+              estadoBreak: "PENDIENTE" as const,
+              breakInicio: null,
+              breakRegreso: null,
+              breakFin: null,
+              breakIniciadoAt: null,
+              breakFinalizadoAt: null,
+            };
+          }
+          return e;
+        });
+        persistirEmpleados(nuevaLista);
+      }
     );
   };
 
@@ -333,18 +341,29 @@ export default function CoordinadoresPoziScreen() {
     setEditingEmp(null);
   };
 
-  const handleEliminarEmpleado = (empId: string) => {
-    Alert.alert("Eliminar Empleado", "¿Deseas quitar a este empleado de la lista?", [
-      { text: "Cancelar", style: "cancel" },
-      {
-        text: "Eliminar",
-        style: "destructive",
-        onPress: () => {
-          const nuevaLista = empleados.filter((e) => e.id !== empId);
-          persistirEmpleados(nuevaLista);
-        },
-      },
-    ]);
+  const handleEliminarEmpleado = (empId: string, empNombre?: string) => {
+    confirmAction(
+      "Eliminar Empleado",
+      `¿Deseas quitar a ${empNombre ? `"${empNombre}"` : "este empleado"} de la lista del día?`,
+      () => {
+        const nuevaLista = empleados.filter((e) => e.id !== empId);
+        persistirEmpleados(nuevaLista);
+        if (editingEmp?.id === empId) {
+          setEditingEmp(null);
+        }
+      }
+    );
+  };
+
+  const handleVaciarDia = () => {
+    if (empleados.length === 0) return;
+    confirmAction(
+      "Vaciar POZI del Día",
+      `¿Estás seguro de que deseas eliminar a todos los ${empleados.length} empleados cargados para la fecha ${dayjs(fecha).format("DD/MM/YYYY")}?`,
+      () => {
+        persistirEmpleados([], "");
+      }
+    );
   };
 
   // ── Agregar Empleado Manual ─────────────────────────────────────────────
@@ -533,6 +552,13 @@ export default function CoordinadoresPoziScreen() {
               <MaterialCommunityIcons name="account-plus" size={16} color={COLORS.text} style={{ marginRight: 4 }} />
               <Text style={styles.btnSecondaryText}>Agregar</Text>
             </TouchableOpacity>
+
+            {empleados.length > 0 && (
+              <TouchableOpacity onPress={handleVaciarDia} style={styles.btnVaciar} activeOpacity={0.8}>
+                <MaterialCommunityIcons name="trash-can-outline" size={16} color="#DC2626" style={{ marginRight: 4 }} />
+                <Text style={styles.btnVaciarText}>Limpiar día</Text>
+              </TouchableOpacity>
+            )}
 
             <TouchableOpacity onPress={() => setDebugModalOpen(true)} style={styles.btnGhost} activeOpacity={0.8}>
               <MaterialCommunityIcons name="code-json" size={16} color={COLORS.primary} style={{ marginRight: 4 }} />
@@ -777,19 +803,31 @@ export default function CoordinadoresPoziScreen() {
                     )}
                   </View>
 
-                  {/* Horario de Entrada/Salida con botón para editar */}
-                  <TouchableOpacity
-                    onPress={() => handleAbrirEdicion(emp)}
-                    style={styles.horarioEditablePill}
-                    activeOpacity={0.7}
-                    accessibilityLabel="Editar horarios de ingreso"
-                  >
-                    <MaterialCommunityIcons name="clock-outline" size={13} color={COLORS.muted} style={{ marginRight: 4 }} />
-                    <Text style={styles.horarioEditableText}>
-                      {emp.entra || "--:--"} a {emp.sale || "--:--"}
-                    </Text>
-                    <MaterialCommunityIcons name="pencil-outline" size={13} color={COLORS.primary} style={{ marginLeft: 4 }} />
-                  </TouchableOpacity>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                    {/* Horario de Entrada/Salida con botón para editar */}
+                    <TouchableOpacity
+                      onPress={() => handleAbrirEdicion(emp)}
+                      style={styles.horarioEditablePill}
+                      activeOpacity={0.7}
+                      accessibilityLabel="Editar horarios de ingreso"
+                    >
+                      <MaterialCommunityIcons name="clock-outline" size={13} color={COLORS.muted} style={{ marginRight: 4 }} />
+                      <Text style={styles.horarioEditableText}>
+                        {emp.entra || "--:--"} a {emp.sale || "--:--"}
+                      </Text>
+                      <MaterialCommunityIcons name="pencil-outline" size={13} color={COLORS.primary} style={{ marginLeft: 4 }} />
+                    </TouchableOpacity>
+
+                    {/* Botón Borrar Empleado */}
+                    <TouchableOpacity
+                      onPress={() => handleEliminarEmpleado(emp.id, emp.nombre)}
+                      style={styles.btnTrashHeader}
+                      activeOpacity={0.7}
+                      accessibilityLabel="Eliminar de la lista"
+                    >
+                      <MaterialCommunityIcons name="trash-can-outline" size={15} color={COLORS.danger} />
+                    </TouchableOpacity>
+                  </View>
                 </View>
 
                 {/* Sub-fila: Duración de Break y horas trabajadas */}
@@ -963,8 +1001,16 @@ export default function CoordinadoresPoziScreen() {
             </View>
 
             <View style={styles.modalFooterRow}>
+              <TouchableOpacity
+                onPress={() => handleEliminarEmpleado(editingEmp.id, editingEmp.nombre)}
+                style={styles.btnEliminarModal}
+                activeOpacity={0.8}
+              >
+                <MaterialCommunityIcons name="trash-can-outline" size={16} color="#DC2626" style={{ marginRight: 4 }} />
+                <Text style={styles.btnEliminarModalText}>Eliminar</Text>
+              </TouchableOpacity>
               <TouchableOpacity onPress={handleGuardarEdicion} style={styles.btnCargarExcel}>
-                <Text style={styles.btnCargarExcelText}>Guardar Cambios</Text>
+                <Text style={styles.btnCargarExcelText}>Guardar</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={() => setEditingEmp(null)} style={styles.btnCerrarModal}>
                 <Text style={styles.btnCerrarModalText}>Cancelar</Text>
@@ -1231,6 +1277,41 @@ const styles = StyleSheet.create({
   },
   btnGhostText: {
     color: COLORS.primary,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  btnVaciar: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FEE2E2",
+    borderColor: "#FECACA",
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: THEME.radius.sm,
+  },
+  btnVaciarText: {
+    color: "#DC2626",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  btnTrashHeader: {
+    padding: 4,
+    borderRadius: 4,
+  },
+  btnEliminarModal: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FEE2E2",
+    borderWidth: 1,
+    borderColor: "#FECACA",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: THEME.radius.sm,
+    marginRight: "auto",
+  },
+  btnEliminarModalText: {
+    color: "#DC2626",
     fontSize: 12,
     fontWeight: "600",
   },
