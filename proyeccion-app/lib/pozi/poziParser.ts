@@ -218,6 +218,21 @@ export function extractDateFromPoziFileName(fileName: string, fallbackDateStr?: 
     }
   }
 
+  // 3. Buscar patrón DDMM sin separador (ej: "1409", "POZI1409")
+  const match4Digits = nameWithoutExt.match(/(?:^|\D)(\d{2})(\d{2})(?:\D|$)/);
+  if (match4Digits) {
+    const day = Number(match4Digits[1]);
+    const month = Number(match4Digits[2]);
+    const fallbackYear = fallbackDateStr ? dayjs(fallbackDateStr).year() : dayjs().year();
+
+    if (day >= 1 && day <= 31 && month >= 1 && month <= 12) {
+      const parsed = dayjs(`${fallbackYear}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`);
+      if (parsed.isValid()) {
+        return parsed.format("YYYY-MM-DD");
+      }
+    }
+  }
+
   // Fallback si no tiene fecha en el nombre: usar fallbackDateStr o la fecha actual
   return fallbackDateStr || dayjs().format("YYYY-MM-DD");
 }
@@ -665,61 +680,24 @@ export function parsePoziWeeklyExcel(
   }
 
   const extractedDate = extractDateFromPoziFileName(fileName, baseDateStr);
-  const dias: PoziDayParsedResult[] = [];
-
-  // CASO 1: Archivo con una sola hoja (Día puntual e.g. "15-09.xlsx")
-  if (workbook.SheetNames.length === 1) {
-    const sheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[sheetName];
-    if (!sheet) {
-      throw new Error("No se pudo leer la hoja del archivo.");
-    }
-
-    const singleResult = parseSinglePoziSheet(sheet, sheetName, fileName, 0);
-    const dayDef = getCinemaWeekdayForDate(extractedDate);
-    const baseThursday = getCinemaThursdayForDate(extractedDate);
-
-    dias.push({
-      diaIndex: dayDef.diaIndex,
-      diaKey: dayDef.key,
-      diaNombre: dayDef.label,
-      diaShort: dayDef.short,
-      fecha: extractedDate,
-      sheetName,
-      empleados: singleResult.empleados,
-      totalFilas: singleResult.totalFilas,
-      columnasDetectadas: singleResult.columnasDetectadas,
-    });
-
-    return {
-      fileName,
-      totalHojas: 1,
-      hojasProcesadas: 1,
-      dias,
-      totalEmpleados: singleResult.empleados.length,
-      baseThursday,
-      targetDate: extractedDate,
-      esDiaPuntual: true,
-    };
-  }
-
-  // CASO 2: Archivo con múltiples hojas (Semana completa o parcial, Hoja 1 = Jueves)
+  const startObj = dayjs(extractedDate);
   const baseThursday = getCinemaThursdayForDate(extractedDate);
-  const thursdayObj = dayjs(baseThursday);
+  const dias: PoziDayParsedResult[] = [];
   const maxHojas = Math.min(workbook.SheetNames.length, 7);
 
+  // Cada hoja i corresponde a la fecha de inicio del archivo + i días
   for (let i = 0; i < maxHojas; i++) {
     const sheetName = workbook.SheetNames[i];
     const sheet = workbook.Sheets[sheetName];
     if (!sheet) continue;
 
-    const dayDef = CINEMA_WEEKDAYS[i];
-    const fechaDia = thursdayObj.add(dayDef.dayOffset, "day").format("YYYY-MM-DD");
+    const fechaDia = startObj.add(i, "day").format("YYYY-MM-DD");
+    const dayDef = getCinemaWeekdayForDate(fechaDia);
 
     const singleResult = parseSinglePoziSheet(sheet, sheetName, fileName, i);
 
     dias.push({
-      diaIndex: i,
+      diaIndex: dayDef.diaIndex,
       diaKey: dayDef.key,
       diaNombre: dayDef.label,
       diaShort: dayDef.short,
@@ -740,8 +718,8 @@ export function parsePoziWeeklyExcel(
     dias,
     totalEmpleados,
     baseThursday,
-    targetDate: baseThursday,
-    esDiaPuntual: false,
+    targetDate: extractedDate,
+    esDiaPuntual: dias.length === 1,
   };
 }
 
