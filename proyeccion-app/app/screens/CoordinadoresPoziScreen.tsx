@@ -15,7 +15,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
 import dayjs from "dayjs";
 
-import { doc, getDoc, onSnapshot, setDoc } from "@/lib/dbService";
+import { doc, onSnapshot, setDoc } from "@/lib/dbService";
 import { CINES_COLLECTION, db } from "../../lib/firebaseConfig";
 import { COLORS, THEME } from "../../lib/theme";
 import { useAuthUser } from "../../lib/useAuthUser";
@@ -41,7 +41,7 @@ export default function CoordinadoresPoziScreen() {
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [lastExcelName, setLastExcelName] = useState<string | null>(null);
 
-  // Tick para refrescar cuentas regresivas de breaks en vivo
+  // Tick para refrescar cuentas regresivas en vivo cada 10 segundos
   const [nowTick, setNowTick] = useState<number>(() => Date.now());
   useEffect(() => {
     const timer = setInterval(() => {
@@ -53,14 +53,14 @@ export default function CoordinadoresPoziScreen() {
   // Filtros
   const [filtroTexto, setFiltroTexto] = useState("");
   const [filtroCategoria, setFiltroCategoria] = useState<string>("TODAS");
-  const [filtroEstado, setFiltroEstado] = useState<"TODOS" | "EN_BREAK" | "PENDIENTE" | "FINALIZADO">("TODOS");
+  const [filtroEstado, setFiltroEstado] = useState<"TODOS" | "PENDIENTE" | "EN_BREAK" | "CUMPLIDO">("TODOS");
 
   // Modal de vista previa / datos para prompt
   const [debugModalOpen, setDebugModalOpen] = useState(false);
   const [parsedDebugInfo, setParsedDebugInfo] = useState<PoziParsedResult | null>(null);
   const [copiedNotification, setCopiedNotification] = useState(false);
 
-  // Modal agregar/editar empleado manual
+  // Modal agregar empleado manual
   const [showAddModal, setShowAddModal] = useState(false);
   const [nuevoNombre, setNuevoNombre] = useState("");
   const [nuevaCat, setNuevaCat] = useState("General");
@@ -181,7 +181,7 @@ export default function CoordinadoresPoziScreen() {
         return;
       }
 
-      // Fusionar si ya existían empleados: conservar estados de breaks ya iniciados/terminados
+      // Si ya existían empleados: conservar salidas a break ya registradas
       const mapaExistentes = new Map<string, PoziEmployee>();
       empleados.forEach((e) => {
         const key = e.nombre.trim().toLowerCase();
@@ -196,6 +196,7 @@ export default function CoordinadoresPoziScreen() {
             ...nuevo,
             estadoBreak: existente.estadoBreak,
             breakInicio: existente.breakInicio,
+            breakRegreso: existente.breakRegreso,
             breakFin: existente.breakFin,
             breakIniciadoAt: existente.breakIniciadoAt,
             breakFinalizadoAt: existente.breakFinalizadoAt,
@@ -212,7 +213,7 @@ export default function CoordinadoresPoziScreen() {
         "POZI Cargado con éxito",
         `Se procesaron ${parsed.empleados.length} empleados para la fecha ${dayjs(fecha).format(
           "DD/MM/YYYY"
-        )}. Ya puedes gestionar los breaks.`
+        )}. Ya puedes marcar las salidas a break.`
       );
     } catch (err: any) {
       console.error("Error al procesar archivo Excel:", err);
@@ -220,18 +221,23 @@ export default function CoordinadoresPoziScreen() {
     }
   };
 
-  // ── Gestión de Breaks ──────────────────────────────────────────────────
-  const handleIniciarBreak = (empId: string) => {
-    const ahoraStr = dayjs().format("HH:mm");
-    const ahoraMs = Date.now();
+  // ── Marcar Salida a Break (No requiere marcar regreso) ───────────────────
+  const handleMarcarSalidaBreak = (empId: string) => {
+    const ahora = dayjs();
+    const ahoraStr = ahora.format("HH:mm");
+    const ahoraMs = ahora.valueOf();
     const usuarioActual = displayName || user?.email?.split("@")[0] || "Encargado";
 
     const nuevaLista = empleados.map((e) => {
       if (e.id === empId) {
+        // Se calcula la hora a la que debería regresar según la duración de su break (20 o 40 min)
+        const horaRegresoStr = ahora.add(e.duracionBreak, "minute").format("HH:mm");
+
         return {
           ...e,
           estadoBreak: "EN_BREAK" as const,
           breakInicio: ahoraStr,
+          breakRegreso: horaRegresoStr,
           breakIniciadoAt: ahoraMs,
           encargado: usuarioActual,
         };
@@ -242,33 +248,15 @@ export default function CoordinadoresPoziScreen() {
     persistirEmpleados(nuevaLista);
   };
 
-  const handleFinalizarBreak = (empId: string) => {
-    const ahoraStr = dayjs().format("HH:mm");
-    const ahoraMs = Date.now();
-
-    const nuevaLista = empleados.map((e) => {
-      if (e.id === empId) {
-        return {
-          ...e,
-          estadoBreak: "FINALIZADO" as const,
-          breakFin: ahoraStr,
-          breakFinalizadoAt: ahoraMs,
-        };
-      }
-      return e;
-    });
-
-    persistirEmpleados(nuevaLista);
-  };
-
+  // ── Deshacer / Reiniciar Salida a Break ─────────────────────────────────
   const handleReiniciarBreak = (empId: string) => {
     Alert.alert(
-      "Reiniciar Break",
-      "¿Deseas restablecer el estado del break de este empleado a Pendiente?",
+      "Deshacer Salida a Break",
+      "¿Deseas restablecer a este empleado a estado Pendiente?",
       [
         { text: "Cancelar", style: "cancel" },
         {
-          text: "Sí, reiniciar",
+          text: "Sí, restablecer",
           style: "destructive",
           onPress: () => {
             const nuevaLista = empleados.map((e) => {
@@ -277,6 +265,7 @@ export default function CoordinadoresPoziScreen() {
                   ...e,
                   estadoBreak: "PENDIENTE" as const,
                   breakInicio: null,
+                  breakRegreso: null,
                   breakFin: null,
                   breakIniciadoAt: null,
                   breakFinalizadoAt: null,
@@ -327,6 +316,7 @@ export default function CoordinadoresPoziScreen() {
       duracionBreak: durBreak,
       estadoBreak: "PENDIENTE",
       breakInicio: null,
+      breakRegreso: null,
       breakFin: null,
       breakIniciadoAt: null,
       encargado: null,
@@ -354,9 +344,49 @@ export default function CoordinadoresPoziScreen() {
     return Array.from(set).sort();
   }, [empleados]);
 
+  // ── Clasificación y KPIs en vivo ────────────────────────────────────────
+  const infoEmpleados = useMemo(() => {
+    return empleados.map((emp) => {
+      const salio = emp.estadoBreak !== "PENDIENTE" && !!emp.breakInicio;
+
+      // Hora estimada de regreso
+      const horaRegreso =
+        emp.breakRegreso ||
+        (emp.breakInicio && emp.breakIniciadoAt
+          ? dayjs(emp.breakIniciadoAt).add(emp.duracionBreak, "minute").format("HH:mm")
+          : null);
+
+      let minutosRestantes = 0;
+      let cumplido = false;
+
+      if (salio && emp.breakIniciadoAt) {
+        const msFinEsperado = emp.breakIniciadoAt + emp.duracionBreak * 60 * 1000;
+        const diffMs = msFinEsperado - nowTick;
+        minutosRestantes = Math.round(diffMs / (60 * 1000));
+        cumplido = minutosRestantes <= 0;
+      }
+
+      return {
+        ...emp,
+        salio,
+        horaRegreso,
+        minutosRestantes,
+        cumplido,
+      };
+    });
+  }, [empleados, nowTick]);
+
+  const kpis = useMemo(() => {
+    const total = infoEmpleados.length;
+    const pendientes = infoEmpleados.filter((e) => !e.salio).length;
+    const enBreakActivos = infoEmpleados.filter((e) => e.salio && !e.cumplido).length;
+    const horarioCumplido = infoEmpleados.filter((e) => e.salio && e.cumplido).length;
+    return { total, pendientes, enBreakActivos, horarioCumplido };
+  }, [infoEmpleados]);
+
   // ── Empleados Filtrados ────────────────────────────────────────────────
   const empleadosFiltrados = useMemo(() => {
-    return empleados.filter((e) => {
+    return infoEmpleados.filter((e) => {
       // Filtro texto
       if (filtroTexto.trim()) {
         const q = filtroTexto.toLowerCase().trim();
@@ -371,22 +401,13 @@ export default function CoordinadoresPoziScreen() {
       }
 
       // Filtro estado
-      if (filtroEstado !== "TODOS" && e.estadoBreak !== filtroEstado) {
-        return false;
-      }
+      if (filtroEstado === "PENDIENTE" && e.salio) return false;
+      if (filtroEstado === "EN_BREAK" && (!e.salio || e.cumplido)) return false;
+      if (filtroEstado === "CUMPLIDO" && (!e.salio || !e.cumplido)) return false;
 
       return true;
     });
-  }, [empleados, filtroTexto, filtroCategoria, filtroEstado]);
-
-  // ── Estadísticas KPIs ──────────────────────────────────────────────────
-  const kpis = useMemo(() => {
-    const total = empleados.length;
-    const enBreak = empleados.filter((e) => e.estadoBreak === "EN_BREAK").length;
-    const pendientes = empleados.filter((e) => e.estadoBreak === "PENDIENTE").length;
-    const finalizados = empleados.filter((e) => e.estadoBreak === "FINALIZADO").length;
-    return { total, enBreak, pendientes, finalizados };
-  }, [empleados]);
+  }, [infoEmpleados, filtroTexto, filtroCategoria, filtroEstado]);
 
   // ── Copiar resumen para promptear ──────────────────────────────────────
   const handleCopiarPrompt = () => {
@@ -411,7 +432,7 @@ export default function CoordinadoresPoziScreen() {
           <View style={{ flex: 1 }}>
             <Text style={styles.title}>Control de POZI & Breaks</Text>
             <Text style={styles.subtitle}>
-              Registro de horarios y seguimiento de descansos en tiempo real
+              Marca la salida y visualiza automáticamente la hora exacta de regreso
             </Text>
           </View>
         </View>
@@ -484,24 +505,24 @@ export default function CoordinadoresPoziScreen() {
           <Text style={styles.kpiLabel}>Total Personal</Text>
         </View>
 
-        <View style={[styles.kpiCard, { borderLeftColor: COLORS.warning, backgroundColor: kpis.enBreak > 0 ? "#FFFBEB" : COLORS.card }]}>
+        <View style={[styles.kpiCard, { borderLeftColor: COLORS.muted }]}>
+          <Text style={styles.kpiNumber}>{kpis.pendientes}</Text>
+          <Text style={styles.kpiLabel}>Pendientes de Break</Text>
+        </View>
+
+        <View style={[styles.kpiCard, { borderLeftColor: COLORS.warning, backgroundColor: kpis.enBreakActivos > 0 ? "#FFFBEB" : COLORS.card }]}>
           <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <Text style={[styles.kpiNumber, { color: COLORS.warning }]}>{kpis.enBreak}</Text>
-            {kpis.enBreak > 0 && (
+            <Text style={[styles.kpiNumber, { color: COLORS.warning }]}>{kpis.enBreakActivos}</Text>
+            {kpis.enBreakActivos > 0 && (
               <MaterialCommunityIcons name="coffee" size={22} color={COLORS.warning} style={{ marginLeft: 6 }} />
             )}
           </View>
           <Text style={styles.kpiLabel}>En Break Ahora</Text>
         </View>
 
-        <View style={[styles.kpiCard, { borderLeftColor: COLORS.muted }]}>
-          <Text style={styles.kpiNumber}>{kpis.pendientes}</Text>
-          <Text style={styles.kpiLabel}>Pendientes</Text>
-        </View>
-
         <View style={[styles.kpiCard, { borderLeftColor: COLORS.success }]}>
-          <Text style={[styles.kpiNumber, { color: COLORS.success }]}>{kpis.finalizados}</Text>
-          <Text style={styles.kpiLabel}>Completados</Text>
+          <Text style={[styles.kpiNumber, { color: COLORS.success }]}>{kpis.horarioCumplido}</Text>
+          <Text style={styles.kpiLabel}>Horario Cumplido</Text>
         </View>
       </View>
 
@@ -527,13 +548,13 @@ export default function CoordinadoresPoziScreen() {
         {/* Filtros de Estado */}
         <View style={styles.chipsRow}>
           <Text style={styles.filterLabel}>Estado:</Text>
-          {(["TODOS", "EN_BREAK", "PENDIENTE", "FINALIZADO"] as const).map((st) => {
+          {(["TODOS", "PENDIENTE", "EN_BREAK", "CUMPLIDO"] as const).map((st) => {
             const isSelected = filtroEstado === st;
             const labels: Record<string, string> = {
-              TODOS: "Todos",
-              EN_BREAK: `En Break (${kpis.enBreak})`,
+              TODOS: `Todos (${kpis.total})`,
               PENDIENTE: `Pendientes (${kpis.pendientes})`,
-              FINALIZADO: `Completados (${kpis.finalizados})`,
+              EN_BREAK: `En Break (${kpis.enBreakActivos})`,
+              CUMPLIDO: `Horario Cumplido (${kpis.horarioCumplido})`,
             };
             return (
               <TouchableOpacity
@@ -614,30 +635,16 @@ export default function CoordinadoresPoziScreen() {
       ) : (
         <View style={styles.listContainer}>
           {empleadosFiltrados.map((emp) => {
-            const isEnBreak = emp.estadoBreak === "EN_BREAK";
-            const isFinalizado = emp.estadoBreak === "FINALIZADO";
-
-            // Cálculo en tiempo real de minutos transcurridos
-            let minutosTranscurridos = 0;
-            let minutosRestantes = emp.duracionBreak;
-            let excedido = false;
-
-            if (isEnBreak && emp.breakIniciadoAt) {
-              const diffMs = nowTick - emp.breakIniciadoAt;
-              minutosTranscurridos = Math.floor(diffMs / (60 * 1000));
-              minutosRestantes = emp.duracionBreak - minutosTranscurridos;
-              if (minutosRestantes < 0) {
-                excedido = true;
-              }
-            }
+            const isSalio = emp.salio;
+            const isCumplido = emp.cumplido;
 
             return (
               <View
                 key={emp.id}
                 style={[
                   styles.cardEmpleado,
-                  isEnBreak && styles.cardEmpleadoEnBreak,
-                  isFinalizado && styles.cardEmpleadoFinalizado,
+                  isSalio && !isCumplido && styles.cardEmpleadoEnBreak,
+                  isSalio && isCumplido && styles.cardEmpleadoCumplido,
                 ]}
               >
                 {/* Lado izquierdo: Datos del empleado */}
@@ -686,76 +693,82 @@ export default function CoordinadoresPoziScreen() {
                     </View>
                   </View>
 
-                  {/* Estado detallado */}
-                  {isEnBreak && (
-                    <View style={styles.enBreakStatusBox}>
-                      <MaterialCommunityIcons
-                        name={excedido ? "alert-circle" : "timer-sand"}
-                        size={18}
-                        color={excedido ? COLORS.danger : COLORS.warning}
-                        style={{ marginRight: 6 }}
-                      />
-                      <Text style={[styles.enBreakStatusText, excedido && { color: COLORS.danger, fontWeight: "700" }]}>
-                        {excedido
-                          ? `¡Tiempo Excedido! Lleva ${minutosTranscurridos} min (+${Math.abs(minutosRestantes)} min fuera)`
-                          : `En break: ${minutosTranscurridos} min transcurridos (restan ${minutosRestantes} min)`}
-                      </Text>
-                      <Text style={styles.enBreakSubText}>
-                        Inició {emp.breakInicio || ""} {emp.encargado ? `• Autorizó: ${emp.encargado}` : ""}
-                      </Text>
-                    </View>
-                  )}
+                  {/* Detalle visual cuando ya salió a break */}
+                  {isSalio && (
+                    <View style={[styles.salioBanner, isCumplido ? styles.salioBannerCumplido : styles.salioBannerActivo]}>
+                      <View style={styles.salioHorasRow}>
+                        <View style={styles.salioHoraItem}>
+                          <Text style={styles.salioHoraLabel}>SALIÓ</Text>
+                          <Text style={styles.salioHoraValor}>{emp.breakInicio || "--:--"}</Text>
+                        </View>
 
-                  {isFinalizado && (
-                    <View style={styles.finalizadoStatusBox}>
-                      <MaterialCommunityIcons name="check-circle-outline" size={16} color={COLORS.success} style={{ marginRight: 6 }} />
-                      <Text style={styles.finalizadoStatusText}>
-                        Break finalizado ({emp.breakInicio || "--:--"} a {emp.breakFin || "--:--"})
-                      </Text>
+                        <MaterialCommunityIcons name="arrow-right" size={18} color={isCumplido ? "#059669" : "#D97706"} />
+
+                        <View style={styles.salioHoraItem}>
+                          <Text style={styles.salioHoraLabel}>DEBE REGRESAR</Text>
+                          <Text style={[styles.salioHoraValor, { fontWeight: "800", color: isCumplido ? "#047857" : "#B45309" }]}>
+                            {emp.horaRegreso || "--:--"}
+                          </Text>
+                        </View>
+
+                        <View style={styles.salioTimerBox}>
+                          {!isCumplido ? (
+                            <View style={styles.countdownPill}>
+                              <MaterialCommunityIcons name="timer-sand" size={14} color="#B45309" style={{ marginRight: 4 }} />
+                              <Text style={styles.countdownPillText}>
+                                Faltan {emp.minutosRestantes} min
+                              </Text>
+                            </View>
+                          ) : (
+                            <View style={styles.cumplidoPill}>
+                              <MaterialCommunityIcons name="check-circle" size={14} color="#047857" style={{ marginRight: 4 }} />
+                              <Text style={styles.cumplidoPillText}>
+                                {emp.minutosRestantes < -2
+                                  ? `Debió volver ${emp.horaRegreso} (+${Math.abs(emp.minutosRestantes)} min)`
+                                  : `Horario cumplido (${emp.horaRegreso})`}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                      </View>
+
+                      {emp.encargado && (
+                        <Text style={styles.autorizoText}>Autorizado por: {emp.encargado}</Text>
+                      )}
                     </View>
                   )}
                 </View>
 
-                {/* Lado derecho: Botones de acción */}
+                {/* Lado derecho: Acción rápida */}
                 <View style={styles.empleadoAccionesCol}>
-                  {emp.estadoBreak === "PENDIENTE" && (
+                  {!isSalio ? (
                     <TouchableOpacity
-                      onPress={() => handleIniciarBreak(emp.id)}
-                      style={styles.btnIniciarBreak}
+                      onPress={() => handleMarcarSalidaBreak(emp.id)}
+                      style={styles.btnMarcarSalida}
                       activeOpacity={0.8}
                     >
-                      <MaterialCommunityIcons name="coffee-outline" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
-                      <Text style={styles.btnIniciarBreakText}>Enviar a Break</Text>
+                      <MaterialCommunityIcons name="coffee-outline" size={20} color="#FFFFFF" style={{ marginRight: 6 }} />
+                      <View>
+                        <Text style={styles.btnMarcarSalidaText}>Se fue a Break</Text>
+                        <Text style={styles.btnMarcarSalidaSub}>Regresa en {emp.duracionBreak} min</Text>
+                      </View>
                     </TouchableOpacity>
-                  )}
-
-                  {isEnBreak && (
-                    <TouchableOpacity
-                      onPress={() => handleFinalizarBreak(emp.id)}
-                      style={styles.btnFinalizarBreak}
-                      activeOpacity={0.8}
-                    >
-                      <MaterialCommunityIcons name="check-bold" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
-                      <Text style={styles.btnFinalizarBreakText}>Registrar Regreso</Text>
-                    </TouchableOpacity>
-                  )}
-
-                  {isFinalizado && (
-                    <View style={styles.completadoBadge}>
-                      <MaterialCommunityIcons name="check" size={16} color={COLORS.success} style={{ marginRight: 4 }} />
-                      <Text style={styles.completadoBadgeText}>Completado</Text>
+                  ) : (
+                    <View style={styles.horarioRegresoBadge}>
+                      <Text style={styles.horarioRegresoBadgeLabel}>REGRESA</Text>
+                      <Text style={styles.horarioRegresoBadgeHora}>{emp.horaRegreso || "--:--"}</Text>
                     </View>
                   )}
 
-                  {/* Opciones extras (reiniciar / borrar) */}
+                  {/* Botones de gestión (deshacer / eliminar) */}
                   <View style={styles.miniBotonesRow}>
-                    {emp.estadoBreak !== "PENDIENTE" && (
+                    {isSalio && (
                       <TouchableOpacity
                         onPress={() => handleReiniciarBreak(emp.id)}
                         style={styles.btnMiniGhost}
-                        accessibilityLabel="Restablecer break"
+                        accessibilityLabel="Deshacer salida"
                       >
-                        <MaterialCommunityIcons name="restart" size={16} color={COLORS.muted} />
+                        <MaterialCommunityIcons name="restart" size={18} color={COLORS.muted} />
                       </TouchableOpacity>
                     )}
                     <TouchableOpacity
@@ -763,7 +776,7 @@ export default function CoordinadoresPoziScreen() {
                       style={styles.btnMiniGhost}
                       accessibilityLabel="Quitar"
                     >
-                      <MaterialCommunityIcons name="trash-can-outline" size={16} color={COLORS.danger} />
+                      <MaterialCommunityIcons name="trash-can-outline" size={18} color={COLORS.danger} />
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -971,7 +984,7 @@ const styles = StyleSheet.create({
   btnCargarExcel: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#166534", // verde corporativo Excel
+    backgroundColor: "#166534",
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: THEME.radius.md,
@@ -1132,13 +1145,13 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFDF7",
     borderWidth: 1.5,
   },
-  cardEmpleadoFinalizado: {
+  cardEmpleadoCumplido: {
     borderColor: "#BBF7D0",
-    backgroundColor: "#FAFDFB",
+    backgroundColor: "#F8FCF9",
   },
   empleadoInfoCol: {
     flex: 1,
-    minWidth: 260,
+    minWidth: 280,
   },
   empleadoHeaderRow: {
     flexDirection: "row",
@@ -1194,88 +1207,128 @@ const styles = StyleSheet.create({
     fontSize: THEME.fontSize.xs,
     fontWeight: "700",
   },
-  enBreakStatusBox: {
-    backgroundColor: "#FEF3C7",
+  // Banner cuando ya salió
+  salioBanner: {
     borderRadius: THEME.radius.sm,
-    padding: 8,
-    marginTop: 8,
+    padding: 10,
+    marginTop: 10,
+    borderWidth: 1,
   },
-  enBreakStatusText: {
+  salioBannerActivo: {
+    backgroundColor: "#FEF3C7",
+    borderColor: "#FDE68A",
+  },
+  salioBannerCumplido: {
+    backgroundColor: "#ECFDF5",
+    borderColor: "#BBF7D0",
+  },
+  salioHorasRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 12,
+  },
+  salioHoraItem: {
+    alignItems: "flex-start",
+  },
+  salioHoraLabel: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: COLORS.muted,
+    letterSpacing: 0.5,
+  },
+  salioHoraValor: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: COLORS.text,
+  },
+  salioTimerBox: {
+    marginLeft: "auto",
+  },
+  countdownPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFFBEB",
+    borderColor: "#F59E0B",
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: THEME.radius.full,
+  },
+  countdownPillText: {
     fontSize: THEME.fontSize.xs,
-    fontWeight: "600",
-    color: "#92400E",
+    fontWeight: "700",
+    color: "#B45309",
   },
-  enBreakSubText: {
-    fontSize: 11,
-    color: "#78350F",
-    marginTop: 2,
-  },
-  finalizadoStatusBox: {
+  cumplidoPill: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#ECFDF5",
-    borderRadius: THEME.radius.sm,
-    paddingHorizontal: 8,
+    borderColor: "#10B981",
+    borderWidth: 1,
+    paddingHorizontal: 10,
     paddingVertical: 4,
-    marginTop: 8,
+    borderRadius: THEME.radius.full,
   },
-  finalizadoStatusText: {
+  cumplidoPillText: {
     fontSize: THEME.fontSize.xs,
-    color: "#065F46",
-    fontWeight: "500",
+    fontWeight: "600",
+    color: "#047857",
+  },
+  autorizoText: {
+    fontSize: 11,
+    color: COLORS.muted,
+    marginTop: 4,
   },
   empleadoAccionesCol: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
   },
-  btnIniciarBreak: {
+  btnMarcarSalida: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#059669",
     paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderRadius: THEME.radius.md,
   },
-  btnIniciarBreakText: {
+  btnMarcarSalidaText: {
     color: "#FFFFFF",
     fontSize: THEME.fontSize.sm,
-    fontWeight: "600",
+    fontWeight: "700",
   },
-  btnFinalizarBreak: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#DC2626",
+  btnMarcarSalidaSub: {
+    color: "rgba(255,255,255,0.85)",
+    fontSize: 11,
+    fontWeight: "500",
+  },
+  horarioRegresoBadge: {
+    backgroundColor: COLORS.card,
+    borderWidth: 1.5,
+    borderColor: COLORS.primary,
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: THEME.radius.md,
-  },
-  btnFinalizarBreakText: {
-    color: "#FFFFFF",
-    fontSize: THEME.fontSize.sm,
-    fontWeight: "600",
-  },
-  completadoBadge: {
-    flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#ECFDF5",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: THEME.radius.md,
-    borderWidth: 1,
-    borderColor: "#BBF7D0",
   },
-  completadoBadgeText: {
-    color: "#047857",
-    fontSize: THEME.fontSize.xs,
-    fontWeight: "600",
+  horarioRegresoBadgeLabel: {
+    fontSize: 9,
+    fontWeight: "800",
+    color: COLORS.primary,
+    letterSpacing: 0.5,
+  },
+  horarioRegresoBadgeHora: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: COLORS.text,
   },
   miniBotonesRow: {
     flexDirection: "row",
     alignItems: "center",
   },
   btnMiniGhost: {
-    padding: 6,
+    padding: 8,
   },
   centerContainer: {
     padding: 40,

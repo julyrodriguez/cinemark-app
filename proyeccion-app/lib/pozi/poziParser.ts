@@ -9,11 +9,12 @@ export type PoziEmployee = {
   horasTrabajadas: number;
   duracionBreak: 20 | 40;
   estadoBreak: "PENDIENTE" | "EN_BREAK" | "FINALIZADO";
-  breakInicio?: string | null;      // Hora legible "HH:mm"
-  breakFin?: string | null;         // Hora legible "HH:mm"
-  breakIniciadoAt?: number | null;  // Timestamp en ms para cálculo en tiempo real
-  breakFinalizadoAt?: number | null;// Timestamp en ms
-  encargado?: string | null;        // Quién marcó el break
+  breakInicio?: string | null;      // Hora en que se fue "HH:mm"
+  breakRegreso?: string | null;     // Hora a la que debería regresar "HH:mm"
+  breakFin?: string | null;         // Hora de regreso real si se registra
+  breakIniciadoAt?: number | null;  // Timestamp en ms
+  breakFinalizadoAt?: number | null;
+  encargado?: string | null;
   notas?: string | null;
 };
 
