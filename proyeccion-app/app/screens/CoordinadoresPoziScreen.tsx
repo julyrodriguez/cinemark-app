@@ -322,6 +322,7 @@ export default function CoordinadoresPoziScreen() {
           entra: entraNorm,
           sale: saleNorm,
           categoria: editCat,
+          notas: editCat === "EI" ? "EI" : e.notas === "EI" && editCat !== "EI" ? null : e.notas,
           horasTrabajadas: hs,
           duracionBreak: durBreak,
         };
@@ -839,11 +840,16 @@ export default function CoordinadoresPoziScreen() {
                     )}
                   </View>
 
-                  {/* Columna Categoría */}
-                  <View style={[styles.cell, { width: 70 }]}>
-                    <View style={[styles.catBadgeCompact, { backgroundColor: catMeta.bg, borderColor: catMeta.border }]}>
+                  {/* Columna Categoría (Tocar para modificar) */}
+                  <View style={[styles.cell, { width: 78 }]}>
+                    <TouchableOpacity
+                      onPress={() => handleAbrirEdicion(emp)}
+                      style={[styles.catBadgeCompact, { backgroundColor: catMeta.bg, borderColor: catMeta.border }]}
+                      activeOpacity={0.7}
+                    >
                       <Text style={[styles.catBadgeCompactText, { color: catMeta.color }]}>{catMeta.codigo}</Text>
-                    </View>
+                      <MaterialCommunityIcons name="pencil-outline" size={10} color={catMeta.color} style={{ marginLeft: 2 }} />
+                    </TouchableOpacity>
                   </View>
 
                   {/* Columna Turno + Edición */}
@@ -972,9 +978,14 @@ export default function CoordinadoresPoziScreen() {
                     <Text style={styles.rowNombreMobile} numberOfLines={1}>
                       {emp.nombre}
                     </Text>
-                    <View style={[styles.catBadgeCompact, { backgroundColor: catMeta.bg, borderColor: catMeta.border }]}>
+                    <TouchableOpacity
+                      onPress={() => handleAbrirEdicion(emp)}
+                      style={[styles.catBadgeCompact, { backgroundColor: catMeta.bg, borderColor: catMeta.border }]}
+                      activeOpacity={0.7}
+                    >
                       <Text style={[styles.catBadgeCompactText, { color: catMeta.color }]}>{catMeta.codigo}</Text>
-                    </View>
+                      <MaterialCommunityIcons name="pencil-outline" size={9} color={catMeta.color} style={{ marginLeft: 2 }} />
+                    </TouchableOpacity>
                     {emp.notas?.includes("EI") && (
                       <View style={styles.badgeEiInline}>
                         <Text style={styles.badgeEiInlineText}>EI</Text>
@@ -1061,14 +1072,14 @@ export default function CoordinadoresPoziScreen() {
         </View>
       )}
 
-      {/* ── MODAL MODIFICAR INGRESO / HORARIOS ── */}
+      {/* ── MODAL MODIFICAR EMPLEADO (CATEGORÍA Y HORARIOS) ── */}
       <Modal visible={!!editingEmp} transparent animationType="fade">
         <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
+          <View style={[styles.modalCard, { maxWidth: 460 }]}>
             <View style={styles.modalHeader}>
               <View style={{ flexDirection: "row", alignItems: "center" }}>
-                <MaterialCommunityIcons name="pencil" size={18} color={COLORS.primary} style={{ marginRight: 6 }} />
-                <Text style={styles.modalTitle}>Modificar Horario e Ingreso</Text>
+                <MaterialCommunityIcons name="account-edit-outline" size={20} color={COLORS.primary} style={{ marginRight: 6 }} />
+                <Text style={styles.modalTitle}>Modificar Empleado</Text>
               </View>
               <TouchableOpacity onPress={() => setEditingEmp(null)}>
                 <MaterialCommunityIcons name="close" size={20} color={COLORS.muted} />
@@ -1076,12 +1087,15 @@ export default function CoordinadoresPoziScreen() {
             </View>
 
             <Text style={styles.editEmpNombre}>{editingEmp?.nombre}</Text>
+            <Text style={styles.editEmpSub}>
+              Corrige la categoría asignada o ajusta el horario de entrada y salida por si hubo algún error.
+            </Text>
 
             {editError.length > 0 && <Text style={styles.errorText}>{editError}</Text>}
 
-            {/* Selector de Categoría */}
+            {/* Selector de Categoría enriquecido */}
             <Text style={styles.inputLabel}>Categoría</Text>
-            <View style={styles.catSelectRow}>
+            <View style={styles.catGrid}>
               {(Object.keys(POZI_CATEGORIAS) as PoziCategoriaCodigo[]).map((cKey) => {
                 const meta = POZI_CATEGORIAS[cKey];
                 const isSel = editCat === cKey;
@@ -1090,14 +1104,33 @@ export default function CoordinadoresPoziScreen() {
                     key={cKey}
                     onPress={() => setEditCat(cKey)}
                     style={[
-                      styles.catSelectBtn,
-                      { borderColor: meta.border },
-                      isSel && { backgroundColor: meta.bg, borderColor: meta.color },
+                      styles.catCard,
+                      { borderColor: isSel ? meta.color : COLORS.border },
+                      isSel && { backgroundColor: meta.bg, borderWidth: 1.5 },
                     ]}
+                    activeOpacity={0.75}
                   >
-                    <Text style={[styles.catSelectBtnText, { color: isSel ? meta.color : COLORS.muted }]}>
-                      {meta.codigo}
-                    </Text>
+                    <View
+                      style={[
+                        styles.catCardBadge,
+                        { backgroundColor: isSel ? meta.color : meta.bg, borderColor: meta.border },
+                      ]}
+                    >
+                      <Text style={[styles.catCardBadgeText, { color: isSel ? "#FFFFFF" : meta.color }]}>
+                        {meta.codigo}
+                      </Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.catCardNombre, isSel && { color: meta.color, fontWeight: "700" }]}>
+                        {meta.nombre}
+                      </Text>
+                      <Text style={styles.catCardDesc} numberOfLines={1}>
+                        {meta.desc}
+                      </Text>
+                    </View>
+                    {isSel && (
+                      <MaterialCommunityIcons name="check-circle" size={16} color={meta.color} />
+                    )}
                   </TouchableOpacity>
                 );
               })}
@@ -1167,7 +1200,7 @@ export default function CoordinadoresPoziScreen() {
             />
 
             <Text style={styles.inputLabel}>Categoría</Text>
-            <View style={styles.catSelectRow}>
+            <View style={styles.catGrid}>
               {(Object.keys(POZI_CATEGORIAS) as PoziCategoriaCodigo[]).map((cKey) => {
                 const meta = POZI_CATEGORIAS[cKey];
                 const isSel = nuevaCat === cKey;
@@ -1176,14 +1209,33 @@ export default function CoordinadoresPoziScreen() {
                     key={cKey}
                     onPress={() => setNuevaCat(cKey)}
                     style={[
-                      styles.catSelectBtn,
-                      { borderColor: meta.border },
-                      isSel && { backgroundColor: meta.bg, borderColor: meta.color },
+                      styles.catCard,
+                      { borderColor: isSel ? meta.color : COLORS.border },
+                      isSel && { backgroundColor: meta.bg, borderWidth: 1.5 },
                     ]}
+                    activeOpacity={0.75}
                   >
-                    <Text style={[styles.catSelectBtnText, { color: isSel ? meta.color : COLORS.muted }]}>
-                      {meta.codigo}
-                    </Text>
+                    <View
+                      style={[
+                        styles.catCardBadge,
+                        { backgroundColor: isSel ? meta.color : meta.bg, borderColor: meta.border },
+                      ]}
+                    >
+                      <Text style={[styles.catCardBadgeText, { color: isSel ? "#FFFFFF" : meta.color }]}>
+                        {meta.codigo}
+                      </Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.catCardNombre, isSel && { color: meta.color, fontWeight: "700" }]}>
+                        {meta.nombre}
+                      </Text>
+                      <Text style={styles.catCardDesc} numberOfLines={1}>
+                        {meta.desc}
+                      </Text>
+                    </View>
+                    {isSel && (
+                      <MaterialCommunityIcons name="check-circle" size={16} color={meta.color} />
+                    )}
                   </TouchableOpacity>
                 );
               })}
@@ -1632,11 +1684,14 @@ const styles = StyleSheet.create({
     color: "#0D9488",
   },
   catBadgeCompact: {
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 5,
     paddingVertical: 1.5,
     borderRadius: 3,
     borderWidth: 1,
     alignSelf: "flex-start",
+    cursor: "pointer" as any,
   },
   catBadgeCompactText: {
     fontSize: 10,
@@ -1911,24 +1966,50 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "700",
     color: COLORS.primary,
+    marginBottom: 2,
+  },
+  editEmpSub: {
+    fontSize: 11,
+    color: COLORS.muted,
+    marginBottom: 10,
+  },
+  catGrid: {
+    gap: 5,
+    marginTop: 4,
     marginBottom: 6,
   },
-  catSelectRow: {
+  catCard: {
     flexDirection: "row",
-    gap: 5,
-    flexWrap: "wrap",
-    marginTop: 3,
-  },
-  catSelectBtn: {
+    alignItems: "center",
+    backgroundColor: COLORS.bg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: THEME.radius.sm,
     paddingHorizontal: 8,
     paddingVertical: 5,
-    borderRadius: THEME.radius.sm,
-    borderWidth: 1,
-    backgroundColor: COLORS.bg,
+    gap: 8,
+    cursor: "pointer" as any,
   },
-  catSelectBtnText: {
+  catCardBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+    minWidth: 32,
+    alignItems: "center",
+  },
+  catCardBadgeText: {
     fontSize: 11,
-    fontWeight: "700",
+    fontWeight: "800",
+  },
+  catCardNombre: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: COLORS.text,
+  },
+  catCardDesc: {
+    fontSize: 10,
+    color: COLORS.muted,
   },
   modalFooterRow: {
     flexDirection: "row",
