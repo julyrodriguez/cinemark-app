@@ -326,6 +326,33 @@ export function parsePoziExcel(buffer: ArrayBuffer, fileName: string): PoziParse
   const empleados: PoziEmployee[] = [];
   const filasCrudasPrevisualizacion: any[] = [];
 
+  let sectorActual: PoziCategoriaCodigo | null = null;
+  let ultimaCategoriaEmpleado: PoziCategoriaCodigo | null = null;
+
+  function detectarTituloSector(row: any[]): PoziCategoriaCodigo | null {
+    for (let c = 0; c < row.length; c++) {
+      const txt = String(row[c] || "").trim().toUpperCase();
+      if (!txt) continue;
+      // Si tiene formato de hora o número de horario, descartar como título puro
+      if (txt.includes(":") || (txt.length <= 4 && !isNaN(Number(txt)) && Number(txt) > 50)) {
+        continue;
+      }
+      if (txt.includes("VENTAS") || txt.includes("VENTA") || txt.includes("CANDY") || txt.includes("BOLETERIA") || txt.includes("BOLETERÍA")) {
+        return "OV";
+      }
+      if (txt.includes("SERVICIOS") || txt.includes("SERVICIO") || txt.includes("SALAS") || txt.includes("ACOMODADOR")) {
+        return "OS";
+      }
+      if (txt.includes("TECNICA") || txt.includes("TÉCNICA") || txt.includes("PROYECCION") || txt.includes("PROYECCIÓN") || txt.includes("CABINA")) {
+        return "OT";
+      }
+      if (txt.includes("ENCARGADOS") || txt.includes("ENCARGADO") || txt.includes("COORDINACION") || txt.includes("COORDINACIÓN")) {
+        return "OC";
+      }
+    }
+    return null;
+  }
+
   for (let r = headerRowIndex + 1; r < matrix.length; r++) {
     const row = matrix[r] || [];
     if (!row || row.length === 0) continue;
@@ -333,11 +360,23 @@ export function parsePoziExcel(buffer: ArrayBuffer, fileName: string): PoziParse
     const hasAny = row.some((c) => c !== undefined && c !== null && String(c).trim() !== "");
     if (!hasAny) continue;
 
-    // Obtener valor de Categoría
+    // 1. Detectar si la fila es un título de sector (ej. "VENTAS", "SERVICIOS", etc.)
+    const tituloSector = detectarTituloSector(row);
+    const testEntra = entraColIndex !== -1 ? normalizeExcelTime(row[entraColIndex]) : "";
+    const testSale = saleColIndex !== -1 ? normalizeExcelTime(row[saleColIndex]) : "";
+
+    // Si es un título de sector y no tiene ambos horarios de turno, es una fila de encabezado de sector
+    if (tituloSector && (!testEntra || !testSale)) {
+      sectorActual = tituloSector;
+      ultimaCategoriaEmpleado = tituloSector;
+      continue; // No es un empleado, es el título del sector (no sumar)
+    }
+
+    // 2. Obtener valor de Categoría
     let catVal = catColIndex !== -1 ? row[catColIndex] : "";
     let catNorm = normalizarCategoria(catVal);
 
-    // Si la celda de catColIndex no era válida, buscar en las primeras 4 columnas de la fila
+    // Si la celda de catColIndex no era válida, buscar en las primeras 5 columnas de la fila
     if (!catNorm) {
       for (let c = 0; c < Math.min(row.length, 5); c++) {
         if (c !== entraColIndex && c !== saleColIndex) {
@@ -350,7 +389,8 @@ export function parsePoziExcel(buffer: ArrayBuffer, fileName: string): PoziParse
       }
     }
 
-    // SI NO TIENE UNA CATEGORÍA VÁLIDA (OV, OS, OT, OC, EI) => IGNORAR Y NO SUMAR
+    // Si no tiene categoría explícita pero tiene horarios válidos y nombre, verificar si está bajo un sectorActual
+    // (Por requerimiento: si no tiene categoría se ignora, salvo que esté dentro de un sector reconocido)
     if (!catNorm) {
       continue;
     }
@@ -380,15 +420,38 @@ export function parsePoziExcel(buffer: ArrayBuffer, fileName: string): PoziParse
     const entra = normalizeExcelTime(entraVal);
     const sale = normalizeExcelTime(saleVal);
 
+    // Si no tiene horarios de entrada y salida válidos, no es un turno válido
+    if (!entra && !sale) {
+      continue;
+    }
+
     const horasTrabajadas = calculateWorkHours(entra, sale);
     const duracionBreak = calculateBreakDuration(horasTrabajadas);
+
+    // RESOLUCIÓN DE CATEGORÍA PARA EI:
+    // "para identificar que es el EI siempre ponelo igual que el de arriba, y sino buscar titulos, a veces dice servicios o ventas en el titulo"
+    let categoriaFinal: PoziCategoriaCodigo = catNorm;
+    const esEIOriginal = catNorm === "EI";
+
+    if (esEIOriginal) {
+      if (ultimaCategoriaEmpleado && (ultimaCategoriaEmpleado === "OV" || ultimaCategoriaEmpleado === "OS" || ultimaCategoriaEmpleado === "OT" || ultimaCategoriaEmpleado === "OC")) {
+        categoriaFinal = ultimaCategoriaEmpleado;
+      } else if (sectorActual) {
+        categoriaFinal = sectorActual;
+      } else {
+        categoriaFinal = "OV"; // Default a Ventas
+      }
+    } else {
+      ultimaCategoriaEmpleado = catNorm;
+      sectorActual = catNorm;
+    }
 
     const empId = `emp_${r}_${nombre.replace(/\s+/g, "_").toLowerCase()}`;
 
     empleados.push({
       id: empId,
       nombre,
-      categoria: catNorm,
+      categoria: categoriaFinal,
       entra,
       sale,
       horasTrabajadas,
@@ -399,13 +462,15 @@ export function parsePoziExcel(buffer: ArrayBuffer, fileName: string): PoziParse
       breakFin: null,
       breakIniciadoAt: null,
       encargado: null,
-      notas: null,
+      notas: esEIOriginal ? "EI (Entrenamiento Inicial)" : null,
     });
 
     if (filasCrudasPrevisualizacion.length < 50) {
       filasCrudasPrevisualizacion.push({
         fila: r + 1,
-        categoria: catNorm,
+        categoria: categoriaFinal,
+        categoriaOriginal: catNorm,
+        esEI: esEIOriginal,
         nombre,
         entraRaw: entraVal,
         saleRaw: saleVal,

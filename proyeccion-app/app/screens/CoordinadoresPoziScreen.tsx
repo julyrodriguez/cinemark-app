@@ -770,6 +770,11 @@ export default function CoordinadoresPoziScreen() {
                     <View style={[styles.catBadge, { backgroundColor: catMeta.bg, borderColor: catMeta.border }]}>
                       <Text style={[styles.catBadgeText, { color: catMeta.color }]}>{catMeta.codigo}</Text>
                     </View>
+                    {emp.notas?.includes("EI") && (
+                      <View style={[styles.catBadge, { backgroundColor: "#F0FDFA", borderColor: "#99F6E4" }]}>
+                        <Text style={[styles.catBadgeText, { color: "#0D9488" }]}>EI</Text>
+                      </View>
+                    )}
                   </View>
 
                   {/* Horario de Entrada/Salida con botón para editar */}
