@@ -93,7 +93,11 @@ export default function CoordinadoresPoziScreen() {
         if (snapshot && typeof snapshot.data === "function" && snapshot.exists?.()) {
           const data = snapshot.data();
           if (Array.isArray(data.empleados)) {
-            setEmpleados(data.empleados);
+            const listaMapeada = data.empleados.map((emp: any) => ({
+              ...emp,
+              duracionBreak: emp.duracionBreak === 40 ? 45 : emp.duracionBreak,
+            }));
+            setEmpleados(listaMapeada);
           } else {
             setEmpleados([]);
           }
@@ -882,7 +886,7 @@ export default function CoordinadoresPoziScreen() {
                     <View
                       style={[
                         styles.breakPillFina,
-                        emp.duracionBreak === 20 ? styles.breakPill20 : styles.breakPill40,
+                        emp.duracionBreak === 20 ? styles.breakPill20 : styles.breakPill45,
                       ]}
                     >
                       <MaterialCommunityIcons
@@ -1026,7 +1030,7 @@ export default function CoordinadoresPoziScreen() {
                   <View
                     style={[
                       styles.breakPillFina,
-                      emp.duracionBreak === 20 ? styles.breakPill20 : styles.breakPill40,
+                      emp.duracionBreak === 20 ? styles.breakPill20 : styles.breakPill45,
                     ]}
                   >
                     <Text
@@ -1743,7 +1747,7 @@ const styles = StyleSheet.create({
   breakPill20: {
     backgroundColor: "#ECFDF5",
   },
-  breakPill40: {
+  breakPill45: {
     backgroundColor: "#FEF3C7",
   },
   breakPillFinaText: {

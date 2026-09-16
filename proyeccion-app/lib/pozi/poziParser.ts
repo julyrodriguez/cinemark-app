@@ -78,7 +78,7 @@ export type PoziEmployee = {
   entra: string;
   sale: string;
   horasTrabajadas: number;
-  duracionBreak: 20 | 40;
+  duracionBreak: 20 | 45;
   estadoBreak: "PENDIENTE" | "EN_BREAK" | "FINALIZADO";
   breakInicio?: string | null;      // Hora en que se fue "HH:mm"
   breakRegreso?: string | null;     // Hora calculada a la que debe regresar "HH:mm"
@@ -194,13 +194,13 @@ export function calculateWorkHours(entra: string, sale: string): number {
 /**
  * Regla de Cinemark:
  * Si el empleado trabaja 7 horas exactas o menos => break de 20 minutos.
- * Si trabaja más de 7 horas => break de 40 minutos.
+ * Si trabaja más de 7 horas => break de 45 minutos.
  */
-export function calculateBreakDuration(workHours: number): 20 | 40 {
+export function calculateBreakDuration(workHours: number): 20 | 45 {
   if (workHours <= 7) {
     return 20;
   }
-  return 40;
+  return 45;
 }
 
 /**
