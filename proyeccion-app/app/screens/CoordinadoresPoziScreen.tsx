@@ -307,13 +307,25 @@ export default function CoordinadoresPoziScreen() {
 
       setSaving(false);
 
-      const primerDia = weeklyResult.dias[0];
-      const ultimoDia = weeklyResult.dias[weeklyResult.dias.length - 1];
+      // Cambiar automáticamente la fecha seleccionada en pantalla al día o semana del archivo
+      if (weeklyResult.targetDate) {
+        setFecha(weeklyResult.targetDate);
+      }
 
-      Alert.alert(
-        "POZI Semanal Cargado",
-        `Se procesaron con éxito ${weeklyResult.hojasProcesadas} hoja(s) (${primerDia.diaNombre} a ${ultimoDia.diaNombre}) con un total de ${weeklyResult.totalEmpleados} empleados cargados.\n\n${resumenDias.join("\n")}`
-      );
+      if (weeklyResult.esDiaPuntual) {
+        const dia = weeklyResult.dias[0];
+        Alert.alert(
+          "POZI Diario Cargado",
+          `Se cargó con éxito el día ${dia.diaNombre} (${dayjs(dia.fecha).format("DD/MM/YYYY")}) con ${dia.empleados.length} empleados desde "${asset.name || "POZI.xlsx"}".`
+        );
+      } else {
+        const primerDia = weeklyResult.dias[0];
+        const ultimoDia = weeklyResult.dias[weeklyResult.dias.length - 1];
+        Alert.alert(
+          "POZI Semanal Cargado",
+          `Se procesaron con éxito ${weeklyResult.hojasProcesadas} hoja(s) (${primerDia.diaNombre} ${dayjs(primerDia.fecha).format("DD/MM")} a ${ultimoDia.diaNombre} ${dayjs(ultimoDia.fecha).format("DD/MM")}) con un total de ${weeklyResult.totalEmpleados} empleados cargados.\n\n${resumenDias.join("\n")}`
+        );
+      }
     } catch (err: any) {
       setSaving(false);
       console.error("Error al procesar archivo Excel:", err);
@@ -1251,7 +1263,7 @@ export default function CoordinadoresPoziScreen() {
                           emp.enBreak && styles.progPillEnBreak,
                         ]}
                         activeOpacity={0.75}
-                        title="Modificar horario programado"
+                        accessibilityLabel="Modificar horario programado"
                       >
                         <MaterialCommunityIcons
                           name="clock-outline"
@@ -1348,7 +1360,7 @@ export default function CoordinadoresPoziScreen() {
                           onPress={() => handleFinalizarBreak(emp.id)}
                           style={styles.btnFinalizarLineal}
                           activeOpacity={0.8}
-                          title="Marcar regreso de break"
+                          accessibilityLabel="Marcar regreso de break"
                         >
                           <MaterialCommunityIcons name="check" size={13} color="#FFFFFF" style={{ marginRight: 2 }} />
                           <Text style={styles.btnFinalizarLinealText}>Volvió</Text>
@@ -1356,7 +1368,7 @@ export default function CoordinadoresPoziScreen() {
                         <TouchableOpacity
                           onPress={() => handleReiniciarBreak(emp.id)}
                           style={styles.btnIconAction}
-                          title="Deshacer"
+                          accessibilityLabel="Deshacer"
                         >
                           <MaterialCommunityIcons name="restart" size={15} color={COLORS.muted} />
                         </TouchableOpacity>
@@ -1365,7 +1377,7 @@ export default function CoordinadoresPoziScreen() {
                       <TouchableOpacity
                         onPress={() => handleReiniciarBreak(emp.id)}
                         style={styles.btnIconAction}
-                        title="Deshacer"
+                        accessibilityLabel="Deshacer"
                       >
                         <MaterialCommunityIcons name="restart" size={15} color={COLORS.muted} />
                       </TouchableOpacity>
@@ -1382,7 +1394,7 @@ export default function CoordinadoresPoziScreen() {
                         <TouchableOpacity
                           onPress={() => handleAbrirProgramarBreak(emp)}
                           style={styles.btnIconAction}
-                          title="Programar horario de break"
+                          accessibilityLabel="Programar horario de break"
                         >
                           <MaterialCommunityIcons name="clock-edit-outline" size={15} color={COLORS.muted} />
                         </TouchableOpacity>

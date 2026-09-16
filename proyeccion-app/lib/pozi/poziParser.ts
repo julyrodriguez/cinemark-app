@@ -139,6 +139,8 @@ export type PoziWeeklyParsedResult = {
   dias: PoziDayParsedResult[];
   totalEmpleados: number;
   baseThursday: string;
+  targetDate: string; // Fecha recomendada para navegar en la interfaz
+  esDiaPuntual: boolean;
 };
 
 /**
@@ -149,6 +151,75 @@ export function getCinemaThursdayForDate(dateStr: string): string {
   const dayOfWeek = d.day(); // 0 (Dom), 1 (Lun), ..., 4 (Jue), 5 (Vie), 6 (Sab)
   const daysSinceThursday = (dayOfWeek + 7 - 4) % 7;
   return d.subtract(daysSinceThursday, "day").format("YYYY-MM-DD");
+}
+
+/**
+ * Obtiene la definición del día de la semana cinematográfica para cualquier fecha (YYYY-MM-DD).
+ * Jueves = 0, Viernes = 1, Sábado = 2, Domingo = 3, Lunes = 4, Martes = 5, Miércoles = 6.
+ */
+export function getCinemaWeekdayForDate(dateStr: string): {
+  key: string;
+  label: string;
+  short: string;
+  dayOffset: number;
+  diaIndex: number;
+} {
+  const d = dayjs(dateStr);
+  const dayOfWeek = d.day(); // 0 (Dom), 1 (Lun), ..., 4 (Jue), 5 (Vie), 6 (Sab)
+  const diaIndex = (dayOfWeek + 7 - 4) % 7;
+  const def = CINEMA_WEEKDAYS[diaIndex] || CINEMA_WEEKDAYS[0];
+  return {
+    ...def,
+    diaIndex,
+  };
+}
+
+/**
+ * Extrae la fecha exacta del nombre del archivo POZI.
+ * El nombre suele indicar "DD-MM" o "DD-MM-YYYY" (ej: "10-09.xlsx", "17-09.xlsx", "15-09.xlsx", "POZI 03-09.xlsx").
+ * Si el archivo es de un solo día, representa ese día puntual. Si es de toda la semana, representa el Jueves inicial.
+ */
+export function extractDateFromPoziFileName(fileName: string, fallbackDateStr?: string): string {
+  if (!fileName) {
+    return fallbackDateStr || dayjs().format("YYYY-MM-DD");
+  }
+
+  // Quitar extensión del archivo
+  const nameWithoutExt = fileName.replace(/\.[^/.]+$/, "");
+
+  // 1. Buscar patrón DD-MM-YYYY o DD/MM/YYYY o DD_MM_YYYY o DD.MM.YYYY
+  const matchFull = nameWithoutExt.match(/(?:^|\D)(\d{1,2})[-_./](\d{1,2})[-_./](\d{2,4})(?:\D|$)/);
+  if (matchFull) {
+    const day = Number(matchFull[1]);
+    const month = Number(matchFull[2]);
+    let year = Number(matchFull[3]);
+    if (year < 100) year += 2000;
+
+    if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year >= 2020 && year <= 2040) {
+      const parsed = dayjs(`${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`);
+      if (parsed.isValid()) {
+        return parsed.format("YYYY-MM-DD");
+      }
+    }
+  }
+
+  // 2. Buscar patrón DD-MM o DD_MM o DD.MM (ej: "10-09", "17-09", "15-09", "POZI 03-09")
+  const matchShort = nameWithoutExt.match(/(?:^|\D)(\d{1,2})[-_./](\d{1,2})(?:\D|$)/);
+  if (matchShort) {
+    const day = Number(matchShort[1]);
+    const month = Number(matchShort[2]);
+    const fallbackYear = fallbackDateStr ? dayjs(fallbackDateStr).year() : dayjs().year();
+
+    if (day >= 1 && day <= 31 && month >= 1 && month <= 12) {
+      const parsed = dayjs(`${fallbackYear}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`);
+      if (parsed.isValid()) {
+        return parsed.format("YYYY-MM-DD");
+      }
+    }
+  }
+
+  // Fallback si no tiene fecha en el nombre: usar fallbackDateStr o la fecha actual
+  return fallbackDateStr || dayjs().format("YYYY-MM-DD");
 }
 
 /**
@@ -593,10 +664,48 @@ export function parsePoziWeeklyExcel(
     throw new Error("El archivo Excel no contiene ninguna hoja.");
   }
 
-  const baseThursday = getCinemaThursdayForDate(baseDateStr || dayjs().format("YYYY-MM-DD"));
-  const thursdayObj = dayjs(baseThursday);
-
+  const extractedDate = extractDateFromPoziFileName(fileName, baseDateStr);
   const dias: PoziDayParsedResult[] = [];
+
+  // CASO 1: Archivo con una sola hoja (Día puntual e.g. "15-09.xlsx")
+  if (workbook.SheetNames.length === 1) {
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    if (!sheet) {
+      throw new Error("No se pudo leer la hoja del archivo.");
+    }
+
+    const singleResult = parseSinglePoziSheet(sheet, sheetName, fileName, 0);
+    const dayDef = getCinemaWeekdayForDate(extractedDate);
+    const baseThursday = getCinemaThursdayForDate(extractedDate);
+
+    dias.push({
+      diaIndex: dayDef.diaIndex,
+      diaKey: dayDef.key,
+      diaNombre: dayDef.label,
+      diaShort: dayDef.short,
+      fecha: extractedDate,
+      sheetName,
+      empleados: singleResult.empleados,
+      totalFilas: singleResult.totalFilas,
+      columnasDetectadas: singleResult.columnasDetectadas,
+    });
+
+    return {
+      fileName,
+      totalHojas: 1,
+      hojasProcesadas: 1,
+      dias,
+      totalEmpleados: singleResult.empleados.length,
+      baseThursday,
+      targetDate: extractedDate,
+      esDiaPuntual: true,
+    };
+  }
+
+  // CASO 2: Archivo con múltiples hojas (Semana completa o parcial, Hoja 1 = Jueves)
+  const baseThursday = getCinemaThursdayForDate(extractedDate);
+  const thursdayObj = dayjs(baseThursday);
   const maxHojas = Math.min(workbook.SheetNames.length, 7);
 
   for (let i = 0; i < maxHojas; i++) {
@@ -631,6 +740,8 @@ export function parsePoziWeeklyExcel(
     dias,
     totalEmpleados,
     baseThursday,
+    targetDate: baseThursday,
+    esDiaPuntual: false,
   };
 }
 

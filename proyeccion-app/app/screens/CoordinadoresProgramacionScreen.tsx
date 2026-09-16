@@ -657,7 +657,7 @@ export default function CoordinadoresProgramacionScreen() {
               onPress={() => scrollToTargetRow(true)}
               style={styles.btnJumpNow}
               activeOpacity={0.8}
-              title="Ir al ingreso que está por suceder ahora"
+              accessibilityLabel="Ir al ingreso que está por suceder ahora"
             >
               <MaterialCommunityIcons name="clock-fast" size={15} color="#166534" style={{ marginRight: 5 }} />
               <Text style={styles.btnJumpNowText}>
@@ -1315,7 +1315,7 @@ export default function CoordinadoresProgramacionScreen() {
           onPress={() => scrollToTargetRow(true)}
           style={styles.fabJumpNow}
           activeOpacity={0.85}
-          title="Ir al ingreso actual"
+          accessibilityLabel="Ir al ingreso actual"
         >
           <MaterialCommunityIcons name="target" size={16} color="#FFFFFF" style={{ marginRight: 5 }} />
           <Text style={styles.fabJumpNowText}>
