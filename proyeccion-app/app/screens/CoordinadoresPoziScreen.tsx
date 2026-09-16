@@ -542,26 +542,52 @@ export default function CoordinadoresPoziScreen() {
           <Text style={[styles.kpiVal, { color: COLORS.success }]}>{kpis.horarioCumplido}</Text>
           <Text style={styles.kpiTag}>Cumplidos</Text>
         </View>
-        <View style={styles.kpiDivider} />
 
-        {/* Toggle Próximos Ingresos como KPI interactivo */}
+        {/* Botón interactivo de Próximos en KPI bar */}
         <TouchableOpacity
           onPress={() => setSoloProximosIngresos(!soloProximosIngresos)}
-          style={[styles.kpiItemAction, soloProximosIngresos && styles.kpiItemActionActive]}
-          activeOpacity={0.7}
+          style={[
+            styles.kpiProximosBtn,
+            soloProximosIngresos && styles.kpiProximosBtnActive,
+            !isMobile && { marginLeft: "auto" },
+          ]}
+          activeOpacity={0.75}
         >
           <MaterialCommunityIcons
-            name="clock-fast"
+            name={soloProximosIngresos ? "check-circle" : "clock-fast"}
             size={14}
-            color={soloProximosIngresos ? "#0284C7" : COLORS.muted}
-            style={{ marginRight: 4 }}
+            color={soloProximosIngresos ? "#FFFFFF" : "#0284C7"}
+            style={{ marginRight: 5 }}
           />
-          <Text style={[styles.kpiValAction, soloProximosIngresos && { color: "#0284C7" }]}>
-            {totalProximosIngresos}
+          <Text
+            style={[
+              styles.kpiProximosLabel,
+              soloProximosIngresos && styles.kpiProximosLabelActive,
+            ]}
+          >
+            {soloProximosIngresos ? "Filtro activo: Próximos" : "Próximos a ingresar"}
           </Text>
-          <Text style={[styles.kpiTagAction, soloProximosIngresos && { color: "#0284C7", fontWeight: "700" }]}>
-            Próximos (≥{horaActualStr})
-          </Text>
+          <View
+            style={[
+              styles.kpiProximosBadge,
+              soloProximosIngresos && styles.kpiProximosBadgeActive,
+            ]}
+          >
+            <Text
+              style={[
+                styles.kpiProximosBadgeText,
+                soloProximosIngresos && styles.kpiProximosBadgeTextActive,
+              ]}
+            >
+              {totalProximosIngresos}
+            </Text>
+          </View>
+          <MaterialCommunityIcons
+            name={soloProximosIngresos ? "close" : "chevron-right"}
+            size={13}
+            color={soloProximosIngresos ? "#FFFFFF" : "#0284C7"}
+            style={{ marginLeft: 3 }}
+          />
         </TouchableOpacity>
       </View>
 
@@ -590,6 +616,57 @@ export default function CoordinadoresPoziScreen() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.filterScrollContent}
         >
+          {/* Botón destacado e interactivo: Próximos Ingresos */}
+          <TouchableOpacity
+            onPress={() => setSoloProximosIngresos(!soloProximosIngresos)}
+            style={[
+              styles.btnProximos,
+              soloProximosIngresos && styles.btnProximosActive,
+            ]}
+            activeOpacity={0.75}
+          >
+            <MaterialCommunityIcons
+              name={soloProximosIngresos ? "clock-check" : "clock-fast"}
+              size={15}
+              color={soloProximosIngresos ? "#FFFFFF" : "#0284C7"}
+              style={{ marginRight: 5 }}
+            />
+            <Text
+              style={[
+                styles.btnProximosText,
+                soloProximosIngresos && styles.btnProximosTextActive,
+              ]}
+            >
+              {soloProximosIngresos ? "Próximos (Activo)" : `Próximos (≥${horaActualStr})`}
+            </Text>
+            <View
+              style={[
+                styles.btnProximosBadge,
+                soloProximosIngresos && styles.btnProximosBadgeActive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.btnProximosBadgeText,
+                  soloProximosIngresos && styles.btnProximosBadgeTextActive,
+                ]}
+              >
+                {totalProximosIngresos}
+              </Text>
+            </View>
+            {soloProximosIngresos && (
+              <MaterialCommunityIcons
+                name="close-circle"
+                size={14}
+                color="#FFFFFF"
+                style={{ marginLeft: 5 }}
+              />
+            )}
+          </TouchableOpacity>
+
+          {/* Divisor vertical */}
+          <View style={styles.filterVDivider} />
+
           {/* Segment de Categorías Oficiales */}
           <View style={styles.pillGroup}>
             <TouchableOpacity
@@ -656,6 +733,26 @@ export default function CoordinadoresPoziScreen() {
           </View>
         </ScrollView>
       </View>
+
+      {/* Banner de filtro activo de Próximos */}
+      {soloProximosIngresos && (
+        <View style={styles.proximosActiveBanner}>
+          <View style={styles.proximosActiveBannerLeft}>
+            <MaterialCommunityIcons name="clock-check" size={15} color="#0284C7" style={{ marginRight: 6 }} />
+            <Text style={styles.proximosActiveBannerText}>
+              Mostrando ingresos a partir de las <Text style={{ fontWeight: "800" }}>{horaActualStr}</Text> ({empleadosFiltrados.length} empleados)
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => setSoloProximosIngresos(false)}
+            style={styles.btnQuitarFiltroProximos}
+            activeOpacity={0.7}
+          >
+            <MaterialCommunityIcons name="close" size={12} color="#0284C7" style={{ marginRight: 3 }} />
+            <Text style={styles.btnQuitarFiltroProximosText}>Quitar filtro</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* ── TABLA LINEAL DE EMPLEADOS ── */}
       {loading ? (
@@ -1267,25 +1364,130 @@ const styles = StyleSheet.create({
     height: 12,
     backgroundColor: COLORS.border,
   },
-  kpiItemAction: {
+  // Botón interactivo de Próximos en KPI bar
+  kpiProximosBtn: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
+    backgroundColor: "#F0F9FF",
+    borderWidth: 1.5,
+    borderColor: "#BAE6FD",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+    cursor: "pointer" as any,
   },
-  kpiItemActionActive: {
-    backgroundColor: "#EFF6FF",
+  kpiProximosBtnActive: {
+    backgroundColor: "#0284C7",
+    borderColor: "#0369A1",
   },
-  kpiValAction: {
-    fontSize: 13,
-    fontWeight: "800",
-    color: COLORS.muted,
-    marginRight: 4,
-  },
-  kpiTagAction: {
+  kpiProximosLabel: {
     fontSize: 11,
-    color: COLORS.muted,
+    fontWeight: "700",
+    color: "#0369A1",
+  },
+  kpiProximosLabelActive: {
+    color: "#FFFFFF",
+  },
+  kpiProximosBadge: {
+    backgroundColor: "#BAE6FD",
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 10,
+    marginLeft: 5,
+    marginRight: 2,
+  },
+  kpiProximosBadgeActive: {
+    backgroundColor: "rgba(255,255,255,0.25)",
+  },
+  kpiProximosBadgeText: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#0369A1",
+  },
+  kpiProximosBadgeTextActive: {
+    color: "#FFFFFF",
+  },
+
+  // Botón destacado de Próximos en FilterBar
+  btnProximos: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F0F9FF",
+    borderWidth: 1.5,
+    borderColor: "#BAE6FD",
+    paddingHorizontal: 10,
+    paddingVertical: 4.5,
+    borderRadius: THEME.radius.sm,
+    cursor: "pointer" as any,
+  },
+  btnProximosActive: {
+    backgroundColor: "#0284C7",
+    borderColor: "#0369A1",
+  },
+  btnProximosText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#0284C7",
+  },
+  btnProximosTextActive: {
+    color: "#FFFFFF",
+  },
+  btnProximosBadge: {
+    backgroundColor: "#BAE6FD",
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 10,
+    marginLeft: 6,
+  },
+  btnProximosBadgeActive: {
+    backgroundColor: "#0369A1",
+  },
+  btnProximosBadgeText: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#0369A1",
+  },
+  btnProximosBadgeTextActive: {
+    color: "#FFFFFF",
+  },
+
+  // Banner informativo del filtro activo de Próximos
+  proximosActiveBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#F0F9FF",
+    borderWidth: 1,
+    borderColor: "#BAE6FD",
+    borderRadius: THEME.radius.sm,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    marginBottom: 8,
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  proximosActiveBannerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  proximosActiveBannerText: {
+    fontSize: 12,
+    color: "#0369A1",
+  },
+  btnQuitarFiltroProximos: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#E0F2FE",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: THEME.radius.sm,
+    cursor: "pointer" as any,
+  },
+  btnQuitarFiltroProximosText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#0284C7",
   },
 
   // FilterBar moderna
