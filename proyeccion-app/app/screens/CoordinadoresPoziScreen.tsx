@@ -509,9 +509,19 @@ export default function CoordinadoresPoziScreen() {
               <Text style={styles.btnUploadText}>Cargar Excel</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity onPress={() => setShowAddModal(true)} style={styles.btnAction} activeOpacity={0.8}>
-              <MaterialCommunityIcons name="account-plus" size={15} color={COLORS.text} style={{ marginRight: 4 }} />
-              <Text style={styles.btnActionText}>Agregar</Text>
+            <TouchableOpacity
+              onPress={() => setShowAddModal(true)}
+              style={[styles.btnAction, isMobile && styles.btnActionMobile]}
+              activeOpacity={0.8}
+              title="Agregar Empleado"
+            >
+              <MaterialCommunityIcons
+                name="account-plus"
+                size={16}
+                color={COLORS.text}
+                style={!isMobile ? { marginRight: 4 } : undefined}
+              />
+              {!isMobile && <Text style={styles.btnActionText}>Agregar</Text>}
             </TouchableOpacity>
           </View>
         </View>
@@ -1376,6 +1386,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 6,
     borderRadius: THEME.radius.sm,
+  },
+  btnActionMobile: {
+    paddingHorizontal: 7,
+    paddingVertical: 6,
+    justifyContent: "center",
   },
   btnActionText: {
     color: COLORS.text,
