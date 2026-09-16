@@ -747,18 +747,8 @@ export default function CoordinadoresPoziScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* ── BARRA SUPERIOR / HEADER ── */}
+      {/* ── BARRA SUPERIOR / ACCIONES ── */}
       <View style={styles.topBar}>
-        <View style={styles.titleArea}>
-          <View style={styles.titleIconBadge}>
-            <MaterialCommunityIcons name="account-clock-outline" size={20} color={COLORS.primary} />
-          </View>
-          <View>
-            <Text style={styles.headerTitle}>POZI & Breaks</Text>
-            <Text style={styles.headerSub}>Control operativo de turnos y descansos</Text>
-          </View>
-        </View>
-
         {/* Acciones principales y Selector de Fecha */}
         <View style={styles.headerActions}>
           {/* Navegador de Fecha */}
@@ -1950,8 +1940,10 @@ const styles = StyleSheet.create({
     color: COLORS.muted,
   },
   headerActions: {
+    flex: 1,
     flexDirection: "row",
     flexWrap: "wrap",
+    justifyContent: "space-between",
     alignItems: "center",
     gap: 6,
   },
