@@ -2374,13 +2374,13 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
   },
   rowProgramado: {
-    backgroundColor: "#F8FAFC",
+    backgroundColor: Platform.OS === "web" ? "rgba(2, 132, 199, 0.08)" : "#F0F9FF",
   },
   rowEnBreak: {
-    backgroundColor: "#FFFDF7",
+    backgroundColor: Platform.OS === "web" ? "rgba(217, 119, 6, 0.10)" : "#FEF3C7",
   },
   rowCumplido: {
-    backgroundColor: "#FAFCFA",
+    backgroundColor: Platform.OS === "web" ? "rgba(16, 185, 129, 0.08)" : "#FAFCFA",
   },
   rowNombre: {
     fontSize: 13,
@@ -2388,8 +2388,8 @@ const styles = StyleSheet.create({
     color: COLORS.text,
   },
   badgeEiInline: {
-    backgroundColor: "#F0FDFA",
-    borderColor: "#99F6E4",
+    backgroundColor: Platform.OS === "web" ? "rgba(13, 148, 136, 0.15)" : "#F0FDFA",
+    borderColor: Platform.OS === "web" ? "rgba(13, 148, 136, 0.4)" : "#99F6E4",
     borderWidth: 1,
     paddingHorizontal: 4,
     paddingVertical: 1,
@@ -2444,10 +2444,10 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
   },
   breakPill20: {
-    backgroundColor: "#ECFDF5",
+    backgroundColor: Platform.OS === "web" ? "rgba(16, 185, 129, 0.15)" : "#ECFDF5",
   },
   breakPill45: {
-    backgroundColor: "#FEF3C7",
+    backgroundColor: Platform.OS === "web" ? "rgba(245, 158, 11, 0.18)" : "#FEF3C7",
   },
   breakPillFinaText: {
     fontSize: 10,
@@ -2468,12 +2468,12 @@ const styles = StyleSheet.create({
     cursor: "pointer" as any,
   },
   progPillFuturo: {
-    backgroundColor: "#F0F9FF",
-    borderColor: "#BAE6FD",
+    backgroundColor: Platform.OS === "web" ? "rgba(2, 132, 199, 0.15)" : "#F0F9FF",
+    borderColor: Platform.OS === "web" ? "rgba(2, 132, 199, 0.4)" : "#BAE6FD",
   },
   progPillEnBreak: {
-    backgroundColor: "#FEF3C7",
-    borderColor: "#FDE68A",
+    backgroundColor: Platform.OS === "web" ? "rgba(217, 119, 6, 0.18)" : "#FEF3C7",
+    borderColor: Platform.OS === "web" ? "rgba(217, 119, 6, 0.4)" : "#FDE68A",
   },
   progPillText: {
     fontSize: 11,
@@ -2553,8 +2553,8 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   timerPillProg: {
-    backgroundColor: "#E0F2FE",
-    borderColor: "#BAE6FD",
+    backgroundColor: Platform.OS === "web" ? "rgba(2, 132, 199, 0.18)" : "#E0F2FE",
+    borderColor: Platform.OS === "web" ? "rgba(2, 132, 199, 0.4)" : "#BAE6FD",
     borderWidth: 1,
     borderRadius: 3,
     paddingHorizontal: 5,
@@ -2564,11 +2564,11 @@ const styles = StyleSheet.create({
   timerPillProgText: {
     fontSize: 9,
     fontWeight: "700",
-    color: "#0369A1",
+    color: "#0284C7",
   },
   proximoPillInline: {
-    backgroundColor: "#EFF6FF",
-    borderColor: "#BFDBFE",
+    backgroundColor: Platform.OS === "web" ? "rgba(2, 132, 199, 0.15)" : "#EFF6FF",
+    borderColor: Platform.OS === "web" ? "rgba(2, 132, 199, 0.4)" : "#BFDBFE",
     borderWidth: 1,
     borderRadius: 3,
     paddingHorizontal: 5,
@@ -2590,8 +2590,8 @@ const styles = StyleSheet.create({
     color: COLORS.text,
   },
   timerPillMini: {
-    backgroundColor: "#FEF3C7",
-    borderColor: "#F59E0B",
+    backgroundColor: Platform.OS === "web" ? "rgba(245, 158, 11, 0.18)" : "#FEF3C7",
+    borderColor: Platform.OS === "web" ? "rgba(245, 158, 11, 0.4)" : "#F59E0B",
     borderWidth: 1,
     borderRadius: 3,
     paddingHorizontal: 4,
@@ -2600,11 +2600,11 @@ const styles = StyleSheet.create({
   timerPillMiniText: {
     fontSize: 9,
     fontWeight: "700",
-    color: "#B45309",
+    color: "#D97706",
   },
   cumplidoPillMini: {
-    backgroundColor: "#ECFDF5",
-    borderColor: "#10B981",
+    backgroundColor: Platform.OS === "web" ? "rgba(16, 185, 129, 0.15)" : "#ECFDF5",
+    borderColor: Platform.OS === "web" ? "rgba(16, 185, 129, 0.4)" : "#10B981",
     borderWidth: 1,
     borderRadius: 3,
     paddingHorizontal: 4,
@@ -2613,7 +2613,7 @@ const styles = StyleSheet.create({
   cumplidoPillMiniText: {
     fontSize: 9,
     fontWeight: "700",
-    color: "#047857",
+    color: "#059669",
   },
   btnBreakLineal: {
     flexDirection: "row",
