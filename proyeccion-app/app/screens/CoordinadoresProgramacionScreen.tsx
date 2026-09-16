@@ -821,11 +821,10 @@ export default function CoordinadoresProgramacionScreen() {
                 {/* Rótulos de columnas compactas */}
                 <View style={styles.compactColumnLabelsRow}>
                   <View style={styles.compactSideLeftHeader}>
-                    <Text style={styles.compactColLabelText}>ENTRADA (INICIO • SALA)</Text>
+                    <Text style={styles.compactColLabelText}>ENTRADAS (INICIO • SALA)</Text>
                   </View>
-                  <View style={styles.compactArrowBox} />
                   <View style={styles.compactSideRightHeader}>
-                    <Text style={styles.compactColLabelText}>SALIDA (SALA • CRÉD • FIN)</Text>
+                    <Text style={styles.compactColLabelText}>SALIDAS (SALA • CRÉD • FIN)</Text>
                   </View>
                 </View>
 
@@ -853,10 +852,9 @@ export default function CoordinadoresProgramacionScreen() {
                         isTarget && styles.compactItemRowTarget,
                       ]}
                     >
-                      {/* Línea 1: Horarios y Salas */}
-                      <View style={styles.compactTimeRow}>
-                        {/* Lado Entrada */}
-                        <View style={styles.compactSideLeft}>
+                      {/* Columna Izquierda: Entradas */}
+                      <View style={styles.compactSideLeftCol}>
+                        <View style={styles.compactSideLeftRow}>
                           {inShow ? (
                             <>
                               <View style={styles.compactBadgeInicio}>
@@ -883,13 +881,27 @@ export default function CoordinadoresProgramacionScreen() {
                           )}
                         </View>
 
-                        {/* Flecha divisoria */}
-                        <View style={styles.compactArrowBox}>
-                          <MaterialCommunityIcons name="arrow-right-thin" size={16} color={COLORS.muted} />
-                        </View>
+                        {/* Película de Entrada */}
+                        {colPelicula && inShow && (
+                          <View style={styles.compactMovieSubRow}>
+                            <Text
+                              style={[styles.compactMovieTitleText, is3D && styles.compactMovieTitle3D]}
+                              numberOfLines={1}
+                            >
+                              {inShow.pelicula}
+                            </Text>
+                            {isPosterChange && (
+                              <View style={styles.posterBadgeMini}>
+                                <Text style={styles.posterBadgeMiniText}>★</Text>
+                              </View>
+                            )}
+                          </View>
+                        )}
+                      </View>
 
-                        {/* Lado Salida */}
-                        <View style={styles.compactSideRight}>
+                      {/* Columna Derecha: Salidas */}
+                      <View style={styles.compactSideRightCol}>
+                        <View style={styles.compactSideRightRow}>
                           {outShow ? (
                             <>
                               <View style={styles.compactBadgeSala}>
@@ -920,40 +932,19 @@ export default function CoordinadoresProgramacionScreen() {
                             <Text style={styles.compactDashText}>-</Text>
                           )}
                         </View>
-                      </View>
 
-                      {/* Línea 2: Título de película (si está activado) */}
-                      {colPelicula && (inShow || outShow) && (
-                        <View style={styles.compactMovieLine}>
-                          <View style={{ flex: 1, flexDirection: "row", alignItems: "center" }}>
-                            {inShow && (
-                              <Text
-                                style={[styles.compactMovieTitleText, is3D && styles.compactMovieTitle3D]}
-                                numberOfLines={1}
-                              >
-                                {inShow.pelicula}
-                              </Text>
-                            )}
-                            {isPosterChange && (
-                              <View style={styles.posterBadgeMini}>
-                                <Text style={styles.posterBadgeMiniText}>★</Text>
-                              </View>
-                            )}
+                        {/* Película de Salida */}
+                        {colPelicula && outShow && (
+                          <View style={styles.compactMovieSubRowRight}>
+                            <Text
+                              style={[styles.compactMovieTitleTextRight, outIs3D && styles.compactMovieTitle3D]}
+                              numberOfLines={1}
+                            >
+                              {outShow.pelicula}
+                            </Text>
                           </View>
-
-                          {/* Si la salida tiene una película distinta o la entrada está vacía */}
-                          {outShow && (!inShow || outShow.pelicula !== inShow.pelicula) && (
-                            <View style={{ flex: 1, paddingLeft: 6, alignItems: "flex-end" }}>
-                              <Text
-                                style={[styles.compactMovieTitleTextRight, outIs3D && styles.compactMovieTitle3D]}
-                                numberOfLines={1}
-                              >
-                                Fin: {outShow.pelicula}
-                              </Text>
-                            </View>
-                          )}
-                        </View>
-                      )}
+                        )}
+                      </View>
                     </View>
                   );
                 })}
@@ -1774,14 +1765,18 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.bgMobile,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
-    paddingVertical: 3,
-    paddingHorizontal: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 6,
   },
   compactSideLeftHeader: {
-    flex: 5,
+    flex: 1,
+    paddingRight: 6,
+    borderRightWidth: 1,
+    borderRightColor: COLORS.border,
   },
   compactSideRightHeader: {
-    flex: 5,
+    flex: 1,
+    paddingLeft: 6,
     alignItems: "flex-end",
   },
   compactColLabelText: {
@@ -1791,10 +1786,11 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
 
-  // Fila compacta apareada
+  // Fila compacta con raya vertical divisoria completa
   compactItemRow: {
-    paddingVertical: 4,
-    paddingHorizontal: 8,
+    flexDirection: "row",
+    paddingVertical: 5,
+    paddingHorizontal: 6,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
@@ -1806,30 +1802,43 @@ const styles = StyleSheet.create({
     borderLeftWidth: 4,
     borderLeftColor: "#10B981",
   },
-  compactTimeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+  compactSideLeftCol: {
+    flex: 1,
+    paddingRight: 6,
+    borderRightWidth: 1,
+    borderRightColor: COLORS.border,
+    justifyContent: "center",
   },
-  compactSideLeft: {
-    flex: 5,
+  compactSideRightCol: {
+    flex: 1,
+    paddingLeft: 6,
+    justifyContent: "center",
+  },
+  compactSideLeftRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
     flexWrap: "nowrap",
   },
-  compactSideRight: {
-    flex: 5,
+  compactSideRightRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-end",
     gap: 4,
     flexWrap: "nowrap",
   },
-  compactArrowBox: {
-    width: 22,
+  compactMovieSubRow: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    marginTop: 2,
+    gap: 3,
+  },
+  compactMovieSubRowRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    marginTop: 2,
+    gap: 3,
   },
   compactBadgeInicio: {
     backgroundColor: COLORS.bgMobile,
