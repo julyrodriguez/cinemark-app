@@ -232,6 +232,8 @@ export default function CoordinadoresProgramacionScreen() {
   const [colCalif, setColCalif] = useState<boolean>(true);
   const [colCreditos, setColCreditos] = useState<boolean>(true);
   const [modoSeccion, setModoSeccion] = useState<"AMBAS" | "ENTRADAS" | "SALIDAS">("AMBAS");
+  // Foco de seguimiento actual/próximo ("ENTRADA" o "SALIDA")
+  const [focoHorario, setFocoHorario] = useState<"ENTRADA" | "SALIDA">("ENTRADA");
 
   // ── AUTO-SCROLL AL INGRESO PRÓXIMO / ACTUAL ──────────────────────────────
   const mainScrollRef = useRef<ScrollView>(null);
@@ -400,26 +402,36 @@ export default function CoordinadoresProgramacionScreen() {
   // Cantidad máxima de filas para aparear la tabla lado a lado
   const maxRows = Math.max(entradaFiltrada.length, salidaFiltrada.length);
 
-  // ── 8. Determinar ingreso objetivo (el que está por suceder o en curso) ───
+  // ── 8. Determinar ingreso/egreso objetivo (el que está por suceder o en curso) ───
   const isToday = selectedDay === getCinematicWeekdayKey();
+
+  const targetEntradaIdx = useMemo(() => {
+    if (!isToday || entradaFiltrada.length === 0) return -1;
+    const found = entradaFiltrada.findIndex((s) => s.sortInicio >= currentMinutes - 15);
+    return found !== -1 ? found : entradaFiltrada.length - 1;
+  }, [isToday, entradaFiltrada, currentMinutes]);
+
+  const targetSalidaIdx = useMemo(() => {
+    if (!isToday || salidaFiltrada.length === 0) return -1;
+    const found = salidaFiltrada.findIndex((s) => s.sortFin >= currentMinutes - 10);
+    return found !== -1 ? found : salidaFiltrada.length - 1;
+  }, [isToday, salidaFiltrada, currentMinutes]);
 
   const targetIdx = useMemo(() => {
     if (!isToday) return -1;
-    if (modoSeccion === "SALIDAS") {
-      if (salidaFiltrada.length === 0) return -1;
-      const found = salidaFiltrada.findIndex((s) => s.sortFin >= currentMinutes - 10);
-      return found !== -1 ? found : salidaFiltrada.length - 1;
+    if (modoSeccion === "SALIDAS" || focoHorario === "SALIDA") {
+      return targetSalidaIdx;
     }
-    // Modo AMBAS y ENTRADAS: buscamos el primer show que inicie en el futuro o dentro de los últimos 15 min
-    if (entradaFiltrada.length === 0) return -1;
-    const found = entradaFiltrada.findIndex((s) => s.sortInicio >= currentMinutes - 15);
-    return found !== -1 ? found : entradaFiltrada.length - 1;
-  }, [isToday, modoSeccion, entradaFiltrada, salidaFiltrada, currentMinutes]);
+    return targetEntradaIdx;
+  }, [isToday, modoSeccion, focoHorario, targetEntradaIdx, targetSalidaIdx]);
 
   const targetShow = useMemo(() => {
     if (targetIdx < 0) return null;
-    return modoSeccion === "SALIDAS" ? salidaFiltrada[targetIdx] : entradaFiltrada[targetIdx];
-  }, [targetIdx, modoSeccion, entradaFiltrada, salidaFiltrada]);
+    if (modoSeccion === "SALIDAS" || focoHorario === "SALIDA") {
+      return salidaFiltrada[targetSalidaIdx] || null;
+    }
+    return entradaFiltrada[targetEntradaIdx] || null;
+  }, [targetIdx, modoSeccion, focoHorario, targetEntradaIdx, targetSalidaIdx, entradaFiltrada, salidaFiltrada]);
 
   // Función para deslizarse suavemente a la fila del horario actual
   const scrollToTargetRow = useCallback((animated: boolean = true) => {
@@ -440,11 +452,11 @@ export default function CoordinadoresProgramacionScreen() {
     mainScrollRef.current?.scrollTo({ y: finalScrollY, animated });
   }, [targetIdx, vistaResumida]);
 
-  // Reset del flag de auto-scroll cuando cambia el día, vista o modo
+  // Reset del flag de auto-scroll cuando cambia el día, vista, modo o foco
   useEffect(() => {
     hasAutoScrolledRef.current = false;
     rowOffsetsRef.current = {};
-  }, [selectedDay, vistaResumida, modoSeccion]);
+  }, [selectedDay, vistaResumida, modoSeccion, focoHorario]);
 
   // Auto-scroll automático inicial al horario actual cuando los datos están listos
   useEffect(() => {
@@ -651,17 +663,25 @@ export default function CoordinadoresProgramacionScreen() {
             </View>
           </TouchableOpacity>
 
-          {/* Botón rápido para saltar al horario actual / próximo ingreso */}
+          {/* Botón rápido para saltar al horario actual / próximo ingreso o salida */}
           {isToday && targetShow && (
             <TouchableOpacity
               onPress={() => scrollToTargetRow(true)}
-              style={styles.btnJumpNow}
+              style={[
+                styles.btnJumpNow,
+                focoHorario === "SALIDA" && styles.btnJumpNowSalida,
+              ]}
               activeOpacity={0.8}
-              accessibilityLabel="Ir al ingreso que está por suceder ahora"
+              accessibilityLabel={`Ir a ${focoHorario === "ENTRADA" ? "entrada" : "salida"} actual`}
             >
-              <MaterialCommunityIcons name="clock-fast" size={15} color="#166534" style={{ marginRight: 5 }} />
-              <Text style={styles.btnJumpNowText}>
-                Ir a ahora ({targetShow.inicio})
+              <MaterialCommunityIcons
+                name="clock-fast"
+                size={15}
+                color={focoHorario === "SALIDA" ? "#9A3412" : "#166534"}
+                style={{ marginRight: 5 }}
+              />
+              <Text style={[styles.btnJumpNowText, focoHorario === "SALIDA" && styles.btnJumpNowTextSalida]}>
+                Ir a {focoHorario === "ENTRADA" ? `Entrada (${targetShow.inicio})` : `Salida (${targetShow.fin})`}
               </Text>
             </TouchableOpacity>
           )}
@@ -818,14 +838,63 @@ export default function CoordinadoresProgramacionScreen() {
             ) : modoSeccion === "AMBAS" ? (
               /* SUB-MODO AMBAS: Filas apareadas lado a lado sin desbordar el ancho del móvil */
               <View style={styles.compactList}>
-                {/* Rótulos de columnas compactas */}
+                {/* Rótulos de columnas compactas con selección interactiva (Tocar para enfocar) */}
                 <View style={styles.compactColumnLabelsRow}>
-                  <View style={styles.compactSideLeftHeader}>
-                    <Text style={styles.compactColLabelText}>ENTRADAS (INICIO • SALA)</Text>
-                  </View>
-                  <View style={styles.compactSideRightHeader}>
-                    <Text style={styles.compactColLabelText}>SALIDAS (SALA • CRÉD • FIN)</Text>
-                  </View>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setFocoHorario("ENTRADA");
+                      scrollToTargetRow(true);
+                    }}
+                    style={[
+                      styles.compactSideLeftHeader,
+                      focoHorario === "ENTRADA" && styles.compactHeaderActiveEntrada,
+                    ]}
+                    activeOpacity={0.7}
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                      <MaterialCommunityIcons
+                        name={focoHorario === "ENTRADA" ? "radiobox-marked" : "radiobox-blank"}
+                        size={12}
+                        color={focoHorario === "ENTRADA" ? "#10B981" : COLORS.muted}
+                      />
+                      <Text style={[styles.compactColLabelText, focoHorario === "ENTRADA" && styles.compactColLabelActiveEntrada]}>
+                        ENTRADAS (INICIO • SALA)
+                      </Text>
+                      {focoHorario === "ENTRADA" && isToday && (
+                        <View style={styles.pillActiveTrack}>
+                          <Text style={styles.pillActiveTrackText}>Seguir</Text>
+                        </View>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => {
+                      setFocoHorario("SALIDA");
+                      scrollToTargetRow(true);
+                    }}
+                    style={[
+                      styles.compactSideRightHeader,
+                      focoHorario === "SALIDA" && styles.compactHeaderActiveSalida,
+                    ]}
+                    activeOpacity={0.7}
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 5 }}>
+                      {focoHorario === "SALIDA" && isToday && (
+                        <View style={styles.pillActiveTrackSalida}>
+                          <Text style={styles.pillActiveTrackSalidaText}>Seguir</Text>
+                        </View>
+                      )}
+                      <Text style={[styles.compactColLabelText, focoHorario === "SALIDA" && styles.compactColLabelActiveSalida]}>
+                        SALIDAS (SALA • CRÉD • FIN)
+                      </Text>
+                      <MaterialCommunityIcons
+                        name={focoHorario === "SALIDA" ? "radiobox-marked" : "radiobox-blank"}
+                        size={12}
+                        color={focoHorario === "SALIDA" ? "#F59E0B" : COLORS.muted}
+                      />
+                    </View>
+                  </TouchableOpacity>
                 </View>
 
                 {Array.from({ length: maxRows }).map((_, idx) => {
@@ -838,7 +907,8 @@ export default function CoordinadoresProgramacionScreen() {
                   const isRestricted = inShow ? isRestrictedRating(inShow.calificacion) : false;
 
                   const outIs3D = outShow?.pelicula?.toUpperCase().includes("3D");
-                  const isTarget = isToday && idx === targetIdx;
+                  const isTargetEntrada = isToday && focoHorario === "ENTRADA" && idx === targetEntradaIdx;
+                  const isTargetSalida = isToday && focoHorario === "SALIDA" && idx === targetSalidaIdx;
 
                   return (
                     <View
@@ -849,18 +919,29 @@ export default function CoordinadoresProgramacionScreen() {
                       style={[
                         styles.compactItemRow,
                         idx % 2 === 1 && styles.compactItemRowZebra,
-                        isTarget && styles.compactItemRowTarget,
+                        isTargetEntrada && styles.compactItemRowTargetEntrada,
+                        isTargetSalida && styles.compactItemRowTargetSalida,
                       ]}
                     >
-                      {/* Columna Izquierda: Entradas */}
-                      <View style={styles.compactSideLeftCol}>
+                      {/* Columna Izquierda: Entradas (Tocar para enfocar Entradas) */}
+                      <TouchableOpacity
+                        style={styles.compactSideLeftCol}
+                        activeOpacity={0.8}
+                        onPress={() => {
+                          if (focoHorario !== "ENTRADA") {
+                            setFocoHorario("ENTRADA");
+                          }
+                        }}
+                      >
                         <View style={styles.compactSideLeftRow}>
                           {inShow ? (
                             <>
-                              <View style={styles.compactBadgeInicio}>
-                                <Text style={styles.compactBadgeInicioText}>{inShow.inicio}</Text>
+                              <View style={[styles.compactBadgeInicio, isTargetEntrada && styles.compactBadgeInicioActive]}>
+                                <Text style={[styles.compactBadgeInicioText, isTargetEntrada && styles.compactBadgeInicioTextActive]}>
+                                  {inShow.inicio}
+                                </Text>
                               </View>
-                              {isTarget && (
+                              {isTargetEntrada && (
                                 <View style={styles.badgeAhora}>
                                   <Text style={styles.badgeAhoraText}>AHORA</Text>
                                 </View>
@@ -897,13 +978,26 @@ export default function CoordinadoresProgramacionScreen() {
                             )}
                           </View>
                         )}
-                      </View>
+                      </TouchableOpacity>
 
-                      {/* Columna Derecha: Salidas */}
-                      <View style={styles.compactSideRightCol}>
+                      {/* Columna Derecha: Salidas (Tocar para enfocar Salidas) */}
+                      <TouchableOpacity
+                        style={styles.compactSideRightCol}
+                        activeOpacity={0.8}
+                        onPress={() => {
+                          if (focoHorario !== "SALIDA") {
+                            setFocoHorario("SALIDA");
+                          }
+                        }}
+                      >
                         <View style={styles.compactSideRightRow}>
                           {outShow ? (
                             <>
+                              {isTargetSalida && (
+                                <View style={styles.badgeAhoraSalida}>
+                                  <Text style={styles.badgeAhoraSalidaText}>AHORA</Text>
+                                </View>
+                              )}
                               <View style={styles.compactBadgeSala}>
                                 <Text style={styles.compactBadgeSalaText}>S{outShow.sala}</Text>
                               </View>
@@ -924,8 +1018,10 @@ export default function CoordinadoresProgramacionScreen() {
                                   </Text>
                                 </View>
                               ) : null}
-                              <View style={styles.compactBadgeFin}>
-                                <Text style={styles.compactBadgeFinText}>{outShow.fin}</Text>
+                              <View style={[styles.compactBadgeFin, isTargetSalida && styles.compactBadgeFinActive]}>
+                                <Text style={[styles.compactBadgeFinText, isTargetSalida && styles.compactBadgeFinTextActive]}>
+                                  {outShow.fin}
+                                </Text>
                               </View>
                             </>
                           ) : (
@@ -944,7 +1040,7 @@ export default function CoordinadoresProgramacionScreen() {
                             </Text>
                           </View>
                         )}
-                      </View>
+                      </TouchableOpacity>
                     </View>
                   );
                 })}
@@ -1304,13 +1400,16 @@ export default function CoordinadoresProgramacionScreen() {
       {isToday && targetShow && (
         <TouchableOpacity
           onPress={() => scrollToTargetRow(true)}
-          style={styles.fabJumpNow}
+          style={[
+            styles.fabJumpNow,
+            focoHorario === "SALIDA" && styles.fabJumpNowSalida,
+          ]}
           activeOpacity={0.85}
-          accessibilityLabel="Ir al ingreso actual"
+          accessibilityLabel={`Ir a ${focoHorario === "ENTRADA" ? "entrada" : "salida"} actual`}
         >
           <MaterialCommunityIcons name="target" size={16} color="#FFFFFF" style={{ marginRight: 5 }} />
           <Text style={styles.fabJumpNowText}>
-            Ahora: {targetShow.inicio} (S{targetShow.sala})
+            Ahora {focoHorario === "ENTRADA" ? `Entrada: ${targetShow.inicio}` : `Salida: ${targetShow.fin}`} (S{targetShow.sala})
           </Text>
         </TouchableOpacity>
       )}
@@ -1554,9 +1653,15 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: THEME.radius.sm,
   },
+  btnJumpNowSalida: {
+    borderColor: "#D97706",
+  },
   btnJumpNowText: {
     fontSize: 11,
     fontWeight: "700",
+    color: COLORS.text,
+  },
+  btnJumpNowTextSalida: {
     color: COLORS.text,
   },
   fabJumpNow: {
@@ -1576,6 +1681,9 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     zIndex: 999,
   },
+  fabJumpNowSalida: {
+    backgroundColor: "#D97706",
+  },
   fabJumpNowText: {
     color: "#FFFFFF",
     fontSize: 11.5,
@@ -1588,7 +1696,20 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     marginLeft: 3,
   },
+  badgeAhoraSalida: {
+    backgroundColor: "#D97706",
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 3,
+    marginRight: 3,
+  },
   badgeAhoraText: {
+    color: "#FFFFFF",
+    fontSize: 8,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+  badgeAhoraSalidaText: {
     color: "#FFFFFF",
     fontSize: 8,
     fontWeight: "800",
@@ -1773,17 +1894,59 @@ const styles = StyleSheet.create({
     paddingRight: 6,
     borderRightWidth: 2,
     borderRightColor: "#94A3B8",
+    paddingVertical: 2,
+    borderRadius: 4,
   },
   compactSideRightHeader: {
     flex: 1,
     paddingLeft: 6,
     alignItems: "flex-end",
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  compactHeaderActiveEntrada: {
+    backgroundColor: Platform.OS === "web" ? ("rgba(16, 185, 129, 0.12)" as any) : "#F0FDF4",
+  },
+  compactHeaderActiveSalida: {
+    backgroundColor: Platform.OS === "web" ? ("rgba(245, 158, 11, 0.12)" as any) : "#FFFBEB",
   },
   compactColLabelText: {
     fontSize: 9,
     fontWeight: "800",
     color: COLORS.muted,
     letterSpacing: 0.5,
+  },
+  compactColLabelActiveEntrada: {
+    color: "#10B981",
+    fontWeight: "900",
+  },
+  compactColLabelActiveSalida: {
+    color: "#F59E0B",
+    fontWeight: "900",
+  },
+  pillActiveTrack: {
+    backgroundColor: "#10B981",
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 3,
+  },
+  pillActiveTrackText: {
+    color: "#FFFFFF",
+    fontSize: 8,
+    fontWeight: "800",
+    letterSpacing: 0.3,
+  },
+  pillActiveTrackSalida: {
+    backgroundColor: "#F59E0B",
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 3,
+  },
+  pillActiveTrackSalidaText: {
+    color: "#FFFFFF",
+    fontSize: 8,
+    fontWeight: "800",
+    letterSpacing: 0.3,
   },
 
   // Fila compacta con raya vertical divisoria completa
@@ -1801,6 +1964,16 @@ const styles = StyleSheet.create({
     backgroundColor: Platform.OS === "web" ? ("rgba(16, 185, 129, 0.12)" as any) : "#F0FDF4",
     borderLeftWidth: 4,
     borderLeftColor: "#10B981",
+  },
+  compactItemRowTargetEntrada: {
+    backgroundColor: Platform.OS === "web" ? ("rgba(16, 185, 129, 0.12)" as any) : "#F0FDF4",
+    borderLeftWidth: 4,
+    borderLeftColor: "#10B981",
+  },
+  compactItemRowTargetSalida: {
+    backgroundColor: Platform.OS === "web" ? ("rgba(245, 158, 11, 0.12)" as any) : "#FFFBEB",
+    borderRightWidth: 4,
+    borderRightColor: "#F59E0B",
   },
   compactSideLeftCol: {
     flex: 1,
@@ -1848,11 +2021,18 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: 3,
   },
+  compactBadgeInicioActive: {
+    backgroundColor: "#10B981",
+    borderColor: "#059669",
+  },
   compactBadgeInicioText: {
     fontSize: 11,
     fontWeight: "800",
     color: COLORS.text,
     fontFamily: Platform.OS === "web" ? "Consolas, monospace" : "System",
+  },
+  compactBadgeInicioTextActive: {
+    color: "#FFFFFF",
   },
   compactBadgeSala: {
     backgroundColor: COLORS.bgMobile,
@@ -1906,11 +2086,18 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: 3,
   },
+  compactBadgeFinActive: {
+    backgroundColor: "#DC2626",
+    borderColor: "#B91C1C",
+  },
   compactBadgeFinText: {
     fontSize: 10.5,
     fontWeight: "800",
     color: "#DC2626",
     fontFamily: Platform.OS === "web" ? "Consolas, monospace" : "System",
+  },
+  compactBadgeFinTextActive: {
+    color: "#FFFFFF",
   },
   compactBadgeMuted: {
     backgroundColor: COLORS.bgMobile,
