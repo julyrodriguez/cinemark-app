@@ -1,4 +1,5 @@
 import * as XLSX from "xlsx";
+import dayjs from "dayjs";
 
 export const POZI_CATEGORIAS = {
   OV: {
@@ -44,6 +45,19 @@ export const POZI_CATEGORIAS = {
 } as const;
 
 export type PoziCategoriaCodigo = keyof typeof POZI_CATEGORIAS;
+
+/**
+ * Días de la semana cinematográfica (comienza el Jueves y termina el Miércoles)
+ */
+export const CINEMA_WEEKDAYS = [
+  { key: "jueves", label: "Jueves", short: "JUE", dayOffset: 0 },
+  { key: "viernes", label: "Viernes", short: "VIE", dayOffset: 1 },
+  { key: "sabado", label: "Sábado", short: "SÁB", dayOffset: 2 },
+  { key: "domingo", label: "Domingo", short: "DOM", dayOffset: 3 },
+  { key: "lunes", label: "Lunes", short: "LUN", dayOffset: 4 },
+  { key: "martes", label: "Martes", short: "MAR", dayOffset: 5 },
+  { key: "miercoles", label: "Miércoles", short: "MIÉ", dayOffset: 6 },
+] as const;
 
 /**
  * Normaliza y valida una categoría de POZI (OV, OS, OT, OC, EI).
@@ -99,23 +113,54 @@ export type PoziParsedResult = {
     nombreCol?: string;
     entraCol?: string;
     saleCol?: string;
-    filaEncabezado: number;
+    filaEncabezado?: number;
   };
-  filasCrudasPrevisualizacion: any[];
-  rawSummaryText: string;
+  filasCrudasPrevisualizacion?: any[];
+  rawSummaryText?: string;
+};
+
+export type PoziDayParsedResult = {
+  diaIndex: number;
+  diaKey: string;
+  diaNombre: string;
+  diaShort: string;
+  fecha: string; // "YYYY-MM-DD"
+  sheetName: string;
+  empleados: PoziEmployee[];
+  totalFilas: number;
+  columnasDetectadas?: any;
+};
+
+export type PoziWeeklyParsedResult = {
+  fileName: string;
+  totalHojas: number;
+  hojasProcesadas: number;
+  dias: PoziDayParsedResult[];
+  totalEmpleados: number;
+  baseThursday: string;
 };
 
 /**
- * Normaliza valores de horas de Excel (fracciones numéricas, strings o Date) a formato "HH:mm".
+ * Obtiene la fecha del Jueves de inicio de la semana cinematográfica para cualquier fecha dada.
+ */
+export function getCinemaThursdayForDate(dateStr: string): string {
+  const d = dayjs(dateStr);
+  const dayOfWeek = d.day(); // 0 (Dom), 1 (Lun), ..., 4 (Jue), 5 (Vie), 6 (Sab)
+  const daysSinceThursday = (dayOfWeek + 7 - 4) % 7;
+  return d.subtract(daysSinceThursday, "day").format("YYYY-MM-DD");
+}
+
+/**
+ * Normaliza cualquier formato de horario de Excel a "HH:mm".
  */
 export function normalizeExcelTime(val: unknown): string {
-  if (val === undefined || val === null) return "";
+  if (val === undefined || val === null || val === "") return "";
 
-  // Si es un objeto Date
+  // Si es instancia Date
   if (val instanceof Date) {
-    const hh = String(val.getHours()).padStart(2, "0");
-    const mm = String(val.getMinutes()).padStart(2, "0");
-    return `${hh}:${mm}`;
+    const hh = val.getHours();
+    const mm = val.getMinutes();
+    return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
   }
 
   // Si es un número (Excel time fraction)
@@ -204,25 +249,14 @@ export function calculateBreakDuration(workHours: number): 20 | 45 {
 }
 
 /**
- * Parsea un ArrayBuffer de un archivo Excel de POZI.
- * Descarta automáticamente filas sin una categoría válida (OV, OS, OT, OC, EI).
+ * Parsea una única hoja de Excel de POZI.
  */
-export function parsePoziExcel(buffer: ArrayBuffer, fileName: string): PoziParsedResult {
-  const workbook = XLSX.read(buffer, {
-    type: "array",
-    cellDates: true,
-  });
-
-  const sheetName = workbook.SheetNames[0] || "";
-  if (!sheetName) {
-    throw new Error("El archivo Excel no contiene ninguna hoja.");
-  }
-
-  const sheet = workbook.Sheets[sheetName];
-  if (!sheet) {
-    throw new Error("No se pudo leer la hoja del archivo.");
-  }
-
+export function parseSinglePoziSheet(
+  sheet: XLSX.WorkSheet,
+  sheetName: string,
+  fileName: string,
+  sheetIndex: number = 0
+): PoziParsedResult {
   // Convertir a matriz con filas y columnas crudas
   const matrix = XLSX.utils.sheet_to_json<any[]>(sheet, {
     header: 1,
@@ -231,7 +265,13 @@ export function parsePoziExcel(buffer: ArrayBuffer, fileName: string): PoziParse
   });
 
   if (matrix.length === 0) {
-    throw new Error("El archivo Excel está vacío.");
+    return {
+      empleados: [],
+      fileName,
+      sheetName,
+      totalFilas: 0,
+      columnasDetectadas: {},
+    };
   }
 
   // 1. Identificar la fila de encabezados
@@ -368,47 +408,59 @@ export function parsePoziExcel(buffer: ArrayBuffer, fileName: string): PoziParse
     // Si es un título de sector y no tiene ambos horarios de turno, es una fila de encabezado de sector
     if (tituloSector && (!testEntra || !testSale)) {
       sectorActual = tituloSector;
-      ultimaCategoriaEmpleado = tituloSector;
-      continue; // No es un empleado, es el título del sector (no sumar)
+      continue;
     }
 
-    // 2. Obtener valor de Categoría
-    let catVal = catColIndex !== -1 ? row[catColIndex] : "";
-    let catNorm = normalizarCategoria(catVal);
+    // 2. Extraer valores de columnas
+    let catVal = catColIndex !== -1 ? row[catColIndex] : undefined;
+    let nombreVal = nombreColIndex !== -1 ? row[nombreColIndex] : undefined;
+    let entraVal = entraColIndex !== -1 ? row[entraColIndex] : undefined;
+    let saleVal = saleColIndex !== -1 ? row[saleColIndex] : undefined;
 
-    // Si la celda de catColIndex no era válida, buscar en las primeras 5 columnas de la fila
+    // Si catColIndex no trajo nada válido, buscar en las primeras columnas
+    let catNorm = normalizarCategoria(catVal);
     if (!catNorm) {
       for (let c = 0; c < Math.min(row.length, 5); c++) {
-        if (c !== entraColIndex && c !== saleColIndex) {
-          const testCat = normalizarCategoria(row[c]);
-          if (testCat) {
-            catNorm = testCat;
+        if (c !== nombreColIndex) {
+          const test = normalizarCategoria(row[c]);
+          if (test) {
+            catNorm = test;
             break;
           }
         }
       }
     }
 
-    // Si no tiene categoría explícita pero tiene horarios válidos y nombre, verificar si está bajo un sectorActual
-    // (Por requerimiento: si no tiene categoría se ignora, salvo que esté dentro de un sector reconocido)
+    // Si no tiene categoría válida, descartar la fila automáticamente
     if (!catNorm) {
       continue;
     }
 
-    let nombreVal = nombreColIndex !== -1 ? row[nombreColIndex] : "";
-    let entraVal = entraColIndex !== -1 ? row[entraColIndex] : "";
-    let saleVal = saleColIndex !== -1 ? row[saleColIndex] : "";
-
-    // Si nombre no fue encontrado, buscar celda de texto que no sea horas ni números
+    // Si no se detectó nombre en su columna, buscar la primera columna con texto alfabético
     if (!nombreVal) {
       for (let c = 0; c < row.length; c++) {
-        if (c !== catColIndex && c !== entraColIndex && c !== saleColIndex) {
-          const str = String(row[c] || "").trim();
-          if (str.length >= 3 && isNaN(Number(str)) && !str.includes(":") && !normalizarCategoria(str)) {
-            nombreVal = str;
-            break;
-          }
+        const val = String(row[c] || "").trim();
+        if (val && /[a-zA-ZáéíóúÁÉÍÓÚñÑ]{3,}/.test(val) && c !== catColIndex && !normalizarCategoria(val)) {
+          nombreVal = val;
+          break;
         }
+      }
+    }
+
+    // Si entra y sale no se detectaron bien, buscar columnas con formato hora
+    if (!entraVal || !saleVal) {
+      const horasEnFila: { col: number; hora: string }[] = [];
+      for (let c = 0; c < row.length; c++) {
+        const norm = normalizeExcelTime(row[c]);
+        if (norm && /^\d{2}:\d{2}$/.test(norm)) {
+          horasEnFila.push({ col: c, hora: norm });
+        }
+      }
+      if (horasEnFila.length >= 2) {
+        if (!entraVal) entraVal = horasEnFila[0].hora;
+        if (!saleVal) saleVal = horasEnFila[1].hora;
+      } else if (horasEnFila.length === 1) {
+        if (!entraVal) entraVal = horasEnFila[0].hora;
       }
     }
 
@@ -429,7 +481,6 @@ export function parsePoziExcel(buffer: ArrayBuffer, fileName: string): PoziParse
     const duracionBreak = calculateBreakDuration(horasTrabajadas);
 
     // RESOLUCIÓN DE CATEGORÍA PARA EI:
-    // "para identificar que es el EI siempre ponelo igual que el de arriba, y sino buscar titulos, a veces dice servicios o ventas en el titulo"
     let categoriaFinal: PoziCategoriaCodigo = catNorm;
     const esEIOriginal = catNorm === "EI";
 
@@ -446,7 +497,7 @@ export function parsePoziExcel(buffer: ArrayBuffer, fileName: string): PoziParse
       sectorActual = catNorm;
     }
 
-    const empId = `emp_${r}_${nombre.replace(/\s+/g, "_").toLowerCase()}`;
+    const empId = `emp_${sheetIndex}_${r}_${nombre.replace(/\s+/g, "_").toLowerCase()}`;
 
     empleados.push({
       id: empId,
@@ -461,6 +512,7 @@ export function parsePoziExcel(buffer: ArrayBuffer, fileName: string): PoziParse
       breakRegreso: null,
       breakFin: null,
       breakIniciadoAt: null,
+      breakFinalizadoAt: null,
       encargado: null,
       notas: esEIOriginal ? "EI (Entrenamiento Inicial)" : null,
     });
@@ -518,4 +570,86 @@ export function parsePoziExcel(buffer: ArrayBuffer, fileName: string): PoziParse
     filasCrudasPrevisualizacion,
     rawSummaryText,
   };
+}
+
+/**
+ * Parsea un libro Excel con múltiples hojas semanales de POZI.
+ * Las hojas corresponden en orden a los días de la semana: Jueves (hoja 1) a Miércoles (hoja 7).
+ * Si tiene menos hojas, procesa hasta la cantidad de hojas presentes.
+ */
+export function parsePoziWeeklyExcel(
+  buffer: ArrayBuffer,
+  fileName: string,
+  baseDateStr?: string
+): PoziWeeklyParsedResult {
+  const workbook = XLSX.read(buffer, {
+    type: "array",
+    cellDates: true,
+  });
+
+  if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
+    throw new Error("El archivo Excel no contiene ninguna hoja.");
+  }
+
+  const baseThursday = getCinemaThursdayForDate(baseDateStr || dayjs().format("YYYY-MM-DD"));
+  const thursdayObj = dayjs(baseThursday);
+
+  const dias: PoziDayParsedResult[] = [];
+  const maxHojas = Math.min(workbook.SheetNames.length, 7);
+
+  for (let i = 0; i < maxHojas; i++) {
+    const sheetName = workbook.SheetNames[i];
+    const sheet = workbook.Sheets[sheetName];
+    if (!sheet) continue;
+
+    const dayDef = CINEMA_WEEKDAYS[i];
+    const fechaDia = thursdayObj.add(dayDef.dayOffset, "day").format("YYYY-MM-DD");
+
+    const singleResult = parseSinglePoziSheet(sheet, sheetName, fileName, i);
+
+    dias.push({
+      diaIndex: i,
+      diaKey: dayDef.key,
+      diaNombre: dayDef.label,
+      diaShort: dayDef.short,
+      fecha: fechaDia,
+      sheetName,
+      empleados: singleResult.empleados,
+      totalFilas: singleResult.totalFilas,
+      columnasDetectadas: singleResult.columnasDetectadas,
+    });
+  }
+
+  const totalEmpleados = dias.reduce((sum, d) => sum + d.empleados.length, 0);
+
+  return {
+    fileName,
+    totalHojas: workbook.SheetNames.length,
+    hojasProcesadas: dias.length,
+    dias,
+    totalEmpleados,
+    baseThursday,
+  };
+}
+
+/**
+ * Parsea la primera hoja de un archivo Excel de POZI (retrocompatibilidad).
+ */
+export function parsePoziExcel(buffer: ArrayBuffer, fileName: string): PoziParsedResult {
+  const workbook = XLSX.read(buffer, {
+    type: "array",
+    cellDates: true,
+  });
+
+  const sheetName = workbook.SheetNames[0] || "";
+  if (!sheetName) {
+    throw new Error("El archivo Excel no contiene ninguna hoja.");
+  }
+
+  const sheet = workbook.Sheets[sheetName];
+  if (!sheet) {
+    throw new Error("No se pudo leer la hoja del archivo.");
+  }
+
+  return parseSinglePoziSheet(sheet, sheetName, fileName, 0);
 }

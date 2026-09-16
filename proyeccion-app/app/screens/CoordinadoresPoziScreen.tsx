@@ -15,7 +15,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
 import dayjs from "dayjs";
 
-import { doc, onSnapshot, setDoc } from "@/lib/dbService";
+import { doc, getDoc, onSnapshot, setDoc } from "@/lib/dbService";
 import { CINES_COLLECTION, db } from "../../lib/firebaseConfig";
 import { COLORS, THEME } from "../../lib/theme";
 import { useAuthUser } from "../../lib/useAuthUser";
@@ -23,8 +23,11 @@ import { useAppLayout } from "../../lib/useAppLayout";
 import {
   calculateBreakDuration,
   calculateWorkHours,
+  CINEMA_WEEKDAYS,
+  getCinemaThursdayForDate,
   normalizeExcelTime,
   parsePoziExcel,
+  parsePoziWeeklyExcel,
   POZI_CATEGORIAS,
   PoziCategoriaCodigo,
   PoziEmployee,
@@ -36,6 +39,25 @@ export default function CoordinadoresPoziScreen() {
 
   // Fecha seleccionada (YYYY-MM-DD)
   const [fecha, setFecha] = useState<string>(() => dayjs().format("YYYY-MM-DD"));
+
+  // Jueves base de la semana cinematográfica actual
+  const baseThursdayStr = useMemo(() => getCinemaThursdayForDate(fecha), [fecha]);
+  const baseThursdayObj = useMemo(() => dayjs(baseThursdayStr), [baseThursdayStr]);
+
+  // Lista de los 7 días de la semana de cine (Jueves a Miércoles)
+  const cinemaWeekDays = useMemo(() => {
+    return CINEMA_WEEKDAYS.map((dayDef) => {
+      const d = baseThursdayObj.add(dayDef.dayOffset, "day");
+      const dStr = d.format("YYYY-MM-DD");
+      return {
+        ...dayDef,
+        dateStr: dStr,
+        dateFormatted: d.format("DD/MM"),
+        isSelected: dStr === fecha,
+        isToday: dStr === dayjs().format("YYYY-MM-DD"),
+      };
+    });
+  }, [baseThursdayObj, fecha]);
 
   // Lista de empleados del día
   const [empleados, setEmpleados] = useState<PoziEmployee[]>([]);
@@ -170,8 +192,12 @@ export default function CoordinadoresPoziScreen() {
     }
   };
 
-  // ── Cargar Excel de POZI ────────────────────────────────────────────────
+  // ── Cargar Excel de POZI (Soporte Semanal Multi-Hoja) ────────────────────
   const handlePickExcel = async () => {
+    if (!cineId) {
+      Alert.alert("Aviso", "No se encontró el cine actual seleccionado.");
+      return;
+    }
     try {
       const res = await DocumentPicker.getDocumentAsync({
         type: [
@@ -188,6 +214,8 @@ export default function CoordinadoresPoziScreen() {
       const asset = res.assets?.[0];
       if (!asset?.uri) return;
 
+      setSaving(true);
+
       let buffer: ArrayBuffer;
       const maybeFile = (asset as any).file as File | undefined;
       if (maybeFile && typeof maybeFile.arrayBuffer === "function") {
@@ -197,50 +225,92 @@ export default function CoordinadoresPoziScreen() {
         buffer = await response.arrayBuffer();
       }
 
-      const parsed = parsePoziExcel(buffer, asset.name || "POZI.xlsx");
+      // Parsea el libro completo por hojas (Jueves = hoja 1 hasta Miércoles = hoja 7)
+      const weeklyResult = parsePoziWeeklyExcel(buffer, asset.name || "POZI.xlsx", fecha);
 
-      if (parsed.empleados.length === 0) {
+      if (weeklyResult.dias.length === 0 || weeklyResult.totalEmpleados === 0) {
+        setSaving(false);
         Alert.alert(
           "Sin empleados válidos",
-          "No se encontraron empleados con categorías válidas (OV, OS, OT, OC, EI). Recuerda que filas sin categoría se descartan automáticamente."
+          "No se encontraron empleados con categorías válidas (OV, OS, OT, OC, EI) en ninguna de las hojas. Recuerda que filas sin categoría se descartan automáticamente."
         );
         return;
       }
 
-      const mapaExistentes = new Map<string, PoziEmployee>();
-      empleados.forEach((e) => {
-        const key = e.nombre.trim().toLowerCase();
-        mapaExistentes.set(key, e);
-      });
+      const usuarioActual = displayName || user?.email || "Coordinador";
+      const resumenDias: string[] = [];
 
-      const empleadosFinales = parsed.empleados.map((nuevo) => {
-        const key = nuevo.nombre.trim().toLowerCase();
-        const existente = mapaExistentes.get(key);
-        if (existente && existente.estadoBreak !== "PENDIENTE") {
-          return {
-            ...nuevo,
-            estadoBreak: existente.estadoBreak,
-            breakInicio: existente.breakInicio,
-            breakRegreso: existente.breakRegreso,
-            breakFin: existente.breakFin,
-            breakIniciadoAt: existente.breakIniciadoAt,
-            breakFinalizadoAt: existente.breakFinalizadoAt,
-            encargado: existente.encargado,
-            notas: existente.notas,
-          };
+      // Guardar cada día parseado en Firestore
+      for (const diaResult of weeklyResult.dias) {
+        if (!diaResult.empleados || diaResult.empleados.length === 0) continue;
+
+        const docRef = doc(db, CINES_COLLECTION, cineId, "pozi", diaResult.fecha);
+        const existingMap = new Map<string, PoziEmployee>();
+
+        try {
+          const existingSnap = await getDoc(docRef);
+          if (existingSnap && typeof (existingSnap as any).data === "function" && (existingSnap as any).exists?.()) {
+            const data = (existingSnap as any).data();
+            if (Array.isArray(data.empleados)) {
+              data.empleados.forEach((e: PoziEmployee) => {
+                existingMap.set(e.nombre.trim().toLowerCase(), e);
+              });
+            }
+          }
+        } catch (errSnap) {
+          console.warn(`No se pudo leer existente para ${diaResult.fecha}:`, errSnap);
         }
-        return nuevo;
-      });
 
-      await persistirEmpleados(empleadosFinales, asset.name || "POZI.xlsx");
+        // Combinar preservando estados de breaks activos si ya estaban en curso
+        const empleadosFinales = diaResult.empleados.map((nuevo) => {
+          const key = nuevo.nombre.trim().toLowerCase();
+          const existente = existingMap.get(key);
+          if (existente && existente.estadoBreak !== "PENDIENTE") {
+            return {
+              ...nuevo,
+              estadoBreak: existente.estadoBreak,
+              breakInicio: existente.breakInicio,
+              breakRegreso: existente.breakRegreso,
+              breakFin: existente.breakFin,
+              breakIniciadoAt: existente.breakIniciadoAt,
+              breakFinalizadoAt: existente.breakFinalizadoAt,
+              encargado: existente.encargado,
+              notas: existente.notas || nuevo.notas,
+            };
+          }
+          return nuevo;
+        });
+
+        await setDoc(
+          docRef,
+          {
+            fecha: diaResult.fecha,
+            diaSemana: diaResult.diaNombre,
+            empleados: empleadosFinales,
+            updatedAt: Date.now(),
+            actualizadoPor: usuarioActual,
+            excelFileName: asset.name || "POZI.xlsx",
+            sheetName: diaResult.sheetName,
+          },
+          { merge: true }
+        );
+
+        resumenDias.push(
+          `• ${diaResult.diaNombre} (${dayjs(diaResult.fecha).format("DD/MM")}): ${empleadosFinales.length} emp. [Hoja: "${diaResult.sheetName}"]`
+        );
+      }
+
+      setSaving(false);
+
+      const primerDia = weeklyResult.dias[0];
+      const ultimoDia = weeklyResult.dias[weeklyResult.dias.length - 1];
 
       Alert.alert(
-        "POZI Cargado con éxito",
-        `Se procesaron ${parsed.empleados.length} empleados para la fecha ${dayjs(fecha).format(
-          "DD/MM/YYYY"
-        )}.`
+        "POZI Semanal Cargado",
+        `Se procesaron con éxito ${weeklyResult.hojasProcesadas} hoja(s) (${primerDia.diaNombre} a ${ultimoDia.diaNombre}) con un total de ${weeklyResult.totalEmpleados} empleados cargados.\n\n${resumenDias.join("\n")}`
       );
     } catch (err: any) {
+      setSaving(false);
       console.error("Error al procesar archivo Excel:", err);
       Alert.alert("Error de procesamiento", err.message || "No se pudo leer el archivo Excel.");
     }
@@ -528,6 +598,61 @@ export default function CoordinadoresPoziScreen() {
               {!isMobile && <Text style={styles.btnActionText}>Agregar</Text>}
             </TouchableOpacity>
           </View>
+        </View>
+      </View>
+
+      {/* ── SELECTOR RÁPIDO DE DÍAS DE LA SEMANA (Jueves a Miércoles) ── */}
+      <View style={styles.weekSelectorCard}>
+        <View style={styles.weekHeaderRow}>
+          <Text style={styles.weekHeaderTitle}>
+            Semana de Cine ({baseThursdayObj.format("DD/MM")} al {baseThursdayObj.add(6, "day").format("DD/MM")})
+          </Text>
+          {lastExcelName && (
+            <Text style={styles.weekHeaderSub}>
+              📄 {lastExcelName}
+            </Text>
+          )}
+        </View>
+
+        <View style={styles.weekTabsRow}>
+          {cinemaWeekDays.map((dayItem) => {
+            const isSel = dayItem.isSelected;
+            return (
+              <TouchableOpacity
+                key={dayItem.key}
+                onPress={() => setFecha(dayItem.dateStr)}
+                style={[
+                  styles.dayTabBtn,
+                  isSel && styles.dayTabBtnActive,
+                  dayItem.isToday && !isSel && styles.dayTabBtnToday,
+                ]}
+                activeOpacity={0.75}
+              >
+                <Text
+                  style={[
+                    styles.dayTabDayText,
+                    isSel && styles.dayTabDayTextActive,
+                    dayItem.isToday && !isSel && styles.dayTabDayTextToday,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {isMobile ? dayItem.short : width < 900 ? dayItem.short : dayItem.label}
+                </Text>
+                <Text
+                  style={[
+                    styles.dayTabDateText,
+                    isSel && styles.dayTabDateTextActive,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {dayItem.dateFormatted}
+                </Text>
+                {dayItem.isToday && (
+                  <View style={[styles.dayTodayIndicator, isSel && styles.dayTodayIndicatorActive]} />
+                )}
+              </TouchableOpacity>
+            );
+          })}
         </View>
       </View>
 
@@ -1400,6 +1525,86 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     fontSize: 12,
     fontWeight: "600",
+  },
+
+  // Selector de días de la semana de cine (Jueves a Miércoles)
+  weekSelectorCard: {
+    backgroundColor: COLORS.card,
+    borderRadius: THEME.radius.sm,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 8,
+    marginBottom: 8,
+  },
+  weekHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 6,
+    paddingHorizontal: 2,
+  },
+  weekHeaderTitle: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: COLORS.text,
+  },
+  weekHeaderSub: {
+    fontSize: 10,
+    color: COLORS.muted,
+  },
+  weekTabsRow: {
+    flexDirection: "row",
+    gap: 4,
+  },
+  dayTabBtn: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 5,
+    paddingHorizontal: 2,
+    borderRadius: THEME.radius.sm,
+    backgroundColor: COLORS.bg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    position: "relative",
+  },
+  dayTabBtnActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  dayTabBtnToday: {
+    borderColor: COLORS.primary,
+  },
+  dayTabDayText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: COLORS.text,
+  },
+  dayTabDayTextActive: {
+    color: "#FFFFFF",
+  },
+  dayTabDayTextToday: {
+    color: COLORS.primary,
+  },
+  dayTabDateText: {
+    fontSize: 10,
+    color: COLORS.muted,
+    marginTop: 1,
+  },
+  dayTabDateTextActive: {
+    color: "rgba(255, 255, 255, 0.85)",
+  },
+  dayTodayIndicator: {
+    position: "absolute",
+    top: 2,
+    right: 2,
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: COLORS.primary,
+  },
+  dayTodayIndicatorActive: {
+    backgroundColor: "#FFFFFF",
   },
 
   // KPI Bar lineal
