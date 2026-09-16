@@ -64,6 +64,16 @@ const DAY_OFFSETS: Record<WeekdayKey, number> = {
   miercoles: 6,
 };
 
+const WEEKDAY_SHORT: Record<WeekdayKey, string> = {
+  jueves: "JUE",
+  viernes: "VIE",
+  sabado: "SÁB",
+  domingo: "DOM",
+  lunes: "LUN",
+  martes: "MAR",
+  miercoles: "MIÉ",
+};
+
 const MONTH_LABELS_ES = [
   "enero", "febrero", "marzo", "abril", "mayo", "junio",
   "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
@@ -217,7 +227,7 @@ function isRestrictedRating(rating: string): boolean {
 
 export default function CoordinadoresProgramacionScreen() {
   const { cineId } = useAuthUser();
-  const { isMobile } = useAppLayout();
+  const { isMobile, isWeb, width } = useAppLayout();
 
   // Día seleccionado (default al día cinematográfico actual)
   const [selectedDay, setSelectedDay] = useState<WeekdayKey>(() => getCinematicWeekdayKey());
@@ -621,29 +631,71 @@ export default function CoordinadoresProgramacionScreen() {
 
       {/* ── SELECTOR DE DÍA DE LA SEMANA ── */}
       <View style={styles.daySelectorCard}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dayScrollContent}>
-          {DAYS.map((day) => {
-            const isSel = selectedDay === day;
-            const shortDate = buildShortDate(startDateObj, day);
-            return (
-              <TouchableOpacity
-                key={day}
-                onPress={() => setSelectedDay(day)}
-                style={[styles.dayTab, isSel && styles.dayTabActive]}
-                activeOpacity={0.75}
-              >
-                <Text style={[styles.dayTabTitle, isSel && styles.dayTabTitleActive]}>
-                  {WEEKDAY_LABELS[day]}
-                </Text>
-                {shortDate.length > 0 && (
-                  <Text style={[styles.dayTabDate, isSel && styles.dayTabDateActive]}>
-                    {shortDate}
+        {!isWeb && width < 480 ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dayScrollContent}>
+            {DAYS.map((day) => {
+              const isSel = selectedDay === day;
+              const shortDate = buildShortDate(startDateObj, day);
+              return (
+                <TouchableOpacity
+                  key={day}
+                  onPress={() => setSelectedDay(day)}
+                  style={[styles.dayTabMobileScroll, isSel && styles.dayTabActive]}
+                  activeOpacity={0.75}
+                >
+                  <Text numberOfLines={1} style={[styles.dayTabTitle, isSel && styles.dayTabTitleActive]}>
+                    {WEEKDAY_LABELS[day]}
                   </Text>
-                )}
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+                  {shortDate.length > 0 && (
+                    <Text numberOfLines={1} style={[styles.dayTabDate, isSel && styles.dayTabDateActive]}>
+                      {shortDate}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        ) : (
+          <View style={styles.dayTabsRow}>
+            {DAYS.map((day) => {
+              const isSel = selectedDay === day;
+              const shortDate = buildShortDate(startDateObj, day);
+              const label = width < 720 ? WEEKDAY_SHORT[day] : WEEKDAY_LABELS[day];
+              return (
+                <TouchableOpacity
+                  key={day}
+                  onPress={() => setSelectedDay(day)}
+                  style={[styles.dayTab, isSel && styles.dayTabActive]}
+                  activeOpacity={0.75}
+                >
+                  <Text
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                    style={[
+                      styles.dayTabTitle,
+                      isSel && styles.dayTabTitleActive,
+                      width < 720 && { fontSize: 10 },
+                    ]}
+                  >
+                    {label}
+                  </Text>
+                  {shortDate.length > 0 && (
+                    <Text
+                      numberOfLines={1}
+                      style={[
+                        styles.dayTabDate,
+                        isSel && styles.dayTabDateActive,
+                        width < 720 && { fontSize: 8.5 },
+                      ]}
+                    >
+                      {shortDate}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
       </View>
 
       {/* ── BARRA DE HERRAMIENTAS: BOTÓN VISTA RESUMIDA Y CONTROL DE COLUMNAS ── */}
@@ -1403,33 +1455,53 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 
-  // Selector de días de la semana
+  // Selector de días de la semana (100% responsive y centrado en web)
   daySelectorCard: {
     backgroundColor: "#FFFFFF",
     borderRadius: THEME.radius.sm,
     borderWidth: 1,
     borderColor: "#CBD5E1",
-    padding: 3,
+    padding: 4,
     marginBottom: 6,
+    width: "100%",
+  },
+  dayTabsRow: {
+    flexDirection: "row",
+    width: "100%",
+    gap: 4,
+    alignItems: "stretch",
+    justifyContent: "space-between",
   },
   dayScrollContent: {
     flexDirection: "row",
     gap: 4,
   },
   dayTab: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    flex: 1,
+    minWidth: 0,
+    paddingVertical: 7,
+    paddingHorizontal: 2,
     borderRadius: 4,
     alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F8FAFC",
+  },
+  dayTabMobileScroll: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 4,
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: "#F8FAFC",
   },
   dayTabActive: {
     backgroundColor: "#166534",
   },
   dayTabTitle: {
-    fontSize: 11,
+    fontSize: 11.5,
     fontWeight: "700",
     color: COLORS.muted,
+    textAlign: "center",
   },
   dayTabTitleActive: {
     color: "#FFFFFF",
@@ -1437,7 +1509,8 @@ const styles = StyleSheet.create({
   dayTabDate: {
     fontSize: 9.5,
     color: COLORS.muted,
-    marginTop: 1,
+    marginTop: 1.5,
+    textAlign: "center",
   },
   dayTabDateActive: {
     color: "#DCFCE7",
