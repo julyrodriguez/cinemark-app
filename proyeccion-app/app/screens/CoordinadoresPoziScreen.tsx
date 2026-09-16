@@ -28,7 +28,6 @@ import {
   POZI_CATEGORIAS,
   PoziCategoriaCodigo,
   PoziEmployee,
-  PoziParsedResult,
 } from "../../lib/pozi/poziParser";
 
 export default function CoordinadoresPoziScreen() {
@@ -61,11 +60,6 @@ export default function CoordinadoresPoziScreen() {
   const [filtroCategoria, setFiltroCategoria] = useState<"TODAS" | PoziCategoriaCodigo>("TODAS");
   const [filtroEstado, setFiltroEstado] = useState<"TODOS" | "PENDIENTE" | "EN_BREAK" | "CUMPLIDO">("TODOS");
   const [soloProximosIngresos, setSoloProximosIngresos] = useState<boolean>(false);
-
-  // Modal de vista previa / datos para prompt
-  const [debugModalOpen, setDebugModalOpen] = useState(false);
-  const [parsedDebugInfo, setParsedDebugInfo] = useState<PoziParsedResult | null>(null);
-  const [copiedNotification, setCopiedNotification] = useState(false);
 
   // Modal agregar empleado manual
   const [showAddModal, setShowAddModal] = useState(false);
@@ -200,7 +194,6 @@ export default function CoordinadoresPoziScreen() {
       }
 
       const parsed = parsePoziExcel(buffer, asset.name || "POZI.xlsx");
-      setParsedDebugInfo(parsed);
 
       if (parsed.empleados.length === 0) {
         Alert.alert(
@@ -354,19 +347,6 @@ export default function CoordinadoresPoziScreen() {
     );
   };
 
-  const handleVaciarDia = () => {
-    if (empleados.length === 0) return;
-    confirmAction(
-      "Vaciar POZI del Día",
-      `¿Estás seguro de que deseas eliminar a todos los ${empleados.length} empleados cargados para la fecha ${dayjs(
-        fecha
-      ).format("DD/MM/YYYY")}?`,
-      () => {
-        persistirEmpleados([], "");
-      }
-    );
-  };
-
   // ── Agregar Empleado Manual ─────────────────────────────────────────────
   const handleGuardarNuevoEmpleado = () => {
     if (!nuevoNombre.trim()) {
@@ -484,18 +464,6 @@ export default function CoordinadoresPoziScreen() {
     return filtrados.sort((a, b) => (a.entra || "").localeCompare(b.entra || ""));
   }, [infoEmpleados, filtroTexto, filtroCategoria, filtroEstado, soloProximosIngresos]);
 
-  // ── Copiar resumen para promptear ──────────────────────────────────────
-  const handleCopiarPrompt = () => {
-    const textoACopiar = parsedDebugInfo?.rawSummaryText || JSON.stringify(empleados.slice(0, 10), null, 2);
-    if (Platform.OS === "web" && typeof navigator !== "undefined" && navigator.clipboard) {
-      navigator.clipboard.writeText(textoACopiar);
-      setCopiedNotification(true);
-      setTimeout(() => setCopiedNotification(false), 2500);
-    } else {
-      Alert.alert("Datos del POZI", textoACopiar);
-    }
-  };
-
   const isWide = !isMobile && width >= 850;
 
   return (
@@ -543,17 +511,6 @@ export default function CoordinadoresPoziScreen() {
             <TouchableOpacity onPress={() => setShowAddModal(true)} style={styles.btnAction} activeOpacity={0.8}>
               <MaterialCommunityIcons name="account-plus" size={15} color={COLORS.text} style={{ marginRight: 4 }} />
               <Text style={styles.btnActionText}>Agregar</Text>
-            </TouchableOpacity>
-
-            {empleados.length > 0 && (
-              <TouchableOpacity onPress={handleVaciarDia} style={styles.btnClear} activeOpacity={0.8}>
-                <MaterialCommunityIcons name="trash-can-outline" size={15} color="#DC2626" style={{ marginRight: 4 }} />
-                <Text style={styles.btnClearText}>Limpiar día</Text>
-              </TouchableOpacity>
-            )}
-
-            <TouchableOpacity onPress={() => setDebugModalOpen(true)} style={styles.btnGhost} activeOpacity={0.8}>
-              <MaterialCommunityIcons name="code-json" size={15} color={COLORS.primary} />
             </TouchableOpacity>
           </View>
         </View>
@@ -1167,59 +1124,6 @@ export default function CoordinadoresPoziScreen() {
           </View>
         </View>
       </Modal>
-
-      {/* ── MODAL VER ESTRUCTURA / PROMPT ── */}
-      <Modal visible={debugModalOpen} transparent animationType="fade">
-        <View style={styles.modalBackdrop}>
-          <View style={[styles.modalCard, { maxWidth: 650 }]}>
-            <View style={styles.modalHeader}>
-              <View style={{ flexDirection: "row", alignItems: "center" }}>
-                <MaterialCommunityIcons name="file-code-outline" size={20} color={COLORS.primary} style={{ marginRight: 6 }} />
-                <Text style={styles.modalTitle}>Datos detectados del Excel</Text>
-              </View>
-              <TouchableOpacity onPress={() => setDebugModalOpen(false)}>
-                <MaterialCommunityIcons name="close" size={20} color={COLORS.muted} />
-              </TouchableOpacity>
-            </View>
-
-            <Text style={styles.modalDesc}>
-              Filas sin categorías válidas (OV, OS, OT, OC, EI) fueron descartadas. Copia este JSON si necesitas consultarme.
-            </Text>
-
-            {copiedNotification && (
-              <View style={styles.copiedBanner}>
-                <MaterialCommunityIcons name="check-bold" size={14} color="#047857" style={{ marginRight: 4 }} />
-                <Text style={styles.copiedBannerText}>¡Copiado al portapapeles!</Text>
-              </View>
-            )}
-
-            <ScrollView style={styles.debugScrollArea}>
-              <Text style={styles.codeText}>
-                {parsedDebugInfo?.rawSummaryText ||
-                  JSON.stringify(
-                    {
-                      fechaActual: fecha,
-                      totalEmpleados: empleados.length,
-                      muestra: empleados.slice(0, 5),
-                    },
-                    null,
-                    2
-                  )}
-              </Text>
-            </ScrollView>
-
-            <View style={styles.modalFooterRow}>
-              <TouchableOpacity onPress={handleCopiarPrompt} style={styles.btnGuardarModal}>
-                <MaterialCommunityIcons name="content-copy" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
-                <Text style={styles.btnGuardarModalText}>Copiar al portapapeles</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => setDebugModalOpen(false)} style={styles.btnCerrarModal}>
-                <Text style={styles.btnCerrarModalText}>Cerrar</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </ScrollView>
   );
 }
@@ -1328,26 +1232,6 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     fontSize: 12,
     fontWeight: "600",
-  },
-  btnClear: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FEE2E2",
-    borderWidth: 1,
-    borderColor: "#FECACA",
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    borderRadius: THEME.radius.sm,
-  },
-  btnClearText: {
-    color: "#DC2626",
-    fontSize: 11,
-    fontWeight: "600",
-  },
-  btnGhost: {
-    padding: 6,
-    backgroundColor: COLORS.primarySoft,
-    borderRadius: THEME.radius.sm,
   },
 
   // KPI Bar lineal
@@ -1844,19 +1728,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "700",
   },
-  debugScrollArea: {
-    backgroundColor: "#0F172A",
-    borderRadius: THEME.radius.sm,
-    padding: 8,
-    maxHeight: 280,
-    marginBottom: 10,
-  },
-  codeText: {
-    color: "#38BDF8",
-    fontFamily: Platform.OS === "web" ? "monospace" : "System",
-    fontSize: 11,
-    lineHeight: 15,
-  },
   modalFooterRow: {
     flexDirection: "row",
     justifyContent: "flex-end",
@@ -1903,19 +1774,6 @@ const styles = StyleSheet.create({
   btnEliminarModalText: {
     color: "#DC2626",
     fontSize: 11,
-    fontWeight: "600",
-  },
-  copiedBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#D1FAE5",
-    padding: 5,
-    borderRadius: THEME.radius.sm,
-    marginBottom: 6,
-  },
-  copiedBannerText: {
-    fontSize: 10,
-    color: "#047857",
     fontWeight: "600",
   },
   inputLabel: {
