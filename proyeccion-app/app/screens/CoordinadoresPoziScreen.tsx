@@ -625,11 +625,12 @@ export default function CoordinadoresPoziScreen() {
           enBreak = true;
         }
       }
-      // 3. Caso Break Programado por Horario (ej: "20:00" o "08:00")
+      // 3. Caso Break Programado por Horario (ej: "13:07", "13:00", "20:00")
       else if (emp.breakProgramado) {
         const [progH, progM] = emp.breakProgramado.split(":").map(Number);
         if (!isNaN(progH) && !isNaN(progM)) {
-          let progDate = dayjs(`${fecha}T${String(progH).padStart(2, "0")}:${String(progM).padStart(2, "0")}:00`);
+          // Construir objeto fecha con la hora programada en el día de hoy para comparar con el reloj en vivo
+          let progDate = dayjs().hour(progH).minute(progM).second(0).millisecond(0);
           // Si el turno entra de noche (>=18h) y el break es de madrugada (<6h)
           if (emp.entra) {
             const [eH] = emp.entra.split(":").map(Number);
@@ -642,41 +643,29 @@ export default function CoordinadoresPoziScreen() {
           horaInicioEfectiva = emp.breakProgramado;
           horaRegresoEfectiva = progDate.add(emp.duracionBreak, "minute").format("HH:mm");
 
-          // Si estamos visualizando la fecha actual
-          if (isFechaHoy) {
-            if (nowTick < progMs) {
-              // Futuro: todavía no llegó la hora del break
-              esProgramadoFuturo = true;
-              salio = false;
-              enBreak = false;
-              cumplido = false;
-              minutosRestantes = Math.round((progMs - nowTick) / 60000);
-            } else {
-              // Ya llegó o pasó el horario programado: ¡Empieza a correr automáticamente!
-              // Ejemplo: programado a las 8, son 8:30 => transcurridos 30m, faltan 15m
-              salio = true;
-              const msFinProg = progMs + emp.duracionBreak * 60 * 1000;
-              const diffFinMs = msFinProg - nowTick;
-              minutosRestantes = Math.round(diffFinMs / 60000);
-              minutosTranscurridos = Math.max(0, Math.floor((nowTick - progMs) / 60000));
-
-              if (minutosRestantes <= 0) {
-                cumplido = true;
-                enBreak = false;
-              } else {
-                cumplido = false;
-                enBreak = true;
-              }
-            }
+          if (nowTick < progMs) {
+            // Futuro: todavía no llegó la hora del break (ej. prog 13:07, son 13:05 => faltan 2m)
+            esProgramadoFuturo = true;
+            salio = false;
+            enBreak = false;
+            cumplido = false;
+            minutosRestantes = Math.max(1, Math.round((progMs - nowTick) / 60000));
           } else {
-            // Fecha no es hoy
-            const esPasada = dayjs(fecha).isBefore(dayjs().format("YYYY-MM-DD"));
-            if (esPasada) {
-              salio = true;
+            // Ya llegó o pasó el horario programado: ¡Empieza a correr automáticamente!
+            // Ejemplo: programado a las 13:00, son 13:05 => van 5m, faltan 40m
+            const msFinProg = progMs + emp.duracionBreak * 60 * 1000;
+            const diffFinMs = msFinProg - nowTick;
+            minutosRestantes = Math.round(diffFinMs / 60000);
+            minutosTranscurridos = Math.max(0, Math.floor((nowTick - progMs) / 60000));
+
+            if (minutosRestantes <= 0) {
               cumplido = true;
-              minutosTranscurridos = emp.duracionBreak;
+              enBreak = false;
+              salio = true;
             } else {
-              esProgramadoFuturo = true;
+              cumplido = false;
+              enBreak = true;
+              salio = true;
             }
           }
         }
