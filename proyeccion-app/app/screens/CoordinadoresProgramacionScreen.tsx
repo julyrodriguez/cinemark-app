@@ -1771,8 +1771,8 @@ const styles = StyleSheet.create({
   compactSideLeftHeader: {
     flex: 1,
     paddingRight: 6,
-    borderRightWidth: 1,
-    borderRightColor: COLORS.border,
+    borderRightWidth: 2,
+    borderRightColor: "#94A3B8",
   },
   compactSideRightHeader: {
     flex: 1,
@@ -1805,8 +1805,8 @@ const styles = StyleSheet.create({
   compactSideLeftCol: {
     flex: 1,
     paddingRight: 6,
-    borderRightWidth: 1,
-    borderRightColor: COLORS.border,
+    borderRightWidth: 2,
+    borderRightColor: "#94A3B8",
     justifyContent: "center",
   },
   compactSideRightCol: {
