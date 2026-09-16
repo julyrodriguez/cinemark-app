@@ -80,8 +80,13 @@ export default function CoordinadoresPoziScreen() {
   // Filtros
   const [filtroTexto, setFiltroTexto] = useState("");
   const [filtroCategoria, setFiltroCategoria] = useState<"TODAS" | PoziCategoriaCodigo>("TODAS");
-  const [filtroEstado, setFiltroEstado] = useState<"TODOS" | "PENDIENTE" | "EN_BREAK" | "CUMPLIDO">("TODOS");
+  const [filtroEstado, setFiltroEstado] = useState<"TODOS" | "PROGRAMADOS" | "PENDIENTE" | "EN_BREAK" | "CUMPLIDO">("TODOS");
   const [soloProximosIngresos, setSoloProximosIngresos] = useState<boolean>(false);
+
+  // Modal Programar Break
+  const [programarEmp, setProgramarEmp] = useState<PoziEmployee | null>(null);
+  const [progHora, setProgHora] = useState<string>("");
+  const [progError, setProgError] = useState<string>("");
 
   // Modal agregar empleado manual
   const [showAddModal, setShowAddModal] = useState(false);
@@ -316,7 +321,87 @@ export default function CoordinadoresPoziScreen() {
     }
   };
 
-  // ── Marcar Salida a Break ───────────────────────────────────────────────
+  // ── Programar Break (Horario Programado) ───────────────────────────────
+  const handleAbrirProgramarBreak = (emp: PoziEmployee) => {
+    setProgramarEmp(emp);
+    setProgHora(emp.breakProgramado || "");
+    setProgError("");
+  };
+
+  const handleGuardarProgramarBreak = (hora: string | null) => {
+    if (!programarEmp) return;
+
+    let horaNormalizada: string | null = null;
+    if (hora && hora.trim()) {
+      horaNormalizada = normalizeExcelTime(hora.trim());
+      if (!horaNormalizada || !/^\d{2}:\d{2}$/.test(horaNormalizada)) {
+        setProgError("Ingresa un horario válido en formato HH:mm (ej. 20:00).");
+        return;
+      }
+    }
+
+    const nuevaLista = empleados.map((e) => {
+      if (e.id === programarEmp.id) {
+        return {
+          ...e,
+          breakProgramado: horaNormalizada,
+        };
+      }
+      return e;
+    });
+
+    persistirEmpleados(nuevaLista);
+    setProgramarEmp(null);
+  };
+
+  // Sugerencias de horarios rápidos para programar break
+  const sugerenciasBreak = useMemo(() => {
+    if (!programarEmp || !programarEmp.entra || !programarEmp.sale) return [];
+    const entraNorm = normalizeExcelTime(programarEmp.entra);
+    const saleNorm = normalizeExcelTime(programarEmp.sale);
+    if (!entraNorm || !saleNorm) return [];
+
+    const [eH, eM] = entraNorm.split(":").map(Number);
+    const [sH, sM] = saleNorm.split(":").map(Number);
+    if (isNaN(eH) || isNaN(eM) || isNaN(sH) || isNaN(sM)) return [];
+
+    let entraTotalMin = eH * 60 + eM;
+    let saleTotalMin = sH * 60 + sM;
+    if (saleTotalMin < entraTotalMin) saleTotalMin += 24 * 60;
+    const durMin = saleTotalMin - entraTotalMin;
+
+    const items: { label: string; hora: string }[] = [];
+
+    // Mitad de turno
+    const mitadMin = entraTotalMin + Math.round(durMin / 2);
+    const mH = Math.floor(mitadMin / 60) % 24;
+    const mM = mitadMin % 60;
+    const mitadStr = `${String(mH).padStart(2, "0")}:${String(mM).padStart(2, "0")}`;
+    items.push({
+      label: `Mitad (${mitadStr})`,
+      hora: mitadStr,
+    });
+
+    // Puntos fijos +2h, +3h, +4h, +5h, +6h
+    [2, 3, 4, 5, 6].forEach((offsetH) => {
+      if (offsetH * 60 < durMin - 30) {
+        const tMin = entraTotalMin + offsetH * 60;
+        const h = Math.floor(tMin / 60) % 24;
+        const m = tMin % 60;
+        const horaStr = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+        if (!items.some((it) => it.hora === horaStr)) {
+          items.push({
+            label: `+${offsetH}h (${horaStr})`,
+            hora: horaStr,
+          });
+        }
+      }
+    });
+
+    return items;
+  }, [programarEmp]);
+
+  // ── Marcar Salida a Break Manual ─────────────────────────────────────────
   const handleMarcarSalidaBreak = (empId: string) => {
     const ahora = dayjs();
     const ahoraStr = ahora.format("HH:mm");
@@ -341,11 +426,32 @@ export default function CoordinadoresPoziScreen() {
     persistirEmpleados(nuevaLista);
   };
 
-  // ── Deshacer Salida a Break ────────────────────────────────────────────
+  // ── Finalizar Break ("Volvió de Break") ──────────────────────────────────
+  const handleFinalizarBreak = (empId: string) => {
+    const ahora = dayjs();
+    const ahoraStr = ahora.format("HH:mm");
+    const ahoraMs = ahora.valueOf();
+
+    const nuevaLista = empleados.map((e) => {
+      if (e.id === empId) {
+        return {
+          ...e,
+          estadoBreak: "FINALIZADO" as const,
+          breakFin: ahoraStr,
+          breakFinalizadoAt: ahoraMs,
+        };
+      }
+      return e;
+    });
+
+    persistirEmpleados(nuevaLista);
+  };
+
+  // ── Deshacer Salida a Break / Restablecer a Pendiente ────────────────────
   const handleReiniciarBreak = (empId: string) => {
     confirmAction(
-      "Deshacer Salida a Break",
-      "¿Deseas restablecer a este empleado a estado Pendiente?",
+      "Deshacer Break",
+      "¿Deseas restablecer este empleado a estado Pendiente?",
       () => {
         const nuevaLista = empleados.map((e) => {
           if (e.id === empId) {
@@ -463,25 +569,105 @@ export default function CoordinadoresPoziScreen() {
     setFecha((prev) => dayjs(prev).add(delta, "day").format("YYYY-MM-DD"));
   };
 
-  // ── Clasificación de Empleados en Vivo ──────────────────────────────────
+  // ── Clasificación de Empleados en Vivo (Manual + Break Programado) ──────
   const infoEmpleados = useMemo(() => {
+    const isFechaHoy = fecha === dayjs().format("YYYY-MM-DD");
+
     return empleados.map((emp) => {
-      const salio = emp.estadoBreak !== "PENDIENTE" && !!emp.breakInicio;
-
-      const horaRegreso =
-        emp.breakRegreso ||
-        (emp.breakInicio && emp.breakIniciadoAt
-          ? dayjs(emp.breakIniciadoAt).add(emp.duracionBreak, "minute").format("HH:mm")
-          : null);
-
-      let minutosRestantes = 0;
+      let salio = false;
+      let enBreak = false;
       let cumplido = false;
+      let esProgramadoFuturo = false;
+      let minutosRestantes = 0;
+      let minutosTranscurridos = 0;
+      let horaInicioEfectiva: string | null = null;
+      let horaRegresoEfectiva: string | null = null;
 
-      if (salio && emp.breakIniciadoAt) {
+      // 1. Caso Break Finalizado manualmente
+      if (emp.estadoBreak === "FINALIZADO") {
+        salio = true;
+        cumplido = true;
+        enBreak = false;
+        horaInicioEfectiva = emp.breakInicio || emp.breakProgramado || null;
+        horaRegresoEfectiva = emp.breakFin || emp.breakRegreso || null;
+        minutosTranscurridos = emp.duracionBreak;
+      }
+      // 2. Caso Break Iniciado Manualmente ("Se fue a Break")
+      else if (emp.estadoBreak === "EN_BREAK" && emp.breakIniciadoAt) {
+        salio = true;
+        horaInicioEfectiva = emp.breakInicio || dayjs(emp.breakIniciadoAt).format("HH:mm");
+        horaRegresoEfectiva =
+          emp.breakRegreso ||
+          dayjs(emp.breakIniciadoAt).add(emp.duracionBreak, "minute").format("HH:mm");
+
         const msFinEsperado = emp.breakIniciadoAt + emp.duracionBreak * 60 * 1000;
         const diffMs = msFinEsperado - nowTick;
-        minutosRestantes = Math.round(diffMs / (60 * 1000));
-        cumplido = minutosRestantes <= 0;
+        minutosRestantes = Math.round(diffMs / 60000);
+        minutosTranscurridos = Math.max(0, Math.floor((nowTick - emp.breakIniciadoAt) / 60000));
+
+        if (minutosRestantes <= 0) {
+          cumplido = true;
+          enBreak = false;
+        } else {
+          cumplido = false;
+          enBreak = true;
+        }
+      }
+      // 3. Caso Break Programado por Horario (ej: "20:00" o "08:00")
+      else if (emp.breakProgramado) {
+        const [progH, progM] = emp.breakProgramado.split(":").map(Number);
+        if (!isNaN(progH) && !isNaN(progM)) {
+          let progDate = dayjs(`${fecha}T${String(progH).padStart(2, "0")}:${String(progM).padStart(2, "0")}:00`);
+          // Si el turno entra de noche (>=18h) y el break es de madrugada (<6h)
+          if (emp.entra) {
+            const [eH] = emp.entra.split(":").map(Number);
+            if (!isNaN(eH) && eH >= 18 && progH < 6) {
+              progDate = progDate.add(1, "day");
+            }
+          }
+
+          const progMs = progDate.valueOf();
+          horaInicioEfectiva = emp.breakProgramado;
+          horaRegresoEfectiva = progDate.add(emp.duracionBreak, "minute").format("HH:mm");
+
+          // Si estamos visualizando la fecha actual
+          if (isFechaHoy) {
+            if (nowTick < progMs) {
+              // Futuro: todavía no llegó la hora del break
+              esProgramadoFuturo = true;
+              salio = false;
+              enBreak = false;
+              cumplido = false;
+              minutosRestantes = Math.round((progMs - nowTick) / 60000);
+            } else {
+              // Ya llegó o pasó el horario programado: ¡Empieza a correr automáticamente!
+              // Ejemplo: programado a las 8, son 8:30 => transcurridos 30m, faltan 15m
+              salio = true;
+              const msFinProg = progMs + emp.duracionBreak * 60 * 1000;
+              const diffFinMs = msFinProg - nowTick;
+              minutosRestantes = Math.round(diffFinMs / 60000);
+              minutosTranscurridos = Math.max(0, Math.floor((nowTick - progMs) / 60000));
+
+              if (minutosRestantes <= 0) {
+                cumplido = true;
+                enBreak = false;
+              } else {
+                cumplido = false;
+                enBreak = true;
+              }
+            }
+          } else {
+            // Fecha no es hoy
+            const esPasada = dayjs(fecha).isBefore(dayjs().format("YYYY-MM-DD"));
+            if (esPasada) {
+              salio = true;
+              cumplido = true;
+              minutosTranscurridos = emp.duracionBreak;
+            } else {
+              esProgramadoFuturo = true;
+            }
+          }
+        }
       }
 
       const entraLimpio = emp.entra || "";
@@ -490,13 +676,17 @@ export default function CoordinadoresPoziScreen() {
       return {
         ...emp,
         salio,
-        horaRegreso,
-        minutosRestantes,
+        enBreak,
         cumplido,
+        esProgramadoFuturo,
+        horaInicioEfectiva,
+        horaRegresoEfectiva,
+        minutosRestantes,
+        minutosTranscurridos,
         esProximoIngreso,
       };
     });
-  }, [empleados, nowTick, horaActualStr]);
+  }, [empleados, fecha, nowTick, horaActualStr]);
 
   const totalProximosIngresos = useMemo(() => {
     return infoEmpleados.filter((e) => e.esProximoIngreso).length;
@@ -505,10 +695,11 @@ export default function CoordinadoresPoziScreen() {
   // KPIs
   const kpis = useMemo(() => {
     const total = infoEmpleados.length;
-    const pendientes = infoEmpleados.filter((e) => !e.salio).length;
-    const enBreakActivos = infoEmpleados.filter((e) => e.salio && !e.cumplido).length;
-    const horarioCumplido = infoEmpleados.filter((e) => e.salio && e.cumplido).length;
-    return { total, pendientes, enBreakActivos, horarioCumplido };
+    const programados = infoEmpleados.filter((e) => e.esProgramadoFuturo).length;
+    const pendientes = infoEmpleados.filter((e) => !e.salio && !e.esProgramadoFuturo).length;
+    const enBreakActivos = infoEmpleados.filter((e) => e.enBreak).length;
+    const horarioCumplido = infoEmpleados.filter((e) => e.cumplido).length;
+    return { total, programados, pendientes, enBreakActivos, horarioCumplido };
   }, [infoEmpleados]);
 
   // ── Empleados Filtrados y Ordenados ────────────────────────────────────
@@ -525,9 +716,10 @@ export default function CoordinadoresPoziScreen() {
         return false;
       }
 
-      if (filtroEstado === "PENDIENTE" && e.salio) return false;
-      if (filtroEstado === "EN_BREAK" && (!e.salio || e.cumplido)) return false;
-      if (filtroEstado === "CUMPLIDO" && (!e.salio || !e.cumplido)) return false;
+      if (filtroEstado === "PROGRAMADOS" && !e.esProgramadoFuturo) return false;
+      if (filtroEstado === "PENDIENTE" && (e.salio || e.esProgramadoFuturo)) return false;
+      if (filtroEstado === "EN_BREAK" && !e.enBreak) return false;
+      if (filtroEstado === "CUMPLIDO" && !e.cumplido) return false;
 
       if (soloProximosIngresos && !e.esProximoIngreso) {
         return false;
@@ -668,6 +860,20 @@ export default function CoordinadoresPoziScreen() {
           <Text style={[styles.kpiVal, { color: COLORS.muted }]}>{kpis.pendientes}</Text>
           <Text style={styles.kpiTag}>Pendientes</Text>
         </View>
+        <View style={styles.kpiDivider} />
+
+        <TouchableOpacity
+          onPress={() => setFiltroEstado(filtroEstado === "PROGRAMADOS" ? "TODOS" : "PROGRAMADOS")}
+          style={[styles.kpiItem, { cursor: "pointer" as any }]}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.kpiVal, { color: kpis.programados > 0 ? "#0284C7" : COLORS.muted }]}>
+            {kpis.programados}
+          </Text>
+          <Text style={[styles.kpiTag, filtroEstado === "PROGRAMADOS" && { color: "#0284C7", fontWeight: "700" }]}>
+            Programados
+          </Text>
+        </TouchableOpacity>
         <View style={styles.kpiDivider} />
 
         <View style={styles.kpiItem}>
@@ -850,10 +1056,11 @@ export default function CoordinadoresPoziScreen() {
 
           {/* Segment de Estado */}
           <View style={styles.pillGroup}>
-            {(["TODOS", "PENDIENTE", "EN_BREAK", "CUMPLIDO"] as const).map((st) => {
+            {(["TODOS", "PROGRAMADOS", "PENDIENTE", "EN_BREAK", "CUMPLIDO"] as const).map((st) => {
               const isSel = filtroEstado === st;
               const labels: Record<string, string> = {
                 TODOS: "Todos",
+                PROGRAMADOS: "Programados",
                 PENDIENTE: "Pendientes",
                 EN_BREAK: "En Break",
                 CUMPLIDO: "Cumplidos",
@@ -933,12 +1140,13 @@ export default function CoordinadoresPoziScreen() {
           {/* Cabecera de la tabla (solo en pantallas anchas / tablet / desktop) */}
           {isWide && (
             <View style={styles.tableHeaderRow}>
-              <Text style={[styles.thText, { flex: 2.5 }]}>EMPLEADO</Text>
+              <Text style={[styles.thText, { flex: 2.2 }]}>EMPLEADO</Text>
               <Text style={[styles.thText, { width: 70 }]}>CAT</Text>
-              <Text style={[styles.thText, { flex: 1.5 }]}>TURNO</Text>
-              <Text style={[styles.thText, { width: 105 }]}>BREAK</Text>
-              <Text style={[styles.thText, { flex: 2.5 }]}>ESTADO / REGRESO</Text>
-              <Text style={[styles.thText, { width: 120, textAlign: "right" }]}>ACCIONES</Text>
+              <Text style={[styles.thText, { flex: 1.4 }]}>TURNO</Text>
+              <Text style={[styles.thText, { width: 85 }]}>DURACIÓN</Text>
+              <Text style={[styles.thText, { width: 115 }]}>BREAK PROG.</Text>
+              <Text style={[styles.thText, { flex: 2.4 }]}>ESTADO / REGRESO</Text>
+              <Text style={[styles.thText, { width: 145, textAlign: "right" }]}>ACCIONES</Text>
             </View>
           )}
 
@@ -963,12 +1171,13 @@ export default function CoordinadoresPoziScreen() {
                   style={[
                     styles.rowWide,
                     isLast && { borderBottomWidth: 0 },
-                    isSalio && !isCumplido && styles.rowEnBreak,
-                    isSalio && isCumplido && styles.rowCumplido,
+                    emp.esProgramadoFuturo && styles.rowProgramado,
+                    emp.enBreak && styles.rowEnBreak,
+                    emp.cumplido && styles.rowCumplido,
                   ]}
                 >
                   {/* Columna Empleado */}
-                  <View style={[styles.cell, { flex: 2.5, flexDirection: "row", alignItems: "center" }]}>
+                  <View style={[styles.cell, { flex: 2.2, flexDirection: "row", alignItems: "center" }]}>
                     <Text style={styles.rowNombre} numberOfLines={1}>
                       {emp.nombre}
                     </Text>
@@ -980,7 +1189,7 @@ export default function CoordinadoresPoziScreen() {
                   </View>
 
                   {/* Columna Categoría (Tocar para modificar) */}
-                  <View style={[styles.cell, { width: 78 }]}>
+                  <View style={[styles.cell, { width: 70 }]}>
                     <TouchableOpacity
                       onPress={() => handleAbrirEdicion(emp)}
                       style={[styles.catBadgeCompact, { backgroundColor: catMeta.bg, borderColor: catMeta.border }]}
@@ -992,7 +1201,7 @@ export default function CoordinadoresPoziScreen() {
                   </View>
 
                   {/* Columna Turno + Edición */}
-                  <View style={[styles.cell, { flex: 1.5, flexDirection: "row", alignItems: "center" }]}>
+                  <View style={[styles.cell, { flex: 1.4, flexDirection: "row", alignItems: "center" }]}>
                     <TouchableOpacity
                       onPress={() => handleAbrirEdicion(emp)}
                       style={styles.horarioInlineBtn}
@@ -1006,8 +1215,8 @@ export default function CoordinadoresPoziScreen() {
                     </TouchableOpacity>
                   </View>
 
-                  {/* Columna Break Asignado */}
-                  <View style={[styles.cell, { width: 105 }]}>
+                  {/* Columna Duración Break */}
+                  <View style={[styles.cell, { width: 85 }]}>
                     <View
                       style={[
                         styles.breakPillFina,
@@ -1026,14 +1235,99 @@ export default function CoordinadoresPoziScreen() {
                           { color: emp.duracionBreak === 20 ? "#047857" : "#B45309" },
                         ]}
                       >
-                        {emp.duracionBreak} min
+                        {emp.duracionBreak}m
                       </Text>
                     </View>
                   </View>
 
+                  {/* Columna Break Programado */}
+                  <View style={[styles.cell, { width: 115 }]}>
+                    {emp.breakProgramado ? (
+                      <TouchableOpacity
+                        onPress={() => handleAbrirProgramarBreak(emp)}
+                        style={[
+                          styles.progPill,
+                          emp.esProgramadoFuturo && styles.progPillFuturo,
+                          emp.enBreak && styles.progPillEnBreak,
+                        ]}
+                        activeOpacity={0.75}
+                        title="Modificar horario programado"
+                      >
+                        <MaterialCommunityIcons
+                          name="clock-outline"
+                          size={11}
+                          color={emp.esProgramadoFuturo ? "#0284C7" : emp.enBreak ? "#D97706" : COLORS.text}
+                          style={{ marginRight: 3 }}
+                        />
+                        <Text
+                          style={[
+                            styles.progPillText,
+                            emp.esProgramadoFuturo && { color: "#0284C7" },
+                            emp.enBreak && { color: "#D97706" },
+                          ]}
+                        >
+                          {emp.breakProgramado}
+                        </Text>
+                        <MaterialCommunityIcons
+                          name="pencil-outline"
+                          size={10}
+                          color={COLORS.muted}
+                          style={{ marginLeft: 3 }}
+                        />
+                      </TouchableOpacity>
+                    ) : (
+                      <TouchableOpacity
+                        onPress={() => handleAbrirProgramarBreak(emp)}
+                        style={styles.btnProgramarVacio}
+                        activeOpacity={0.7}
+                      >
+                        <MaterialCommunityIcons name="clock-plus-outline" size={12} color={COLORS.muted} style={{ marginRight: 3 }} />
+                        <Text style={styles.btnProgramarVacioText}>+ Prog.</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+
                   {/* Columna Estado / Regreso */}
-                  <View style={[styles.cell, { flex: 2.5 }]}>
-                    {!isSalio ? (
+                  <View style={[styles.cell, { flex: 2.4 }]}>
+                    {emp.esProgramadoFuturo ? (
+                      <View style={styles.salioInlineWrap}>
+                        <View style={styles.dotProgramado} />
+                        <Text style={styles.estadoProgramadoText}>
+                          Prog. {emp.horaInicioEfectiva} ➔ {emp.horaRegresoEfectiva}
+                        </Text>
+                        <View style={styles.timerPillProg}>
+                          <Text style={styles.timerPillProgText}>En {emp.minutosRestantes}m</Text>
+                        </View>
+                      </View>
+                    ) : emp.enBreak ? (
+                      <View style={styles.salioInlineWrap}>
+                        <Text style={styles.salioInlineHoras}>
+                          {emp.horaInicioEfectiva} ➔{" "}
+                          <Text style={{ fontWeight: "800", color: "#B45309" }}>
+                            {emp.horaRegresoEfectiva}
+                          </Text>
+                        </Text>
+                        <View style={styles.timerPillMini}>
+                          <Text style={styles.timerPillMiniText}>
+                            Van {emp.minutosTranscurridos}m • {emp.minutosRestantes}m rest
+                          </Text>
+                        </View>
+                      </View>
+                    ) : emp.cumplido ? (
+                      <View style={styles.salioInlineWrap}>
+                        <Text style={styles.salioInlineHoras}>
+                          {emp.horaInicioEfectiva} ➔{" "}
+                          <Text style={{ fontWeight: "800", color: "#047857" }}>
+                            {emp.horaRegresoEfectiva}
+                          </Text>
+                        </Text>
+                        <View style={styles.cumplidoPillMini}>
+                          <Text style={styles.cumplidoPillMiniText}>
+                            {emp.minutosRestantes < -2 ? `+${Math.abs(emp.minutosRestantes)}m` : "Cumplido"}
+                          </Text>
+                        </View>
+                      </View>
+                    ) : (
                       <View style={{ flexDirection: "row", alignItems: "center" }}>
                         <View style={styles.dotPendiente} />
                         <Text style={styles.estadoPendienteText}>Pendiente</Text>
@@ -1043,48 +1337,56 @@ export default function CoordinadoresPoziScreen() {
                           </View>
                         )}
                       </View>
-                    ) : (
-                      <View style={styles.salioInlineWrap}>
-                        <Text style={styles.salioInlineHoras}>
-                          {emp.breakInicio} ➔{" "}
-                          <Text style={{ fontWeight: "800", color: isCumplido ? "#047857" : "#B45309" }}>
-                            {emp.horaRegreso}
-                          </Text>
-                        </Text>
-                        {!isCumplido ? (
-                          <View style={styles.timerPillMini}>
-                            <Text style={styles.timerPillMiniText}>Faltan {emp.minutosRestantes}m</Text>
-                          </View>
-                        ) : (
-                          <View style={styles.cumplidoPillMini}>
-                            <Text style={styles.cumplidoPillMiniText}>
-                              {emp.minutosRestantes < -2 ? `+${Math.abs(emp.minutosRestantes)}m` : "Cumplido"}
-                            </Text>
-                          </View>
-                        )}
-                      </View>
                     )}
                   </View>
 
                   {/* Columna Acciones */}
-                  <View style={[styles.cell, { width: 120, flexDirection: "row", justifyContent: "flex-end", alignItems: "center", gap: 6 }]}>
-                    {!isSalio ? (
-                      <TouchableOpacity
-                        onPress={() => handleMarcarSalidaBreak(emp.id)}
-                        style={styles.btnBreakLineal}
-                        activeOpacity={0.8}
-                      >
-                        <MaterialCommunityIcons name="coffee-outline" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
-                        <Text style={styles.btnBreakLinealText}>Break</Text>
-                      </TouchableOpacity>
-                    ) : (
+                  <View style={[styles.cell, { width: 145, flexDirection: "row", justifyContent: "flex-end", alignItems: "center", gap: 5 }]}>
+                    {emp.enBreak ? (
+                      <>
+                        <TouchableOpacity
+                          onPress={() => handleFinalizarBreak(emp.id)}
+                          style={styles.btnFinalizarLineal}
+                          activeOpacity={0.8}
+                          title="Marcar regreso de break"
+                        >
+                          <MaterialCommunityIcons name="check" size={13} color="#FFFFFF" style={{ marginRight: 2 }} />
+                          <Text style={styles.btnFinalizarLinealText}>Volvió</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => handleReiniciarBreak(emp.id)}
+                          style={styles.btnIconAction}
+                          title="Deshacer"
+                        >
+                          <MaterialCommunityIcons name="restart" size={15} color={COLORS.muted} />
+                        </TouchableOpacity>
+                      </>
+                    ) : emp.cumplido ? (
                       <TouchableOpacity
                         onPress={() => handleReiniciarBreak(emp.id)}
                         style={styles.btnIconAction}
-                        title="Deshacer salida"
+                        title="Deshacer"
                       >
-                        <MaterialCommunityIcons name="restart" size={16} color={COLORS.muted} />
+                        <MaterialCommunityIcons name="restart" size={15} color={COLORS.muted} />
                       </TouchableOpacity>
+                    ) : (
+                      <>
+                        <TouchableOpacity
+                          onPress={() => handleMarcarSalidaBreak(emp.id)}
+                          style={styles.btnBreakLineal}
+                          activeOpacity={0.8}
+                        >
+                          <MaterialCommunityIcons name="coffee-outline" size={13} color="#FFFFFF" style={{ marginRight: 3 }} />
+                          <Text style={styles.btnBreakLinealText}>Break</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => handleAbrirProgramarBreak(emp)}
+                          style={styles.btnIconAction}
+                          title="Programar horario de break"
+                        >
+                          <MaterialCommunityIcons name="clock-edit-outline" size={15} color={COLORS.muted} />
+                        </TouchableOpacity>
+                      </>
                     )}
 
                     {/* Botón Borrar */}
@@ -1107,8 +1409,9 @@ export default function CoordinadoresPoziScreen() {
                 style={[
                   styles.rowMobile,
                   isLast && { borderBottomWidth: 0 },
-                  isSalio && !isCumplido && styles.rowEnBreak,
-                  isSalio && isCumplido && styles.rowCumplido,
+                  emp.esProgramadoFuturo && styles.rowProgramado,
+                  emp.enBreak && styles.rowEnBreak,
+                  emp.cumplido && styles.rowCumplido,
                 ]}
               >
                 {/* Renglón 1: Nombre + Cat + Horario + Botones editar/borrar */}
@@ -1150,25 +1453,127 @@ export default function CoordinadoresPoziScreen() {
                   </TouchableOpacity>
                 </View>
 
-                {/* Renglón 2: Duración Break + Estado / Botón */}
+                {/* Renglón 2: Duración Break + Break Programado + Estado / Botón */}
                 <View style={styles.mobileRowBottom}>
-                  <View
-                    style={[
-                      styles.breakPillFina,
-                      emp.duracionBreak === 20 ? styles.breakPill20 : styles.breakPill45,
-                    ]}
-                  >
-                    <Text
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                    <View
                       style={[
-                        styles.breakPillFinaText,
-                        { color: emp.duracionBreak === 20 ? "#047857" : "#B45309" },
+                        styles.breakPillFina,
+                        emp.duracionBreak === 20 ? styles.breakPill20 : styles.breakPill45,
                       ]}
                     >
-                      {emp.duracionBreak}m ({emp.horasTrabajadas}h)
-                    </Text>
+                      <Text
+                        style={[
+                          styles.breakPillFinaText,
+                          { color: emp.duracionBreak === 20 ? "#047857" : "#B45309" },
+                        ]}
+                      >
+                        {emp.duracionBreak}m
+                      </Text>
+                    </View>
+
+                    {emp.breakProgramado ? (
+                      <TouchableOpacity
+                        onPress={() => handleAbrirProgramarBreak(emp)}
+                        style={[
+                          styles.progPillMobile,
+                          emp.esProgramadoFuturo && styles.progPillFuturo,
+                          emp.enBreak && styles.progPillEnBreak,
+                        ]}
+                        activeOpacity={0.75}
+                      >
+                        <MaterialCommunityIcons
+                          name="clock-outline"
+                          size={10}
+                          color={emp.esProgramadoFuturo ? "#0284C7" : emp.enBreak ? "#D97706" : COLORS.text}
+                          style={{ marginRight: 2 }}
+                        />
+                        <Text
+                          style={[
+                            styles.progPillMobileText,
+                            emp.esProgramadoFuturo && { color: "#0284C7" },
+                            emp.enBreak && { color: "#D97706" },
+                          ]}
+                        >
+                          {emp.breakProgramado}
+                        </Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <TouchableOpacity
+                        onPress={() => handleAbrirProgramarBreak(emp)}
+                        style={styles.btnProgramarVacioMobile}
+                        activeOpacity={0.7}
+                      >
+                        <MaterialCommunityIcons name="clock-plus-outline" size={11} color={COLORS.muted} style={{ marginRight: 2 }} />
+                        <Text style={styles.btnProgramarVacioMobileText}>+ Prog.</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
 
-                  {!isSalio ? (
+                  {/* Estado y Acciones en móvil */}
+                  {emp.esProgramadoFuturo ? (
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                      <View style={styles.timerPillProg}>
+                        <Text style={styles.timerPillProgText}>En {emp.minutosRestantes}m</Text>
+                      </View>
+                      <TouchableOpacity
+                        onPress={() => handleMarcarSalidaBreak(emp.id)}
+                        style={styles.btnBreakMobile}
+                        activeOpacity={0.8}
+                      >
+                        <MaterialCommunityIcons name="coffee-outline" size={12} color="#FFFFFF" style={{ marginRight: 3 }} />
+                        <Text style={styles.btnBreakMobileText}>Iniciar ya</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : emp.enBreak ? (
+                    <View style={styles.salioMobileInline}>
+                      <View style={{ flexDirection: "column", alignItems: "flex-end" }}>
+                        <Text style={styles.salioMobileText}>
+                          {emp.horaInicioEfectiva} ➔{" "}
+                          <Text style={{ fontWeight: "800", color: "#B45309" }}>
+                            {emp.horaRegresoEfectiva}
+                          </Text>
+                        </Text>
+                        <Text style={{ fontSize: 9, color: "#B45309", fontWeight: "700" }}>
+                          Van {emp.minutosTranscurridos}m ({emp.minutosRestantes}m rest)
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        onPress={() => handleFinalizarBreak(emp.id)}
+                        style={styles.btnFinalizarMobile}
+                        activeOpacity={0.8}
+                      >
+                        <MaterialCommunityIcons name="check" size={12} color="#FFFFFF" style={{ marginRight: 2 }} />
+                        <Text style={styles.btnFinalizarMobileText}>Volvió</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => handleReiniciarBreak(emp.id)}
+                        style={styles.btnIconActionMobile}
+                      >
+                        <MaterialCommunityIcons name="restart" size={13} color={COLORS.muted} />
+                      </TouchableOpacity>
+                    </View>
+                  ) : emp.cumplido ? (
+                    <View style={styles.salioMobileInline}>
+                      <Text style={styles.salioMobileText}>
+                        {emp.horaInicioEfectiva} ➔{" "}
+                        <Text style={{ fontWeight: "800", color: "#047857" }}>
+                          {emp.horaRegresoEfectiva}
+                        </Text>
+                      </Text>
+                      <View style={styles.cumplidoPillMini}>
+                        <Text style={styles.cumplidoPillMiniText}>
+                          {emp.minutosRestantes < -2 ? `+${Math.abs(emp.minutosRestantes)}m` : "Cumplido"}
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        onPress={() => handleReiniciarBreak(emp.id)}
+                        style={styles.btnIconActionMobile}
+                      >
+                        <MaterialCommunityIcons name="restart" size={13} color={COLORS.muted} />
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
                     <TouchableOpacity
                       onPress={() => handleMarcarSalidaBreak(emp.id)}
                       style={styles.btnBreakMobile}
@@ -1177,32 +1582,6 @@ export default function CoordinadoresPoziScreen() {
                       <MaterialCommunityIcons name="coffee-outline" size={13} color="#FFFFFF" style={{ marginRight: 4 }} />
                       <Text style={styles.btnBreakMobileText}>Se fue a Break</Text>
                     </TouchableOpacity>
-                  ) : (
-                    <View style={styles.salioMobileInline}>
-                      <Text style={styles.salioMobileText}>
-                        {emp.breakInicio} ➔{" "}
-                        <Text style={{ fontWeight: "800", color: isCumplido ? "#047857" : "#B45309" }}>
-                          {emp.horaRegreso}
-                        </Text>
-                      </Text>
-                      {!isCumplido ? (
-                        <View style={styles.timerPillMini}>
-                          <Text style={styles.timerPillMiniText}>{emp.minutosRestantes}m</Text>
-                        </View>
-                      ) : (
-                        <View style={styles.cumplidoPillMini}>
-                          <Text style={styles.cumplidoPillMiniText}>
-                            {emp.minutosRestantes < -2 ? `+${Math.abs(emp.minutosRestantes)}m` : "Cumplido"}
-                          </Text>
-                        </View>
-                      )}
-                      <TouchableOpacity
-                        onPress={() => handleReiniciarBreak(emp.id)}
-                        style={styles.btnIconActionMobile}
-                      >
-                        <MaterialCommunityIcons name="restart" size={14} color={COLORS.muted} />
-                      </TouchableOpacity>
-                    </View>
                   )}
                 </View>
               </View>
@@ -1210,6 +1589,106 @@ export default function CoordinadoresPoziScreen() {
           })}
         </View>
       )}
+
+      {/* ── MODAL PROGRAMAR BREAK ── */}
+      <Modal visible={!!programarEmp} transparent animationType="fade">
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, { maxWidth: 440 }]}>
+            <View style={styles.modalHeader}>
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <MaterialCommunityIcons name="clock-time-four-outline" size={20} color="#0284C7" style={{ marginRight: 6 }} />
+                <Text style={styles.modalTitle}>Programar Break</Text>
+              </View>
+              <TouchableOpacity onPress={() => setProgramarEmp(null)}>
+                <MaterialCommunityIcons name="close" size={20} color={COLORS.muted} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.editEmpNombre}>{programarEmp?.nombre}</Text>
+            <Text style={styles.editEmpSub}>
+              Turno: {programarEmp?.entra || "--:--"} a {programarEmp?.sale || "--:--"} ({programarEmp?.horasTrabajadas}h) • Break de {programarEmp?.duracionBreak} min
+            </Text>
+
+            {progError.length > 0 && <Text style={styles.errorText}>{progError}</Text>}
+
+            {/* Sugerencias de horarios según turno */}
+            {sugerenciasBreak.length > 0 && (
+              <View style={{ marginBottom: 12 }}>
+                <Text style={styles.inputLabel}>Sugerencias según turno</Text>
+                <View style={styles.sugerenciasWrap}>
+                  {sugerenciasBreak.map((sug) => {
+                    const isCur = progHora === sug.hora;
+                    return (
+                      <TouchableOpacity
+                        key={sug.hora}
+                        onPress={() => {
+                          setProgHora(sug.hora);
+                          setProgError("");
+                        }}
+                        style={[
+                          styles.sugPill,
+                          isCur && styles.sugPillActive,
+                        ]}
+                        activeOpacity={0.75}
+                      >
+                        <MaterialCommunityIcons
+                          name="clock-outline"
+                          size={12}
+                          color={isCur ? "#FFFFFF" : "#0284C7"}
+                          style={{ marginRight: 3 }}
+                        />
+                        <Text style={[styles.sugPillText, isCur && styles.sugPillTextActive]}>
+                          {sug.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
+
+            {/* Input de Horario manual */}
+            <Text style={styles.inputLabel}>Horario del Break (HH:mm)</Text>
+            <TextInput
+              style={styles.inputModal}
+              placeholder="Ej. 20:00"
+              placeholderTextColor={COLORS.muted}
+              value={progHora}
+              onChangeText={(txt) => {
+                setProgHora(txt);
+                setProgError("");
+              }}
+              keyboardType="numbers-and-punctuation"
+            />
+
+            <View style={styles.modalFooterRow}>
+              {programarEmp?.breakProgramado && (
+                <TouchableOpacity
+                  onPress={() => handleGuardarProgramarBreak(null)}
+                  style={styles.btnEliminarModal}
+                  activeOpacity={0.8}
+                >
+                  <MaterialCommunityIcons name="clock-remove-outline" size={15} color="#DC2626" style={{ marginRight: 4 }} />
+                  <Text style={styles.btnEliminarModalText}>Quitar</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                onPress={() => handleGuardarProgramarBreak(progHora)}
+                style={[styles.btnGuardarModal, { backgroundColor: "#0284C7" }]}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.btnGuardarModalText}>Guardar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setProgramarEmp(null)}
+                style={styles.btnCerrarModal}
+              >
+                <Text style={styles.btnCerrarModalText}>Cancelar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* ── MODAL MODIFICAR EMPLEADO (CATEGORÍA Y HORARIOS) ── */}
       <Modal visible={!!editingEmp} transparent animationType="fade">
@@ -1882,6 +2361,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderColor: COLORS.border,
   },
+  rowProgramado: {
+    backgroundColor: "#F8FAFC",
+  },
   rowEnBreak: {
     backgroundColor: "#FFFDF7",
   },
@@ -1959,6 +2441,82 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: "600",
   },
+
+  // Break Programado Pills
+  progPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.bg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    alignSelf: "flex-start",
+    cursor: "pointer" as any,
+  },
+  progPillFuturo: {
+    backgroundColor: "#F0F9FF",
+    borderColor: "#BAE6FD",
+  },
+  progPillEnBreak: {
+    backgroundColor: "#FEF3C7",
+    borderColor: "#FDE68A",
+  },
+  progPillText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: COLORS.text,
+  },
+  btnProgramarVacio: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: COLORS.border,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    alignSelf: "flex-start",
+    cursor: "pointer" as any,
+  },
+  btnProgramarVacioText: {
+    fontSize: 10,
+    color: COLORS.muted,
+    fontWeight: "600",
+  },
+
+  progPillMobile: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.bg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingHorizontal: 5,
+    paddingVertical: 1.5,
+    borderRadius: 3,
+  },
+  progPillMobileText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: COLORS.text,
+  },
+  btnProgramarVacioMobile: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: COLORS.border,
+    paddingHorizontal: 5,
+    paddingVertical: 1.5,
+    borderRadius: 3,
+  },
+  btnProgramarVacioMobileText: {
+    fontSize: 9,
+    color: COLORS.muted,
+    fontWeight: "600",
+  },
+
   dotPendiente: {
     width: 6,
     height: 6,
@@ -1969,6 +2527,32 @@ const styles = StyleSheet.create({
   estadoPendienteText: {
     fontSize: 11,
     color: COLORS.muted,
+  },
+  dotProgramado: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#0284C7",
+    marginRight: 5,
+  },
+  estadoProgramadoText: {
+    fontSize: 11,
+    color: "#0284C7",
+    fontWeight: "600",
+  },
+  timerPillProg: {
+    backgroundColor: "#E0F2FE",
+    borderColor: "#BAE6FD",
+    borderWidth: 1,
+    borderRadius: 3,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    marginLeft: 4,
+  },
+  timerPillProgText: {
+    fontSize: 9,
+    fontWeight: "700",
+    color: "#0369A1",
   },
   proximoPillInline: {
     backgroundColor: "#EFF6FF",
@@ -2032,6 +2616,32 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "700",
   },
+  btnFinalizarLineal: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#0284C7",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  btnFinalizarLinealText: {
+    color: "#FFFFFF",
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  btnFinalizarMobile: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#0284C7",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 3,
+  },
+  btnFinalizarMobileText: {
+    color: "#FFFFFF",
+    fontSize: 10,
+    fontWeight: "700",
+  },
   btnIconAction: {
     padding: 4,
     borderRadius: 4,
@@ -2039,6 +2649,37 @@ const styles = StyleSheet.create({
   btnIconActionDanger: {
     padding: 4,
     borderRadius: 4,
+  },
+
+  // Sugerencias Wrap en Modal
+  sugerenciasWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: 4,
+  },
+  sugPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F0F9FF",
+    borderWidth: 1,
+    borderColor: "#BAE6FD",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: THEME.radius.sm,
+    cursor: "pointer" as any,
+  },
+  sugPillActive: {
+    backgroundColor: "#0284C7",
+    borderColor: "#0284C7",
+  },
+  sugPillText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#0284C7",
+  },
+  sugPillTextActive: {
+    color: "#FFFFFF",
   },
 
   // Fila Mobile (Celular)

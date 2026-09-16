@@ -94,6 +94,7 @@ export type PoziEmployee = {
   horasTrabajadas: number;
   duracionBreak: 20 | 45;
   estadoBreak: "PENDIENTE" | "EN_BREAK" | "FINALIZADO";
+  breakProgramado?: string | null;  // Horario previsto/programado para el break "HH:mm"
   breakInicio?: string | null;      // Hora en que se fue "HH:mm"
   breakRegreso?: string | null;     // Hora calculada a la que debe regresar "HH:mm"
   breakFin?: string | null;
@@ -508,6 +509,7 @@ export function parseSinglePoziSheet(
       horasTrabajadas,
       duracionBreak,
       estadoBreak: "PENDIENTE",
+      breakProgramado: null,
       breakInicio: null,
       breakRegreso: null,
       breakFin: null,
