@@ -225,7 +225,7 @@ export default function CoordinadoresProgramacionScreen() {
   const [filtroTexto, setFiltroTexto] = useState("");
 
   // ── MODO VISTA RESUMIDA MOBILE & CONTROL DE COLUMNAS ─────────────────────
-  const [vistaResumida, setVistaResumida] = useState<boolean>(() => isMobile);
+  const [vistaResumida, setVistaResumida] = useState<boolean>(true);
 
   // Toggles de personalización de columnas
   const [colPelicula, setColPelicula] = useState<boolean>(true);
@@ -497,27 +497,6 @@ export default function CoordinadoresProgramacionScreen() {
   return (
     <View style={styles.screenWrapper}>
       <ScrollView ref={mainScrollRef} style={styles.container} contentContainerStyle={styles.content}>
-        {/* ── BARRA SUPERIOR / HEADER ── */}
-        <View style={styles.header}>
-          <View style={styles.headerTitleRow}>
-            <View style={styles.iconCircle}>
-              <MaterialCommunityIcons name="clipboard-text-play-outline" size={24} color="#166534" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                <Text style={styles.title}>Programación del Día</Text>
-                <View style={styles.badgeExcel}>
-                  <MaterialCommunityIcons name="file-excel-box" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
-                  <Text style={styles.badgeExcelText}>VISTA EXCEL</Text>
-                </View>
-              </View>
-              <Text style={styles.subtitle}>
-                Réplica visual de la hoja de programación con créditos automáticos de Proyección
-              </Text>
-            </View>
-          </View>
-        </View>
-
         {/* ── BARRA DE ESTADO DEL REPORTE GUARDADO ── */}
         <View style={styles.statusBar}>
           <View style={styles.statusLeft}>
@@ -639,30 +618,8 @@ export default function CoordinadoresProgramacionScreen() {
           )}
         </View>
 
-        {/* ── BARRA DE HERRAMIENTAS: BOTÓN VISTA RESUMIDA Y CONTROL DE COLUMNAS ── */}
+        {/* ── BARRA DE HERRAMIENTAS: CONTROL DE COLUMNAS Y SECCIONES ── */}
         <View style={styles.viewToolbar}>
-          {/* Botón destacado de alternar entre Vista Resumida Mobile y Hoja Completa */}
-          <TouchableOpacity
-            onPress={() => setVistaResumida(!vistaResumida)}
-            style={[styles.btnToggleVista, vistaResumida && styles.btnToggleVistaActive]}
-            activeOpacity={0.8}
-          >
-            <MaterialCommunityIcons
-              name={vistaResumida ? "cellphone-check" : "table-large"}
-              size={16}
-              color={vistaResumida ? "#FFFFFF" : "#166534"}
-              style={{ marginRight: 6 }}
-            />
-            <Text style={[styles.btnToggleVistaText, vistaResumida && styles.btnToggleVistaTextActive]}>
-              {vistaResumida ? "Vista Resumida Mobile (Sin scroll)" : "Vista Hoja Completa Excel"}
-            </Text>
-            <View style={[styles.pillBadgeMode, vistaResumida && styles.pillBadgeModeActive]}>
-              <Text style={[styles.pillBadgeModeText, vistaResumida && styles.pillBadgeModeTextActive]}>
-                {vistaResumida ? "100% Pantalla" : "Scroll Horizontal"}
-              </Text>
-            </View>
-          </TouchableOpacity>
-
           {/* Botón rápido para saltar al horario actual / próximo ingreso o salida */}
           {isToday && targetShow && (
             <TouchableOpacity
