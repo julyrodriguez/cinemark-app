@@ -33,7 +33,7 @@ import {
 
 export default function CoordinadoresPoziScreen() {
   const { cineId, displayName, user } = useAuthUser();
-  const { isMobile, isDesktop, isLargeDesktop } = useAppLayout();
+  const { isMobile, isDesktop, isTablet, width } = useAppLayout();
 
   // Fecha seleccionada (YYYY-MM-DD)
   const [fecha, setFecha] = useState<string>(() => dayjs().format("YYYY-MM-DD"));
@@ -157,6 +157,21 @@ export default function CoordinadoresPoziScreen() {
     [cineId, fecha, displayName, user]
   );
 
+  // ── Helper de confirmación compatible con Web y Nativo ──────────────────
+  const confirmAction = (title: string, message: string, onConfirm: () => void) => {
+    if (Platform.OS === "web") {
+      const ok = typeof window !== "undefined" ? window.confirm(`${title}\n\n${message}`) : true;
+      if (ok) {
+        onConfirm();
+      }
+    } else {
+      Alert.alert(title, message, [
+        { text: "Cancelar", style: "cancel" },
+        { text: "Confirmar", style: "destructive", onPress: onConfirm },
+      ]);
+    }
+  };
+
   // ── Cargar Excel de POZI ────────────────────────────────────────────────
   const handlePickExcel = async () => {
     try {
@@ -195,7 +210,6 @@ export default function CoordinadoresPoziScreen() {
         return;
       }
 
-      // Si ya existían empleados: conservar salidas a break ya registradas
       const mapaExistentes = new Map<string, PoziEmployee>();
       empleados.forEach((e) => {
         const key = e.nombre.trim().toLowerCase();
@@ -225,9 +239,9 @@ export default function CoordinadoresPoziScreen() {
 
       Alert.alert(
         "POZI Cargado con éxito",
-        `Se procesaron ${parsed.empleados.length} empleados con categorías válidas para la fecha ${dayjs(
-          fecha
-        ).format("DD/MM/YYYY")}.`
+        `Se procesaron ${parsed.empleados.length} empleados para la fecha ${dayjs(fecha).format(
+          "DD/MM/YYYY"
+        )}.`
       );
     } catch (err: any) {
       console.error("Error al procesar archivo Excel:", err);
@@ -258,21 +272,6 @@ export default function CoordinadoresPoziScreen() {
     });
 
     persistirEmpleados(nuevaLista);
-  };
-
-  // ── Helper de confirmación compatible con Web y Nativo ──────────────────
-  const confirmAction = (title: string, message: string, onConfirm: () => void) => {
-    if (Platform.OS === "web") {
-      const ok = typeof window !== "undefined" ? window.confirm(`${title}\n\n${message}`) : true;
-      if (ok) {
-        onConfirm();
-      }
-    } else {
-      Alert.alert(title, message, [
-        { text: "Cancelar", style: "cancel" },
-        { text: "Eliminar / Confirmar", style: "destructive", onPress: onConfirm },
-      ]);
-    }
   };
 
   // ── Deshacer Salida a Break ────────────────────────────────────────────
@@ -359,7 +358,9 @@ export default function CoordinadoresPoziScreen() {
     if (empleados.length === 0) return;
     confirmAction(
       "Vaciar POZI del Día",
-      `¿Estás seguro de que deseas eliminar a todos los ${empleados.length} empleados cargados para la fecha ${dayjs(fecha).format("DD/MM/YYYY")}?`,
+      `¿Estás seguro de que deseas eliminar a todos los ${empleados.length} empleados cargados para la fecha ${dayjs(
+        fecha
+      ).format("DD/MM/YYYY")}?`,
       () => {
         persistirEmpleados([], "");
       }
@@ -428,7 +429,6 @@ export default function CoordinadoresPoziScreen() {
         cumplido = minutosRestantes <= 0;
       }
 
-      // Verificación si es próximo ingreso (entra en o después de la hora actual)
       const entraLimpio = emp.entra || "";
       const esProximoIngreso = entraLimpio >= horaActualStr;
 
@@ -443,7 +443,6 @@ export default function CoordinadoresPoziScreen() {
     });
   }, [empleados, nowTick, horaActualStr]);
 
-  // Conteo de Próximos a Ingresar
   const totalProximosIngresos = useMemo(() => {
     return infoEmpleados.filter((e) => e.esProximoIngreso).length;
   }, [infoEmpleados]);
@@ -460,7 +459,6 @@ export default function CoordinadoresPoziScreen() {
   // ── Empleados Filtrados y Ordenados ────────────────────────────────────
   const empleadosFiltrados = useMemo(() => {
     const filtrados = infoEmpleados.filter((e) => {
-      // Filtro texto
       if (filtroTexto.trim()) {
         const q = filtroTexto.toLowerCase().trim();
         const coincideNombre = e.nombre.toLowerCase().includes(q);
@@ -468,17 +466,14 @@ export default function CoordinadoresPoziScreen() {
         if (!coincideNombre && !coincideCat) return false;
       }
 
-      // Filtro categoría (OV, OS, OT, OC, EI)
       if (filtroCategoria !== "TODAS" && e.categoria !== filtroCategoria) {
         return false;
       }
 
-      // Filtro estado
       if (filtroEstado === "PENDIENTE" && e.salio) return false;
       if (filtroEstado === "EN_BREAK" && (!e.salio || e.cumplido)) return false;
       if (filtroEstado === "CUMPLIDO" && (!e.salio || !e.cumplido)) return false;
 
-      // Filtro Próximos Ingresos
       if (soloProximosIngresos && !e.esProximoIngreso) {
         return false;
       }
@@ -486,7 +481,6 @@ export default function CoordinadoresPoziScreen() {
       return true;
     });
 
-    // Ordenar cronológicamente por horario de entrada (Entra asc)
     return filtrados.sort((a, b) => (a.entra || "").localeCompare(b.entra || ""));
   }, [infoEmpleados, filtroTexto, filtroCategoria, filtroEstado, soloProximosIngresos]);
 
@@ -502,34 +496,32 @@ export default function CoordinadoresPoziScreen() {
     }
   };
 
-  const useGrid = !isMobile && (isDesktop || isLargeDesktop);
+  const isWide = !isMobile && width >= 850;
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={[styles.content, { maxWidth: isMobile ? "100%" : 1600 }]}>
-      {/* ── ENCABEZADO ── */}
-      <View style={[styles.header, isMobile && styles.headerMobile]}>
-        <View style={styles.headerTitleRow}>
-          <View style={[styles.iconCircle, isMobile && styles.iconCircleMobile]}>
-            <MaterialCommunityIcons name="account-clock-outline" size={isMobile ? 22 : 28} color={COLORS.primary} />
+    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      {/* ── BARRA SUPERIOR / HEADER ── */}
+      <View style={styles.topBar}>
+        <View style={styles.titleArea}>
+          <View style={styles.titleIconBadge}>
+            <MaterialCommunityIcons name="account-clock-outline" size={20} color={COLORS.primary} />
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.title, isMobile && styles.titleMobile]}>Control de POZI & Breaks</Text>
-            <Text style={styles.subtitle}>
-              Horarios, próximas entradas ({horaActualStr}) y descansos automáticos
-            </Text>
+          <View>
+            <Text style={styles.headerTitle}>POZI & Breaks</Text>
+            <Text style={styles.headerSub}>Control operativo de turnos y descansos</Text>
           </View>
         </View>
 
-        {/* Barra de Acciones y Fecha */}
-        <View style={styles.actionsBar}>
+        {/* Acciones principales y Selector de Fecha */}
+        <View style={styles.headerActions}>
           {/* Navegador de Fecha */}
           <View style={styles.dateSelector}>
             <TouchableOpacity onPress={() => cambiarDia(-1)} style={styles.dateNavBtn}>
-              <MaterialCommunityIcons name="chevron-left" size={18} color={COLORS.text} />
+              <MaterialCommunityIcons name="chevron-left" size={16} color={COLORS.text} />
             </TouchableOpacity>
 
             <TouchableOpacity onPress={() => setFecha(dayjs().format("YYYY-MM-DD"))} style={styles.dateCenterBtn}>
-              <MaterialCommunityIcons name="calendar" size={15} color={COLORS.primary} style={{ marginRight: 5 }} />
+              <MaterialCommunityIcons name="calendar" size={14} color={COLORS.primary} style={{ marginRight: 4 }} />
               <Text style={styles.dateText}>
                 {dayjs(fecha).format("DD/MM/YYYY")}
                 {fecha === dayjs().format("YYYY-MM-DD") ? " (Hoy)" : ""}
@@ -537,219 +529,199 @@ export default function CoordinadoresPoziScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity onPress={() => cambiarDia(1)} style={styles.dateNavBtn}>
-              <MaterialCommunityIcons name="chevron-right" size={18} color={COLORS.text} />
+              <MaterialCommunityIcons name="chevron-right" size={16} color={COLORS.text} />
             </TouchableOpacity>
           </View>
 
           {/* Botones de acción */}
-          <View style={styles.rightButtonsRow}>
-            <TouchableOpacity onPress={handlePickExcel} style={styles.btnCargarExcel} activeOpacity={0.8}>
-              <MaterialCommunityIcons name="file-excel-box" size={18} color="#FFFFFF" style={{ marginRight: 5 }} />
-              <Text style={styles.btnCargarExcelText}>Cargar Excel</Text>
+          <View style={styles.btnGroup}>
+            <TouchableOpacity onPress={handlePickExcel} style={styles.btnUpload} activeOpacity={0.8}>
+              <MaterialCommunityIcons name="file-excel-box" size={16} color="#FFFFFF" style={{ marginRight: 5 }} />
+              <Text style={styles.btnUploadText}>Cargar Excel</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity onPress={() => setShowAddModal(true)} style={styles.btnSecondary} activeOpacity={0.8}>
-              <MaterialCommunityIcons name="account-plus" size={16} color={COLORS.text} style={{ marginRight: 4 }} />
-              <Text style={styles.btnSecondaryText}>Agregar</Text>
+            <TouchableOpacity onPress={() => setShowAddModal(true)} style={styles.btnAction} activeOpacity={0.8}>
+              <MaterialCommunityIcons name="account-plus" size={15} color={COLORS.text} style={{ marginRight: 4 }} />
+              <Text style={styles.btnActionText}>Agregar</Text>
             </TouchableOpacity>
 
             {empleados.length > 0 && (
-              <TouchableOpacity onPress={handleVaciarDia} style={styles.btnVaciar} activeOpacity={0.8}>
-                <MaterialCommunityIcons name="trash-can-outline" size={16} color="#DC2626" style={{ marginRight: 4 }} />
-                <Text style={styles.btnVaciarText}>Limpiar día</Text>
+              <TouchableOpacity onPress={handleVaciarDia} style={styles.btnClear} activeOpacity={0.8}>
+                <MaterialCommunityIcons name="trash-can-outline" size={15} color="#DC2626" style={{ marginRight: 4 }} />
+                <Text style={styles.btnClearText}>Limpiar día</Text>
               </TouchableOpacity>
             )}
 
             <TouchableOpacity onPress={() => setDebugModalOpen(true)} style={styles.btnGhost} activeOpacity={0.8}>
-              <MaterialCommunityIcons name="code-json" size={16} color={COLORS.primary} style={{ marginRight: 4 }} />
-              <Text style={styles.btnGhostText}>Prompt</Text>
+              <MaterialCommunityIcons name="code-json" size={15} color={COLORS.primary} />
             </TouchableOpacity>
           </View>
         </View>
-
-        {/* Info del archivo cargado */}
-        {lastExcelName && (
-          <View style={styles.fileInfoBanner}>
-            <MaterialCommunityIcons name="check-circle" size={14} color={COLORS.success} />
-            <Text style={styles.fileInfoText} numberOfLines={1}>
-              Planilla: <Text style={{ fontWeight: "700" }}>{lastExcelName}</Text>
-              {lastUpdated ? ` • Sincronizado: ${lastUpdated}` : ""}
-            </Text>
-          </View>
-        )}
       </View>
 
-      {/* ── TARJETAS DE MÉTRICAS (KPIS) ── */}
-      <View style={styles.kpiContainer}>
-        <View style={[styles.kpiCard, { borderLeftColor: COLORS.info }]}>
-          <Text style={styles.kpiNumber}>{kpis.total}</Text>
-          <Text style={styles.kpiLabel}>Total Personal</Text>
+      {/* ── BARRA RESUMEN / KPIS LINEAL Y COMPACTA ── */}
+      <View style={styles.kpiBar}>
+        <View style={styles.kpiItem}>
+          <Text style={styles.kpiVal}>{kpis.total}</Text>
+          <Text style={styles.kpiTag}>Total</Text>
         </View>
+        <View style={styles.kpiDivider} />
 
+        <View style={styles.kpiItem}>
+          <Text style={[styles.kpiVal, { color: COLORS.muted }]}>{kpis.pendientes}</Text>
+          <Text style={styles.kpiTag}>Pendientes</Text>
+        </View>
+        <View style={styles.kpiDivider} />
+
+        <View style={styles.kpiItem}>
+          <Text style={[styles.kpiVal, { color: kpis.enBreakActivos > 0 ? "#D97706" : COLORS.text }]}>
+            {kpis.enBreakActivos}
+          </Text>
+          <Text style={styles.kpiTag}>En Break</Text>
+        </View>
+        <View style={styles.kpiDivider} />
+
+        <View style={styles.kpiItem}>
+          <Text style={[styles.kpiVal, { color: COLORS.success }]}>{kpis.horarioCumplido}</Text>
+          <Text style={styles.kpiTag}>Cumplidos</Text>
+        </View>
+        <View style={styles.kpiDivider} />
+
+        {/* Toggle Próximos Ingresos como KPI interactivo */}
         <TouchableOpacity
           onPress={() => setSoloProximosIngresos(!soloProximosIngresos)}
-          style={[
-            styles.kpiCard,
-            { borderLeftColor: "#0284C7" },
-            soloProximosIngresos && { backgroundColor: "#E0F2FE", borderColor: "#0284C7" },
-          ]}
-          activeOpacity={0.8}
+          style={[styles.kpiItemAction, soloProximosIngresos && styles.kpiItemActionActive]}
+          activeOpacity={0.7}
         >
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <Text style={[styles.kpiNumber, { color: "#0284C7" }]}>{totalProximosIngresos}</Text>
-            <MaterialCommunityIcons
-              name="clock-fast"
-              size={18}
-              color="#0284C7"
-              style={{ marginLeft: 6 }}
-            />
-          </View>
-          <Text style={styles.kpiLabel}>Próximos Ingresos (≥{horaActualStr})</Text>
+          <MaterialCommunityIcons
+            name="clock-fast"
+            size={14}
+            color={soloProximosIngresos ? "#0284C7" : COLORS.muted}
+            style={{ marginRight: 4 }}
+          />
+          <Text style={[styles.kpiValAction, soloProximosIngresos && { color: "#0284C7" }]}>
+            {totalProximosIngresos}
+          </Text>
+          <Text style={[styles.kpiTagAction, soloProximosIngresos && { color: "#0284C7", fontWeight: "700" }]}>
+            Próximos (≥{horaActualStr})
+          </Text>
         </TouchableOpacity>
-
-        <View style={[styles.kpiCard, { borderLeftColor: COLORS.warning, backgroundColor: kpis.enBreakActivos > 0 ? "#FFFBEB" : COLORS.card }]}>
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <Text style={[styles.kpiNumber, { color: COLORS.warning }]}>{kpis.enBreakActivos}</Text>
-            {kpis.enBreakActivos > 0 && (
-              <MaterialCommunityIcons name="coffee" size={18} color={COLORS.warning} style={{ marginLeft: 6 }} />
-            )}
-          </View>
-          <Text style={styles.kpiLabel}>En Break Ahora</Text>
-        </View>
-
-        <View style={[styles.kpiCard, { borderLeftColor: COLORS.success }]}>
-          <Text style={[styles.kpiNumber, { color: COLORS.success }]}>{kpis.horarioCumplido}</Text>
-          <Text style={styles.kpiLabel}>Horario Cumplido</Text>
-        </View>
       </View>
 
-      {/* ── BARRA DE FILTROS & BÚSQUEDA ── */}
-      <View style={styles.filterSection}>
-        {/* Buscador y Toggle de Próximos Ingresos */}
-        <View style={styles.searchRow}>
-          <View style={styles.searchBar}>
-            <MaterialCommunityIcons name="magnify" size={18} color={COLORS.muted} style={{ marginRight: 6 }} />
-            <TextInput
-              placeholder="Buscar por empleado..."
-              placeholderTextColor={COLORS.muted}
-              value={filtroTexto}
-              onChangeText={setFiltroTexto}
-              style={styles.searchInput}
-            />
-            {filtroTexto.length > 0 && (
-              <TouchableOpacity onPress={() => setFiltroTexto("")}>
-                <MaterialCommunityIcons name="close-circle" size={16} color={COLORS.muted} />
-              </TouchableOpacity>
-            )}
-          </View>
-
-          {/* Botón rápido Próximos Ingresos */}
-          <TouchableOpacity
-            onPress={() => setSoloProximosIngresos(!soloProximosIngresos)}
-            style={[styles.btnProximosToggle, soloProximosIngresos && styles.btnProximosToggleActive]}
-            activeOpacity={0.8}
-          >
-            <MaterialCommunityIcons
-              name="clock-fast"
-              size={16}
-              color={soloProximosIngresos ? "#FFFFFF" : "#0284C7"}
-              style={{ marginRight: 4 }}
-            />
-            <Text style={[styles.btnProximosToggleText, soloProximosIngresos && styles.btnProximosToggleTextActive]}>
-              {soloProximosIngresos ? "Mostrando Próximos" : "Próximos Ingresos"}
-            </Text>
-          </TouchableOpacity>
+      {/* ── BARRA DE FILTROS LIMPIA Y MODERNA ── */}
+      <View style={styles.filterBar}>
+        {/* Buscador */}
+        <View style={styles.searchBox}>
+          <MaterialCommunityIcons name="magnify" size={16} color={COLORS.muted} style={{ marginRight: 6 }} />
+          <TextInput
+            placeholder="Buscar por empleado..."
+            placeholderTextColor={COLORS.muted}
+            value={filtroTexto}
+            onChangeText={setFiltroTexto}
+            style={styles.searchInput}
+          />
+          {filtroTexto.length > 0 && (
+            <TouchableOpacity onPress={() => setFiltroTexto("")}>
+              <MaterialCommunityIcons name="close-circle" size={14} color={COLORS.muted} />
+            </TouchableOpacity>
+          )}
         </View>
 
-        {/* Filtros de Categorías Oficiales (OV, OS, OT, OC, EI) */}
-        <View style={styles.chipsRow}>
-          <Text style={styles.filterLabel}>Categoría:</Text>
-          <TouchableOpacity
-            onPress={() => setFiltroCategoria("TODAS")}
-            style={[styles.chip, filtroCategoria === "TODAS" && styles.chipActive]}
-          >
-            <Text style={[styles.chipText, filtroCategoria === "TODAS" && styles.chipTextActive]}>
-              Todas ({infoEmpleados.length})
-            </Text>
-          </TouchableOpacity>
+        {/* Scroll horizontal de filtros para que nunca se rompa en móvil ni PC */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterScrollContent}
+        >
+          {/* Segment de Categorías Oficiales */}
+          <View style={styles.pillGroup}>
+            <TouchableOpacity
+              onPress={() => setFiltroCategoria("TODAS")}
+              style={[styles.filterPill, filtroCategoria === "TODAS" && styles.filterPillActive]}
+            >
+              <Text style={[styles.filterPillText, filtroCategoria === "TODAS" && styles.filterPillTextActive]}>
+                Todas
+              </Text>
+            </TouchableOpacity>
 
-          {(Object.keys(POZI_CATEGORIAS) as PoziCategoriaCodigo[]).map((catKey) => {
-            const meta = POZI_CATEGORIAS[catKey];
-            const isSelected = filtroCategoria === catKey;
-            const cantidad = infoEmpleados.filter((e) => e.categoria === catKey).length;
-            return (
-              <TouchableOpacity
-                key={catKey}
-                onPress={() => setFiltroCategoria(catKey)}
-                style={[
-                  styles.chip,
-                  { borderColor: meta.border },
-                  isSelected && { backgroundColor: meta.bg, borderColor: meta.color },
-                ]}
-              >
-                <Text
+            {(Object.keys(POZI_CATEGORIAS) as PoziCategoriaCodigo[]).map((cKey) => {
+              const meta = POZI_CATEGORIAS[cKey];
+              const isSel = filtroCategoria === cKey;
+              const count = infoEmpleados.filter((e) => e.categoria === cKey).length;
+              return (
+                <TouchableOpacity
+                  key={cKey}
+                  onPress={() => setFiltroCategoria(cKey)}
                   style={[
-                    styles.chipText,
-                    { color: meta.color },
-                    isSelected && { fontWeight: "700" },
+                    styles.filterPill,
+                    isSel && { backgroundColor: meta.bg, borderColor: meta.color },
                   ]}
                 >
-                  {meta.codigo} - {meta.nombre} ({cantidad})
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+                  <View style={[styles.catDot, { backgroundColor: meta.color }]} />
+                  <Text style={[styles.filterPillText, isSel && { color: meta.color, fontWeight: "700" }]}>
+                    {meta.codigo}
+                  </Text>
+                  {count > 0 && (
+                    <Text style={[styles.filterPillBadge, isSel && { color: meta.color }]}>
+                      {count}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
 
-        {/* Filtros de Estado */}
-        <View style={styles.chipsRow}>
-          <Text style={styles.filterLabel}>Estado:</Text>
-          {(["TODOS", "PENDIENTE", "EN_BREAK", "CUMPLIDO"] as const).map((st) => {
-            const isSelected = filtroEstado === st;
-            const labels: Record<string, string> = {
-              TODOS: `Todos (${kpis.total})`,
-              PENDIENTE: `Pendientes (${kpis.pendientes})`,
-              EN_BREAK: `En Break (${kpis.enBreakActivos})`,
-              CUMPLIDO: `Cumplidos (${kpis.horarioCumplido})`,
-            };
-            return (
-              <TouchableOpacity
-                key={st}
-                onPress={() => setFiltroEstado(st)}
-                style={[styles.chip, isSelected && styles.chipActive]}
-              >
-                <Text style={[styles.chipText, isSelected && styles.chipTextActive]}>
-                  {labels[st]}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+          {/* Divisor vertical */}
+          <View style={styles.filterVDivider} />
+
+          {/* Segment de Estado */}
+          <View style={styles.pillGroup}>
+            {(["TODOS", "PENDIENTE", "EN_BREAK", "CUMPLIDO"] as const).map((st) => {
+              const isSel = filtroEstado === st;
+              const labels: Record<string, string> = {
+                TODOS: "Todos",
+                PENDIENTE: "Pendientes",
+                EN_BREAK: "En Break",
+                CUMPLIDO: "Cumplidos",
+              };
+              return (
+                <TouchableOpacity
+                  key={st}
+                  onPress={() => setFiltroEstado(st)}
+                  style={[styles.filterPill, isSel && styles.filterPillActive]}
+                >
+                  <Text style={[styles.filterPillText, isSel && styles.filterPillTextActive]}>
+                    {labels[st]}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </ScrollView>
       </View>
 
-      {/* ── LISTADO DE EMPLEADOS (COMPACTO EN CELULAR / GRID EN PC) ── */}
+      {/* ── TABLA LINEAL DE EMPLEADOS ── */}
       {loading ? (
         <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
+          <ActivityIndicator size="small" color={COLORS.primary} />
           <Text style={styles.loadingText}>Cargando datos del POZI...</Text>
         </View>
       ) : empleados.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <MaterialCommunityIcons name="file-excel-outline" size={48} color={COLORS.muted} style={{ marginBottom: 10 }} />
+          <MaterialCommunityIcons name="file-excel-outline" size={40} color={COLORS.muted} style={{ marginBottom: 8 }} />
           <Text style={styles.emptyTitle}>No hay POZI cargado para esta fecha</Text>
           <Text style={styles.emptyDesc}>
-            Haz clic en "Cargar Excel" para subir el archivo. Filas sin categorías válidas (OV, OS, OT, OC, EI)
-            se ignoran automáticamente.
+            Sube el archivo Excel del día. Las filas sin categorías válidas (OV, OS, OT, OC, EI) se descartan solas.
           </Text>
-          <TouchableOpacity onPress={handlePickExcel} style={styles.btnCargarExcel} activeOpacity={0.8}>
-            <MaterialCommunityIcons name="upload" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
-            <Text style={styles.btnCargarExcelText}>Seleccionar archivo Excel</Text>
+          <TouchableOpacity onPress={handlePickExcel} style={styles.btnUpload} activeOpacity={0.8}>
+            <MaterialCommunityIcons name="upload" size={15} color="#FFFFFF" style={{ marginRight: 6 }} />
+            <Text style={styles.btnUploadText}>Subir archivo Excel</Text>
           </TouchableOpacity>
         </View>
       ) : empleadosFiltrados.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <MaterialCommunityIcons name="filter-remove-outline" size={36} color={COLORS.muted} style={{ marginBottom: 6 }} />
-          <Text style={styles.emptyTitle}>No se encontraron empleados con los filtros actuales</Text>
+          <MaterialCommunityIcons name="filter-remove-outline" size={32} color={COLORS.muted} style={{ marginBottom: 6 }} />
+          <Text style={styles.emptyTitle}>No hay empleados que coincidan con el filtro</Text>
           <TouchableOpacity
             onPress={() => {
               setFiltroTexto("");
@@ -759,12 +731,25 @@ export default function CoordinadoresPoziScreen() {
             }}
             style={styles.btnResetFilter}
           >
-            <Text style={styles.btnResetFilterText}>Restablecer filtros</Text>
+            <Text style={styles.btnResetFilterText}>Limpiar filtros</Text>
           </TouchableOpacity>
         </View>
       ) : (
-        <View style={useGrid ? styles.gridContainer : styles.listContainer}>
-          {empleadosFiltrados.map((emp) => {
+        <View style={styles.tableCard}>
+          {/* Cabecera de la tabla (solo en pantallas anchas / tablet / desktop) */}
+          {isWide && (
+            <View style={styles.tableHeaderRow}>
+              <Text style={[styles.thText, { flex: 2.5 }]}>EMPLEADO</Text>
+              <Text style={[styles.thText, { width: 70 }]}>CAT</Text>
+              <Text style={[styles.thText, { flex: 1.5 }]}>TURNO</Text>
+              <Text style={[styles.thText, { width: 105 }]}>BREAK</Text>
+              <Text style={[styles.thText, { flex: 2.5 }]}>ESTADO / REGRESO</Text>
+              <Text style={[styles.thText, { width: 120, textAlign: "right" }]}>ACCIONES</Text>
+            </View>
+          )}
+
+          {/* Filas de empleados */}
+          {empleadosFiltrados.map((emp, index) => {
             const isSalio = emp.salio;
             const isCumplido = emp.cumplido;
             const catMeta = POZI_CATEGORIAS[emp.categoria as PoziCategoriaCodigo] || {
@@ -774,162 +759,248 @@ export default function CoordinadoresPoziScreen() {
               bg: "#F1F5F9",
               border: "#CBD5E1",
             };
+            const isLast = index === empleadosFiltrados.length - 1;
 
-            return (
-              <View
-                key={emp.id}
-                style={[
-                  styles.cardEmpleado,
-                  useGrid && styles.cardEmpleadoGrid,
-                  isSalio && !isCumplido && styles.cardEmpleadoEnBreak,
-                  isSalio && isCumplido && styles.cardEmpleadoCumplido,
-                  isMobile && styles.cardEmpleadoMobile,
-                ]}
-              >
-                {/* Cabecera del Empleado: Nombre, Cat, Horarios */}
-                <View style={styles.cardHeaderRow}>
-                  <View style={styles.nombreCatWrap}>
-                    <Text style={[styles.empleadoNombre, isMobile && styles.empleadoNombreMobile]} numberOfLines={1}>
+            if (isWide) {
+              // ── FILA LINEAL PARA PC / TABLET ──
+              return (
+                <View
+                  key={emp.id}
+                  style={[
+                    styles.rowWide,
+                    isLast && { borderBottomWidth: 0 },
+                    isSalio && !isCumplido && styles.rowEnBreak,
+                    isSalio && isCumplido && styles.rowCumplido,
+                  ]}
+                >
+                  {/* Columna Empleado */}
+                  <View style={[styles.cell, { flex: 2.5, flexDirection: "row", alignItems: "center" }]}>
+                    <Text style={styles.rowNombre} numberOfLines={1}>
                       {emp.nombre}
                     </Text>
-                    {/* Badge Categoría */}
-                    <View style={[styles.catBadge, { backgroundColor: catMeta.bg, borderColor: catMeta.border }]}>
-                      <Text style={[styles.catBadgeText, { color: catMeta.color }]}>{catMeta.codigo}</Text>
-                    </View>
                     {emp.notas?.includes("EI") && (
-                      <View style={[styles.catBadge, { backgroundColor: "#F0FDFA", borderColor: "#99F6E4" }]}>
-                        <Text style={[styles.catBadgeText, { color: "#0D9488" }]}>EI</Text>
+                      <View style={styles.badgeEiInline}>
+                        <Text style={styles.badgeEiInlineText}>EI</Text>
                       </View>
                     )}
                   </View>
 
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                    {/* Horario de Entrada/Salida con botón para editar */}
+                  {/* Columna Categoría */}
+                  <View style={[styles.cell, { width: 70 }]}>
+                    <View style={[styles.catBadgeCompact, { backgroundColor: catMeta.bg, borderColor: catMeta.border }]}>
+                      <Text style={[styles.catBadgeCompactText, { color: catMeta.color }]}>{catMeta.codigo}</Text>
+                    </View>
+                  </View>
+
+                  {/* Columna Turno + Edición */}
+                  <View style={[styles.cell, { flex: 1.5, flexDirection: "row", alignItems: "center" }]}>
                     <TouchableOpacity
                       onPress={() => handleAbrirEdicion(emp)}
-                      style={styles.horarioEditablePill}
+                      style={styles.horarioInlineBtn}
                       activeOpacity={0.7}
-                      accessibilityLabel="Editar horarios de ingreso"
                     >
-                      <MaterialCommunityIcons name="clock-outline" size={13} color={COLORS.muted} style={{ marginRight: 4 }} />
-                      <Text style={styles.horarioEditableText}>
-                        {emp.entra || "--:--"} a {emp.sale || "--:--"}
+                      <Text style={styles.horarioInlineText}>
+                        {emp.entra || "--:--"} - {emp.sale || "--:--"}
                       </Text>
-                      <MaterialCommunityIcons name="pencil-outline" size={13} color={COLORS.primary} style={{ marginLeft: 4 }} />
-                    </TouchableOpacity>
-
-                    {/* Botón Borrar Empleado */}
-                    <TouchableOpacity
-                      onPress={() => handleEliminarEmpleado(emp.id, emp.nombre)}
-                      style={styles.btnTrashHeader}
-                      activeOpacity={0.7}
-                      accessibilityLabel="Eliminar de la lista"
-                    >
-                      <MaterialCommunityIcons name="trash-can-outline" size={15} color={COLORS.danger} />
+                      <Text style={styles.horarioHsMuted}>({emp.horasTrabajadas}h)</Text>
+                      <MaterialCommunityIcons name="pencil-outline" size={13} color={COLORS.muted} style={{ marginLeft: 3 }} />
                     </TouchableOpacity>
                   </View>
-                </View>
 
-                {/* Sub-fila: Duración de Break y horas trabajadas */}
-                <View style={styles.cardSubRow}>
-                  <View
-                    style={[
-                      styles.badgeBreakCompact,
-                      emp.duracionBreak === 20 ? styles.badgeBreak20 : styles.badgeBreak40,
-                    ]}
-                  >
-                    <MaterialCommunityIcons
-                      name={emp.duracionBreak === 20 ? "coffee" : "food-apple"}
-                      size={12}
-                      color={emp.duracionBreak === 20 ? "#047857" : "#B45309"}
-                      style={{ marginRight: 3 }}
-                    />
-                    <Text
+                  {/* Columna Break Asignado */}
+                  <View style={[styles.cell, { width: 105 }]}>
+                    <View
                       style={[
-                        styles.badgeBreakCompactText,
-                        { color: emp.duracionBreak === 20 ? "#047857" : "#B45309" },
+                        styles.breakPillFina,
+                        emp.duracionBreak === 20 ? styles.breakPill20 : styles.breakPill40,
                       ]}
                     >
-                      Break: {emp.duracionBreak} min ({emp.horasTrabajadas}h)
-                    </Text>
-                  </View>
-
-                  {/* Si es próximo ingreso hoy */}
-                  {emp.esProximoIngreso && !isSalio && (
-                    <View style={styles.badgeProximo}>
-                      <MaterialCommunityIcons name="arrow-up-circle-outline" size={12} color="#0284C7" style={{ marginRight: 3 }} />
-                      <Text style={styles.badgeProximoText}>Entra {emp.entra}</Text>
-                    </View>
-                  )}
-                </View>
-
-                {/* Sección de Break / Acción */}
-                {!isSalio ? (
-                  <View style={styles.breakActionRow}>
-                    <TouchableOpacity
-                      onPress={() => handleMarcarSalidaBreak(emp.id)}
-                      style={[styles.btnMarcarSalidaCompact, isMobile && styles.btnMarcarSalidaCompactMobile]}
-                      activeOpacity={0.8}
-                    >
-                      <MaterialCommunityIcons name="coffee-outline" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
-                      <Text style={styles.btnMarcarSalidaCompactText}>
-                        Se fue a Break ({emp.duracionBreak}m)
+                      <MaterialCommunityIcons
+                        name={emp.duracionBreak === 20 ? "coffee" : "food-apple"}
+                        size={11}
+                        color={emp.duracionBreak === 20 ? "#047857" : "#B45309"}
+                        style={{ marginRight: 3 }}
+                      />
+                      <Text
+                        style={[
+                          styles.breakPillFinaText,
+                          { color: emp.duracionBreak === 20 ? "#047857" : "#B45309" },
+                        ]}
+                      >
+                        {emp.duracionBreak} min
                       </Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      onPress={() => handleEliminarEmpleado(emp.id)}
-                      style={styles.btnMiniGhost}
-                      accessibilityLabel="Quitar"
-                    >
-                      <MaterialCommunityIcons name="trash-can-outline" size={16} color={COLORS.muted} />
-                    </TouchableOpacity>
+                    </View>
                   </View>
-                ) : (
-                  <View style={styles.salioCompactBox}>
-                    <View style={styles.salioDatosRow}>
-                      <View style={styles.salioItemCompact}>
-                        <Text style={styles.salioItemLabel}>SALIÓ</Text>
-                        <Text style={styles.salioItemVal}>{emp.breakInicio || "--:--"}</Text>
+
+                  {/* Columna Estado / Regreso */}
+                  <View style={[styles.cell, { flex: 2.5 }]}>
+                    {!isSalio ? (
+                      <View style={{ flexDirection: "row", alignItems: "center" }}>
+                        <View style={styles.dotPendiente} />
+                        <Text style={styles.estadoPendienteText}>Pendiente</Text>
+                        {emp.esProximoIngreso && (
+                          <View style={styles.proximoPillInline}>
+                            <Text style={styles.proximoPillInlineText}>Entra {emp.entra}</Text>
+                          </View>
+                        )}
                       </View>
-
-                      <MaterialCommunityIcons name="arrow-right" size={14} color={isCumplido ? "#059669" : "#D97706"} />
-
-                      <View style={styles.salioItemCompact}>
-                        <Text style={styles.salioItemLabel}>DEBE VOLVER</Text>
-                        <Text style={[styles.salioItemVal, { fontWeight: "800", color: isCumplido ? "#047857" : "#B45309" }]}>
-                          {emp.horaRegreso || "--:--"}
+                    ) : (
+                      <View style={styles.salioInlineWrap}>
+                        <Text style={styles.salioInlineHoras}>
+                          {emp.breakInicio} ➔{" "}
+                          <Text style={{ fontWeight: "800", color: isCumplido ? "#047857" : "#B45309" }}>
+                            {emp.horaRegreso}
+                          </Text>
                         </Text>
-                      </View>
-
-                      {/* Pill de estado */}
-                      <View style={{ marginLeft: "auto" }}>
                         {!isCumplido ? (
-                          <View style={styles.countdownPillCompact}>
-                            <Text style={styles.countdownPillCompactText}>
-                              Faltan {emp.minutosRestantes}m
-                            </Text>
+                          <View style={styles.timerPillMini}>
+                            <Text style={styles.timerPillMiniText}>Faltan {emp.minutosRestantes}m</Text>
                           </View>
                         ) : (
-                          <View style={styles.cumplidoPillCompact}>
-                            <Text style={styles.cumplidoPillCompactText}>
-                              {emp.minutosRestantes < -2 ? `+${Math.abs(emp.minutosRestantes)}m pasado` : "Cumplido"}
+                          <View style={styles.cumplidoPillMini}>
+                            <Text style={styles.cumplidoPillMiniText}>
+                              {emp.minutosRestantes < -2 ? `+${Math.abs(emp.minutosRestantes)}m` : "Cumplido"}
                             </Text>
                           </View>
                         )}
                       </View>
+                    )}
+                  </View>
 
-                      {/* Botón deshacer */}
+                  {/* Columna Acciones */}
+                  <View style={[styles.cell, { width: 120, flexDirection: "row", justifyContent: "flex-end", alignItems: "center", gap: 6 }]}>
+                    {!isSalio ? (
+                      <TouchableOpacity
+                        onPress={() => handleMarcarSalidaBreak(emp.id)}
+                        style={styles.btnBreakLineal}
+                        activeOpacity={0.8}
+                      >
+                        <MaterialCommunityIcons name="coffee-outline" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
+                        <Text style={styles.btnBreakLinealText}>Break</Text>
+                      </TouchableOpacity>
+                    ) : (
                       <TouchableOpacity
                         onPress={() => handleReiniciarBreak(emp.id)}
-                        style={styles.btnMiniGhost}
-                        accessibilityLabel="Deshacer salida"
+                        style={styles.btnIconAction}
+                        title="Deshacer salida"
                       >
                         <MaterialCommunityIcons name="restart" size={16} color={COLORS.muted} />
                       </TouchableOpacity>
-                    </View>
+                    )}
+
+                    {/* Botón Borrar */}
+                    <TouchableOpacity
+                      onPress={() => handleEliminarEmpleado(emp.id, emp.nombre)}
+                      style={styles.btnIconActionDanger}
+                      accessibilityLabel="Eliminar"
+                    >
+                      <MaterialCommunityIcons name="trash-can-outline" size={15} color="#DC2626" />
+                    </TouchableOpacity>
                   </View>
-                )}
+                </View>
+              );
+            }
+
+            // ── FILA LINEAL COMPACTA PARA MÓVIL (2 RENGLONES FINITOS) ──
+            return (
+              <View
+                key={emp.id}
+                style={[
+                  styles.rowMobile,
+                  isLast && { borderBottomWidth: 0 },
+                  isSalio && !isCumplido && styles.rowEnBreak,
+                  isSalio && isCumplido && styles.rowCumplido,
+                ]}
+              >
+                {/* Renglón 1: Nombre + Cat + Horario + Botones editar/borrar */}
+                <View style={styles.mobileRowTop}>
+                  <View style={{ flexDirection: "row", alignItems: "center", flex: 1, gap: 5 }}>
+                    <Text style={styles.rowNombreMobile} numberOfLines={1}>
+                      {emp.nombre}
+                    </Text>
+                    <View style={[styles.catBadgeCompact, { backgroundColor: catMeta.bg, borderColor: catMeta.border }]}>
+                      <Text style={[styles.catBadgeCompactText, { color: catMeta.color }]}>{catMeta.codigo}</Text>
+                    </View>
+                    {emp.notas?.includes("EI") && (
+                      <View style={styles.badgeEiInline}>
+                        <Text style={styles.badgeEiInlineText}>EI</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  <TouchableOpacity
+                    onPress={() => handleAbrirEdicion(emp)}
+                    style={styles.horarioInlineBtnMobile}
+                  >
+                    <Text style={styles.horarioInlineTextMobile}>
+                      {emp.entra || "--:--"} - {emp.sale || "--:--"}
+                    </Text>
+                    <MaterialCommunityIcons name="pencil-outline" size={12} color={COLORS.muted} />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => handleEliminarEmpleado(emp.id, emp.nombre)}
+                    style={styles.btnIconActionDangerMobile}
+                  >
+                    <MaterialCommunityIcons name="trash-can-outline" size={14} color="#DC2626" />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Renglón 2: Duración Break + Estado / Botón */}
+                <View style={styles.mobileRowBottom}>
+                  <View
+                    style={[
+                      styles.breakPillFina,
+                      emp.duracionBreak === 20 ? styles.breakPill20 : styles.breakPill40,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.breakPillFinaText,
+                        { color: emp.duracionBreak === 20 ? "#047857" : "#B45309" },
+                      ]}
+                    >
+                      {emp.duracionBreak}m ({emp.horasTrabajadas}h)
+                    </Text>
+                  </View>
+
+                  {!isSalio ? (
+                    <TouchableOpacity
+                      onPress={() => handleMarcarSalidaBreak(emp.id)}
+                      style={styles.btnBreakMobile}
+                      activeOpacity={0.8}
+                    >
+                      <MaterialCommunityIcons name="coffee-outline" size={13} color="#FFFFFF" style={{ marginRight: 4 }} />
+                      <Text style={styles.btnBreakMobileText}>Se fue a Break</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <View style={styles.salioMobileInline}>
+                      <Text style={styles.salioMobileText}>
+                        {emp.breakInicio} ➔{" "}
+                        <Text style={{ fontWeight: "800", color: isCumplido ? "#047857" : "#B45309" }}>
+                          {emp.horaRegreso}
+                        </Text>
+                      </Text>
+                      {!isCumplido ? (
+                        <View style={styles.timerPillMini}>
+                          <Text style={styles.timerPillMiniText}>{emp.minutosRestantes}m</Text>
+                        </View>
+                      ) : (
+                        <View style={styles.cumplidoPillMini}>
+                          <Text style={styles.cumplidoPillMiniText}>
+                            {emp.minutosRestantes < -2 ? `+${Math.abs(emp.minutosRestantes)}m` : "Cumplido"}
+                          </Text>
+                        </View>
+                      )}
+                      <TouchableOpacity
+                        onPress={() => handleReiniciarBreak(emp.id)}
+                        style={styles.btnIconActionMobile}
+                      >
+                        <MaterialCommunityIcons name="restart" size={14} color={COLORS.muted} />
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
               </View>
             );
           })}
@@ -939,14 +1010,14 @@ export default function CoordinadoresPoziScreen() {
       {/* ── MODAL MODIFICAR INGRESO / HORARIOS ── */}
       <Modal visible={!!editingEmp} transparent animationType="fade">
         <View style={styles.modalBackdrop}>
-          <View style={styles.editModalCard}>
+          <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
               <View style={{ flexDirection: "row", alignItems: "center" }}>
-                <MaterialCommunityIcons name="pencil" size={20} color={COLORS.primary} style={{ marginRight: 6 }} />
+                <MaterialCommunityIcons name="pencil" size={18} color={COLORS.primary} style={{ marginRight: 6 }} />
                 <Text style={styles.modalTitle}>Modificar Horario e Ingreso</Text>
               </View>
               <TouchableOpacity onPress={() => setEditingEmp(null)}>
-                <MaterialCommunityIcons name="close" size={22} color={COLORS.muted} />
+                <MaterialCommunityIcons name="close" size={20} color={COLORS.muted} />
               </TouchableOpacity>
             </View>
 
@@ -979,7 +1050,7 @@ export default function CoordinadoresPoziScreen() {
             </View>
 
             {/* Inputs de Horarios */}
-            <View style={{ flexDirection: "row", gap: 12, marginTop: 8 }}>
+            <View style={{ flexDirection: "row", gap: 10, marginTop: 10 }}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.inputLabel}>Hora Entrada</Text>
                 <TextInput
@@ -1002,15 +1073,15 @@ export default function CoordinadoresPoziScreen() {
 
             <View style={styles.modalFooterRow}>
               <TouchableOpacity
-                onPress={() => handleEliminarEmpleado(editingEmp.id, editingEmp.nombre)}
+                onPress={() => handleEliminarEmpleado(editingEmp!.id, editingEmp!.nombre)}
                 style={styles.btnEliminarModal}
                 activeOpacity={0.8}
               >
-                <MaterialCommunityIcons name="trash-can-outline" size={16} color="#DC2626" style={{ marginRight: 4 }} />
+                <MaterialCommunityIcons name="trash-can-outline" size={15} color="#DC2626" style={{ marginRight: 4 }} />
                 <Text style={styles.btnEliminarModalText}>Eliminar</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={handleGuardarEdicion} style={styles.btnCargarExcel}>
-                <Text style={styles.btnCargarExcelText}>Guardar</Text>
+              <TouchableOpacity onPress={handleGuardarEdicion} style={styles.btnGuardarModal}>
+                <Text style={styles.btnGuardarModalText}>Guardar</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={() => setEditingEmp(null)} style={styles.btnCerrarModal}>
                 <Text style={styles.btnCerrarModalText}>Cancelar</Text>
@@ -1023,11 +1094,11 @@ export default function CoordinadoresPoziScreen() {
       {/* ── MODAL AGREGAR EMPLEADO MANUAL ── */}
       <Modal visible={showAddModal} transparent animationType="fade">
         <View style={styles.modalBackdrop}>
-          <View style={styles.addModalCard}>
+          <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Agregar Empleado Manual</Text>
+              <Text style={styles.modalTitle}>Agregar Empleado</Text>
               <TouchableOpacity onPress={() => setShowAddModal(false)}>
-                <MaterialCommunityIcons name="close" size={22} color={COLORS.muted} />
+                <MaterialCommunityIcons name="close" size={20} color={COLORS.muted} />
               </TouchableOpacity>
             </View>
 
@@ -1064,7 +1135,7 @@ export default function CoordinadoresPoziScreen() {
               })}
             </View>
 
-            <View style={{ flexDirection: "row", gap: 12, marginTop: 8 }}>
+            <View style={{ flexDirection: "row", gap: 10, marginTop: 10 }}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.inputLabel}>Hora Entrada</Text>
                 <TextInput
@@ -1086,8 +1157,8 @@ export default function CoordinadoresPoziScreen() {
             </View>
 
             <View style={styles.modalFooterRow}>
-              <TouchableOpacity onPress={handleGuardarNuevoEmpleado} style={styles.btnCargarExcel}>
-                <Text style={styles.btnCargarExcelText}>Guardar Empleado</Text>
+              <TouchableOpacity onPress={handleGuardarNuevoEmpleado} style={styles.btnGuardarModal}>
+                <Text style={styles.btnGuardarModalText}>Guardar</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={() => setShowAddModal(false)} style={styles.btnCerrarModal}>
                 <Text style={styles.btnCerrarModalText}>Cancelar</Text>
@@ -1100,25 +1171,25 @@ export default function CoordinadoresPoziScreen() {
       {/* ── MODAL VER ESTRUCTURA / PROMPT ── */}
       <Modal visible={debugModalOpen} transparent animationType="fade">
         <View style={styles.modalBackdrop}>
-          <View style={styles.debugModalCard}>
+          <View style={[styles.modalCard, { maxWidth: 650 }]}>
             <View style={styles.modalHeader}>
               <View style={{ flexDirection: "row", alignItems: "center" }}>
-                <MaterialCommunityIcons name="file-code-outline" size={22} color={COLORS.primary} style={{ marginRight: 8 }} />
-                <Text style={styles.modalTitle}>Estructura detectada del Excel</Text>
+                <MaterialCommunityIcons name="file-code-outline" size={20} color={COLORS.primary} style={{ marginRight: 6 }} />
+                <Text style={styles.modalTitle}>Datos detectados del Excel</Text>
               </View>
               <TouchableOpacity onPress={() => setDebugModalOpen(false)}>
-                <MaterialCommunityIcons name="close" size={22} color={COLORS.muted} />
+                <MaterialCommunityIcons name="close" size={20} color={COLORS.muted} />
               </TouchableOpacity>
             </View>
 
             <Text style={styles.modalDesc}>
-              Se ignoraron filas sin categorías OV, OS, OT, OC o EI. Puedes copiar estos datos para compartirlo.
+              Filas sin categorías válidas (OV, OS, OT, OC, EI) fueron descartadas. Copia este JSON si necesitas consultarme.
             </Text>
 
             {copiedNotification && (
               <View style={styles.copiedBanner}>
-                <MaterialCommunityIcons name="check-bold" size={16} color="#047857" style={{ marginRight: 6 }} />
-                <Text style={styles.copiedBannerText}>¡Texto copiado al portapapeles!</Text>
+                <MaterialCommunityIcons name="check-bold" size={14} color="#047857" style={{ marginRight: 4 }} />
+                <Text style={styles.copiedBannerText}>¡Copiado al portapapeles!</Text>
               </View>
             )}
 
@@ -1128,7 +1199,7 @@ export default function CoordinadoresPoziScreen() {
                   JSON.stringify(
                     {
                       fechaActual: fecha,
-                      totalEmpleadosCargados: empleados.length,
+                      totalEmpleados: empleados.length,
                       muestra: empleados.slice(0, 5),
                     },
                     null,
@@ -1138,9 +1209,9 @@ export default function CoordinadoresPoziScreen() {
             </ScrollView>
 
             <View style={styles.modalFooterRow}>
-              <TouchableOpacity onPress={handleCopiarPrompt} style={styles.btnCopiaPrompt}>
-                <MaterialCommunityIcons name="content-copy" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
-                <Text style={styles.btnCopiaPromptText}>Copiar al portapapeles</Text>
+              <TouchableOpacity onPress={handleCopiarPrompt} style={styles.btnGuardarModal}>
+                <MaterialCommunityIcons name="content-copy" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
+                <Text style={styles.btnGuardarModalText}>Copiar al portapapeles</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={() => setDebugModalOpen(false)} style={styles.btnCerrarModal}>
                 <Text style={styles.btnCerrarModalText}>Cerrar</Text>
@@ -1159,55 +1230,47 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.bg,
   },
   content: {
-    padding: 12,
+    padding: 10,
     width: "100%",
     alignSelf: "center",
-    paddingBottom: 70,
+    paddingBottom: 60,
   },
-  header: {
-    marginBottom: 10,
-  },
-  headerMobile: {
-    marginBottom: 8,
-  },
-  headerTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 10,
-    gap: 10,
-  },
-  iconCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: COLORS.primarySoft,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  iconCircleMobile: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: "700",
-    color: COLORS.text,
-  },
-  titleMobile: {
-    fontSize: 18,
-  },
-  subtitle: {
-    fontSize: 12,
-    color: COLORS.muted,
-    marginTop: 1,
-  },
-  actionsBar: {
+  // TopBar
+  topBar: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "space-between",
     alignItems: "center",
+    marginBottom: 8,
     gap: 8,
+  },
+  titleArea: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  titleIconBadge: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: COLORS.primarySoft,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  headerTitle: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: COLORS.text,
+  },
+  headerSub: {
+    fontSize: 11,
+    color: COLORS.muted,
+  },
+  headerActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 6,
   },
   dateSelector: {
     flexDirection: "row",
@@ -1219,444 +1282,483 @@ const styles = StyleSheet.create({
     padding: 1,
   },
   dateNavBtn: {
-    paddingHorizontal: 8,
-    paddingVertical: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
   },
   dateCenterBtn: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
   },
   dateText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "600",
     color: COLORS.text,
   },
-  rightButtonsRow: {
+  btnGroup: {
     flexDirection: "row",
     alignItems: "center",
-    flexWrap: "wrap",
-    gap: 6,
+    gap: 5,
   },
-  btnCargarExcel: {
+  btnUpload: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#166534",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: THEME.radius.sm,
   },
-  btnCargarExcelText: {
+  btnUploadText: {
     color: "#FFFFFF",
     fontSize: 12,
     fontWeight: "600",
   },
-  btnSecondary: {
+  btnAction: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: COLORS.card,
     borderWidth: 1,
     borderColor: COLORS.border,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
     borderRadius: THEME.radius.sm,
   },
-  btnSecondaryText: {
+  btnActionText: {
     color: COLORS.text,
     fontSize: 12,
+    fontWeight: "600",
+  },
+  btnClear: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FEE2E2",
+    borderWidth: 1,
+    borderColor: "#FECACA",
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: THEME.radius.sm,
+  },
+  btnClearText: {
+    color: "#DC2626",
+    fontSize: 11,
     fontWeight: "600",
   },
   btnGhost: {
-    flexDirection: "row",
-    alignItems: "center",
+    padding: 6,
     backgroundColor: COLORS.primarySoft,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
     borderRadius: THEME.radius.sm,
   },
-  btnGhostText: {
-    color: COLORS.primary,
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  btnVaciar: {
+
+  // KPI Bar lineal
+  kpiBar: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FEE2E2",
-    borderColor: "#FECACA",
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: THEME.radius.sm,
-  },
-  btnVaciarText: {
-    color: "#DC2626",
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  btnTrashHeader: {
-    padding: 4,
-    borderRadius: 4,
-  },
-  btnEliminarModal: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FEE2E2",
-    borderWidth: 1,
-    borderColor: "#FECACA",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: THEME.radius.sm,
-    marginRight: "auto",
-  },
-  btnEliminarModalText: {
-    color: "#DC2626",
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  fileInfoBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#F0FDF4",
-    borderColor: "#BBF7D0",
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: THEME.radius.sm,
-    marginTop: 6,
-    gap: 5,
-  },
-  fileInfoText: {
-    fontSize: 11,
-    color: "#166534",
-    flex: 1,
-  },
-  // KPIs
-  kpiContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 10,
-  },
-  kpiCard: {
-    flex: 1,
-    minWidth: 120,
     backgroundColor: COLORS.card,
     borderRadius: THEME.radius.sm,
-    padding: 10,
     borderWidth: 1,
     borderColor: COLORS.border,
-    borderLeftWidth: 3.5,
-  },
-  kpiNumber: {
-    fontSize: 20,
-    fontWeight: "800",
-    color: COLORS.text,
-  },
-  kpiLabel: {
-    fontSize: 11,
-    color: COLORS.muted,
-    marginTop: 1,
-    fontWeight: "500",
-  },
-  // Filtros
-  filterSection: {
-    backgroundColor: COLORS.card,
-    borderRadius: THEME.radius.sm,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    marginBottom: 10,
-    gap: 8,
-  },
-  searchRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  searchBar: {
-    flex: 1,
-    minWidth: 200,
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: COLORS.bg,
-    borderRadius: THEME.radius.sm,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 13,
-    color: COLORS.text,
-    outlineStyle: "none" as any,
-  },
-  btnProximosToggle: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#EFF6FF",
-    borderColor: "#BFDBFE",
-    borderWidth: 1,
-    paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: THEME.radius.sm,
-  },
-  btnProximosToggleActive: {
-    backgroundColor: "#0284C7",
-    borderColor: "#0284C7",
-  },
-  btnProximosToggleText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#0284C7",
-  },
-  btnProximosToggleTextActive: {
-    color: "#FFFFFF",
-  },
-  chipsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: 5,
-  },
-  filterLabel: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: COLORS.muted,
-    marginRight: 2,
-  },
-  chip: {
-    backgroundColor: COLORS.bg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: THEME.radius.full,
-  },
-  chipActive: {
-    backgroundColor: COLORS.primarySoft,
-    borderColor: COLORS.primary,
-  },
-  chipText: {
-    fontSize: 11,
-    color: COLORS.muted,
-  },
-  chipTextActive: {
-    color: COLORS.primary,
-    fontWeight: "700",
-  },
-  // Listas y Grids
-  listContainer: {
-    gap: 8,
-  },
-  gridContainer: {
-    flexDirection: "row",
+    paddingHorizontal: 10,
+    marginBottom: 8,
     flexWrap: "wrap",
     gap: 10,
   },
-  cardEmpleado: {
-    backgroundColor: COLORS.card,
-    borderRadius: THEME.radius.sm,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    width: "100%",
-  },
-  cardEmpleadoGrid: {
-    width: "49.2%",
-  },
-  cardEmpleadoMobile: {
-    padding: 8,
-  },
-  cardEmpleadoEnBreak: {
-    borderColor: "#F59E0B",
-    backgroundColor: "#FFFDF7",
-    borderWidth: 1.5,
-  },
-  cardEmpleadoCumplido: {
-    borderColor: "#BBF7D0",
-    backgroundColor: "#F9FCFA",
-  },
-  cardHeaderRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 8,
-  },
-  nombreCatWrap: {
+  kpiItem: {
     flexDirection: "row",
     alignItems: "center",
-    flex: 1,
-    gap: 6,
+    gap: 4,
   },
-  empleadoNombre: {
-    fontSize: 14,
-    fontWeight: "700",
+  kpiVal: {
+    fontSize: 13,
+    fontWeight: "800",
     color: COLORS.text,
   },
-  empleadoNombreMobile: {
-    fontSize: 13,
+  kpiTag: {
+    fontSize: 11,
+    color: COLORS.muted,
   },
-  catBadge: {
+  kpiDivider: {
+    width: 1,
+    height: 12,
+    backgroundColor: COLORS.border,
+  },
+  kpiItemAction: {
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 6,
-    paddingVertical: 1.5,
+    paddingVertical: 2,
     borderRadius: 4,
-    borderWidth: 1,
   },
-  catBadgeText: {
-    fontSize: 10,
+  kpiItemActionActive: {
+    backgroundColor: "#EFF6FF",
+  },
+  kpiValAction: {
+    fontSize: 13,
     fontWeight: "800",
-    letterSpacing: 0.5,
+    color: COLORS.muted,
+    marginRight: 4,
   },
-  horarioEditablePill: {
+  kpiTagAction: {
+    fontSize: 11,
+    color: COLORS.muted,
+  },
+
+  // FilterBar moderna
+  filterBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.card,
+    borderRadius: THEME.radius.sm,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 6,
+    marginBottom: 8,
+    gap: 8,
+  },
+  searchBox: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: COLORS.bg,
+    borderRadius: THEME.radius.sm,
     paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    width: 170,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 12,
+    color: COLORS.text,
+    outlineStyle: "none" as any,
+  },
+  filterScrollContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  pillGroup: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  filterPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: THEME.radius.sm,
+    borderWidth: 1,
+    borderColor: "transparent",
+    backgroundColor: COLORS.bg,
+  },
+  filterPillActive: {
+    backgroundColor: COLORS.primarySoft,
+    borderColor: COLORS.primary,
+  },
+  filterPillText: {
+    fontSize: 11,
+    color: COLORS.muted,
+  },
+  filterPillTextActive: {
+    color: COLORS.primary,
+    fontWeight: "700",
+  },
+  filterPillBadge: {
+    fontSize: 10,
+    color: COLORS.muted,
+    marginLeft: 3,
+  },
+  catDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginRight: 4,
+  },
+  filterVDivider: {
+    width: 1,
+    height: 14,
+    backgroundColor: COLORS.border,
+    marginHorizontal: 2,
+  },
+
+  // Tabla Card
+  tableCard: {
+    backgroundColor: COLORS.card,
     borderRadius: THEME.radius.sm,
     borderWidth: 1,
     borderColor: COLORS.border,
+    overflow: "hidden",
+    width: "100%",
   },
-  horarioEditableText: {
+  tableHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.bg,
+    borderBottomWidth: 1,
+    borderColor: COLORS.border,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  thText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: COLORS.muted,
+    letterSpacing: 0.5,
+  },
+  cell: {
+    paddingRight: 6,
+  },
+
+  // Fila Wide (PC / Tablet)
+  rowWide: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderBottomWidth: 1,
+    borderColor: COLORS.border,
+  },
+  rowEnBreak: {
+    backgroundColor: "#FFFDF7",
+  },
+  rowCumplido: {
+    backgroundColor: "#FAFCFA",
+  },
+  rowNombre: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: COLORS.text,
+  },
+  badgeEiInline: {
+    backgroundColor: "#F0FDFA",
+    borderColor: "#99F6E4",
+    borderWidth: 1,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 3,
+    marginLeft: 5,
+  },
+  badgeEiInlineText: {
+    fontSize: 9,
+    fontWeight: "800",
+    color: "#0D9488",
+  },
+  catBadgeCompact: {
+    paddingHorizontal: 5,
+    paddingVertical: 1.5,
+    borderRadius: 3,
+    borderWidth: 1,
+    alignSelf: "flex-start",
+  },
+  catBadgeCompactText: {
+    fontSize: 10,
+    fontWeight: "800",
+  },
+  horarioInlineBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.bg,
+    paddingHorizontal: 6,
+    paddingVertical: 2.5,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  horarioInlineText: {
     fontSize: 11,
     fontWeight: "600",
     color: COLORS.text,
   },
-  cardSubRow: {
+  horarioHsMuted: {
+    fontSize: 10,
+    color: COLORS.muted,
+    marginLeft: 3,
+  },
+  breakPillFina: {
     flexDirection: "row",
     alignItems: "center",
-    flexWrap: "wrap",
-    gap: 6,
-    marginTop: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 1.5,
+    borderRadius: 3,
+    alignSelf: "flex-start",
   },
-  badgeBreakCompact: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  badgeBreak20: {
+  breakPill20: {
     backgroundColor: "#ECFDF5",
   },
-  badgeBreak40: {
+  breakPill40: {
     backgroundColor: "#FEF3C7",
   },
-  badgeBreakCompactText: {
-    fontSize: 11,
+  breakPillFinaText: {
+    fontSize: 10,
     fontWeight: "600",
   },
-  badgeProximo: {
+  dotPendiente: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: COLORS.muted,
+    marginRight: 5,
+  },
+  estadoPendienteText: {
+    fontSize: 11,
+    color: COLORS.muted,
+  },
+  proximoPillInline: {
+    backgroundColor: "#EFF6FF",
+    borderColor: "#BFDBFE",
+    borderWidth: 1,
+    borderRadius: 3,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    marginLeft: 6,
+  },
+  proximoPillInlineText: {
+    fontSize: 9,
+    fontWeight: "700",
+    color: "#0284C7",
+  },
+  salioInlineWrap: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#F0F9FF",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
+    gap: 6,
+  },
+  salioInlineHoras: {
+    fontSize: 11,
+    color: COLORS.text,
+  },
+  timerPillMini: {
+    backgroundColor: "#FEF3C7",
+    borderColor: "#F59E0B",
     borderWidth: 1,
-    borderColor: "#BAE6FD",
+    borderRadius: 3,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
   },
-  badgeProximoText: {
-    fontSize: 10,
-    color: "#0284C7",
-    fontWeight: "600",
+  timerPillMiniText: {
+    fontSize: 9,
+    fontWeight: "700",
+    color: "#B45309",
   },
-  // Acciones compactas
-  breakActionRow: {
+  cumplidoPillMini: {
+    backgroundColor: "#ECFDF5",
+    borderColor: "#10B981",
+    borderWidth: 1,
+    borderRadius: 3,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+  },
+  cumplidoPillMiniText: {
+    fontSize: 9,
+    fontWeight: "700",
+    color: "#047857",
+  },
+  btnBreakLineal: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#059669",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  btnBreakLinealText: {
+    color: "#FFFFFF",
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  btnIconAction: {
+    padding: 4,
+    borderRadius: 4,
+  },
+  btnIconActionDanger: {
+    padding: 4,
+    borderRadius: 4,
+  },
+
+  // Fila Mobile (Celular)
+  rowMobile: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderBottomWidth: 1,
+    borderColor: COLORS.border,
+    gap: 4,
+  },
+  mobileRowTop: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginTop: 8,
-    gap: 8,
   },
-  btnMarcarSalidaCompact: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#059669",
-    paddingVertical: 7,
-    paddingHorizontal: 12,
-    borderRadius: THEME.radius.sm,
-  },
-  btnMarcarSalidaCompactMobile: {
-    paddingVertical: 6,
-  },
-  btnMarcarSalidaCompactText: {
-    color: "#FFFFFF",
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  salioCompactBox: {
-    backgroundColor: "#FFFBEB",
-    borderColor: "#FDE68A",
-    borderWidth: 1,
-    borderRadius: THEME.radius.sm,
-    padding: 6,
-    marginTop: 6,
-  },
-  salioDatosRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  salioItemCompact: {
-    alignItems: "flex-start",
-  },
-  salioItemLabel: {
-    fontSize: 9,
-    color: COLORS.muted,
-    fontWeight: "700",
-  },
-  salioItemVal: {
+  rowNombreMobile: {
     fontSize: 13,
     fontWeight: "700",
     color: COLORS.text,
   },
-  countdownPillCompact: {
-    backgroundColor: "#FEF3C7",
-    borderColor: "#F59E0B",
-    borderWidth: 1,
+  horarioInlineBtnMobile: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.bg,
     paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: THEME.radius.full,
-  },
-  countdownPillCompactText: {
-    fontSize: 10,
-    fontWeight: "700",
-    color: "#B45309",
-  },
-  cumplidoPillCompact: {
-    backgroundColor: "#ECFDF5",
-    borderColor: "#10B981",
+    borderRadius: 3,
     borderWidth: 1,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: THEME.radius.full,
+    borderColor: COLORS.border,
+    marginLeft: 6,
   },
-  cumplidoPillCompactText: {
+  horarioInlineTextMobile: {
     fontSize: 10,
     fontWeight: "600",
-    color: "#047857",
+    color: COLORS.text,
+    marginRight: 3,
   },
-  btnMiniGhost: {
-    padding: 5,
+  btnIconActionDangerMobile: {
+    padding: 3,
+    marginLeft: 4,
   },
+  mobileRowBottom: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  btnBreakMobile: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#059669",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  btnBreakMobileText: {
+    color: "#FFFFFF",
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  salioMobileInline: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+  salioMobileText: {
+    fontSize: 11,
+    color: COLORS.text,
+  },
+  btnIconActionMobile: {
+    padding: 2,
+  },
+
+  // Empty / Loading
   centerContainer: {
     padding: 30,
     alignItems: "center",
   },
   loadingText: {
-    marginTop: 10,
+    marginTop: 8,
     color: COLORS.muted,
     fontSize: 12,
   },
   emptyContainer: {
-    padding: 30,
+    padding: 24,
     alignItems: "center",
     backgroundColor: COLORS.card,
     borderRadius: THEME.radius.sm,
@@ -1664,59 +1766,44 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
   },
   emptyTitle: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "600",
     color: COLORS.text,
-    marginBottom: 4,
+    marginBottom: 3,
   },
   emptyDesc: {
-    fontSize: 12,
+    fontSize: 11,
     color: COLORS.muted,
     textAlign: "center",
-    maxWidth: 460,
-    marginBottom: 14,
-    lineHeight: 18,
+    maxWidth: 400,
+    marginBottom: 12,
   },
   btnResetFilter: {
     backgroundColor: COLORS.primarySoft,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: THEME.radius.sm,
   },
   btnResetFilterText: {
     color: COLORS.primary,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "600",
   },
+
   // Modales
   modalBackdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
     justifyContent: "center",
     alignItems: "center",
-    padding: 16,
+    padding: 14,
   },
-  editModalCard: {
+  modalCard: {
     width: "100%",
-    maxWidth: 440,
+    maxWidth: 420,
     backgroundColor: COLORS.card,
     borderRadius: THEME.radius.md,
-    padding: 16,
-  },
-  addModalCard: {
-    width: "100%",
-    maxWidth: 440,
-    backgroundColor: COLORS.card,
-    borderRadius: THEME.radius.md,
-    padding: 16,
-  },
-  debugModalCard: {
-    width: "100%",
-    maxWidth: 680,
-    maxHeight: "85%",
-    backgroundColor: COLORS.card,
-    borderRadius: THEME.radius.md,
-    padding: 16,
+    padding: 14,
   },
   modalHeader: {
     flexDirection: "row",
@@ -1725,66 +1812,67 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   modalTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "700",
     color: COLORS.text,
   },
   modalDesc: {
     fontSize: 11,
     color: COLORS.muted,
-    marginBottom: 10,
+    marginBottom: 8,
   },
   editEmpNombre: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "700",
     color: COLORS.primary,
-    marginBottom: 8,
+    marginBottom: 6,
   },
   catSelectRow: {
     flexDirection: "row",
-    gap: 6,
+    gap: 5,
     flexWrap: "wrap",
-    marginTop: 4,
+    marginTop: 3,
   },
   catSelectBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
     borderRadius: THEME.radius.sm,
     borderWidth: 1,
     backgroundColor: COLORS.bg,
   },
   catSelectBtnText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "700",
   },
   debugScrollArea: {
     backgroundColor: "#0F172A",
     borderRadius: THEME.radius.sm,
-    padding: 10,
-    maxHeight: 320,
-    marginBottom: 12,
+    padding: 8,
+    maxHeight: 280,
+    marginBottom: 10,
   },
   codeText: {
     color: "#38BDF8",
     fontFamily: Platform.OS === "web" ? "monospace" : "System",
     fontSize: 11,
-    lineHeight: 16,
+    lineHeight: 15,
   },
   modalFooterRow: {
     flexDirection: "row",
     justifyContent: "flex-end",
-    gap: 8,
-    marginTop: 14,
+    alignItems: "center",
+    gap: 6,
+    marginTop: 12,
   },
-  btnCopiaPrompt: {
+  btnGuardarModal: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: COLORS.primary,
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 7,
     borderRadius: THEME.radius.sm,
   },
-  btnCopiaPromptText: {
+  btnGuardarModalText: {
     color: "#FFFFFF",
     fontSize: 12,
     fontWeight: "600",
@@ -1793,48 +1881,64 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.bg,
     borderWidth: 1,
     borderColor: COLORS.border,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
     borderRadius: THEME.radius.sm,
   },
   btnCerrarModalText: {
     color: COLORS.text,
     fontSize: 12,
   },
+  btnEliminarModal: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FEE2E2",
+    borderWidth: 1,
+    borderColor: "#FECACA",
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: THEME.radius.sm,
+    marginRight: "auto",
+  },
+  btnEliminarModalText: {
+    color: "#DC2626",
+    fontSize: 11,
+    fontWeight: "600",
+  },
   copiedBanner: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#D1FAE5",
-    padding: 6,
+    padding: 5,
     borderRadius: THEME.radius.sm,
-    marginBottom: 8,
+    marginBottom: 6,
   },
   copiedBannerText: {
-    fontSize: 11,
+    fontSize: 10,
     color: "#047857",
     fontWeight: "600",
   },
   inputLabel: {
-    fontSize: 11,
-    fontWeight: "600",
+    fontSize: 10,
+    fontWeight: "700",
     color: COLORS.text,
-    marginBottom: 3,
-    marginTop: 6,
+    marginBottom: 2,
+    marginTop: 5,
   },
   inputModal: {
     backgroundColor: COLORS.bg,
     borderWidth: 1,
     borderColor: COLORS.border,
     borderRadius: THEME.radius.sm,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    fontSize: 13,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    fontSize: 12,
     color: COLORS.text,
     outlineStyle: "none" as any,
   },
   errorText: {
     color: COLORS.danger,
     fontSize: 11,
-    marginBottom: 6,
+    marginBottom: 5,
   },
 });
