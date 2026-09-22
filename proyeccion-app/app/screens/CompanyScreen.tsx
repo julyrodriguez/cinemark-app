@@ -1027,13 +1027,13 @@ export default function CompanyScreen() {
           </View>
 
           {/* Card 6: Shows & Complejos */}
-          <View style={[styles.companyKpiCard, { borderTopColor: "#64748B" }]}>
+          <View style={[styles.companyKpiCard, { borderTopColor: COLORS.muted }]}>
             <View style={styles.companyKpiTopRow}>
-              <View style={[styles.companyKpiIconCircle, { backgroundColor: "#F1F5F9" }]}>
-                <MaterialCommunityIcons name="theater" size={18} color="#334155" />
+              <View style={[styles.companyKpiIconCircle, { backgroundColor: COLORS.bgMobile }]}>
+                <MaterialCommunityIcons name="theater" size={18} color={COLORS.textSoft} />
               </View>
-              <View style={[styles.companyKpiTag, { backgroundColor: "#F1F5F9" }]}>
-                <Text style={[styles.companyKpiTagText, { color: "#334155" }]}>Red</Text>
+              <View style={[styles.companyKpiTag, { backgroundColor: COLORS.bgMobile }]}>
+                <Text style={[styles.companyKpiTagText, { color: COLORS.textSoft }]}>Red</Text>
               </View>
             </View>
             <Text style={styles.companyKpiNumber}>
@@ -2779,10 +2779,10 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   trasnocheModernCard: {
-    backgroundColor: "#1E293B",
+    backgroundColor: COLORS.card,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#334155",
+    borderColor: COLORS.border,
     padding: 16,
     marginBottom: 16,
     ...Platform.select({
@@ -2796,7 +2796,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "#334155",
+    borderBottomColor: COLORS.border,
   },
   trasnocheMoonCircle: {
     width: 40,
@@ -2810,11 +2810,11 @@ const styles = StyleSheet.create({
   trasnocheModernTitle: {
     fontSize: 14,
     fontWeight: "bold",
-    color: "#F8FAFC",
+    color: COLORS.text,
   },
   trasnocheModernSubtitle: {
     fontSize: 11,
-    color: "#94A3B8",
+    color: COLORS.muted,
     marginTop: 2,
   },
   trasnocheModernStatsGrid: {
@@ -2833,7 +2833,7 @@ const styles = StyleSheet.create({
   },
   trasnocheModernLbl: {
     fontSize: 10,
-    color: "#94A3B8",
+    color: COLORS.muted,
     marginTop: 4,
     textAlign: "center",
   },

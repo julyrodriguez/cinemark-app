@@ -1093,7 +1093,7 @@ export default function DcpScreen({ readOnly = false }: { readOnly?: boolean }) 
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    style={[styles.retireActionBtn, { backgroundColor: "#E2E8F0" }]}
+                    style={[styles.retireActionBtn, { backgroundColor: COLORS.bgMobile, borderWidth: 1, borderColor: COLORS.border }]}
                     onPress={() => setShowCustomDate(false)}
                   >
                     <Text style={[styles.retireActionBtnText, { color: COLORS.text }]}>Volver</Text>

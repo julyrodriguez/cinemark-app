@@ -1147,7 +1147,7 @@ export default function CoordinadoresLentesScreen() {
                     const pct = totalUsados > 0 ? (totalLoss / totalUsados) * 100 : 0;
                     return (
                       <>
-                        <Text style={[s.statValue, { color: pct > 5 ? "#DC2626" : "#0F172A" }]}>
+                        <Text style={[s.statValue, { color: pct > 5 ? COLORS.danger : COLORS.text }]}>
                           {pct.toFixed(1)}%
                         </Text>
                         <Text style={s.statSubText}>Total pérdida: {totalLoss}</Text>
@@ -1568,8 +1568,8 @@ export default function CoordinadoresLentesScreen() {
                   value={cierreResponsable}
                   onChangeText={setCierreResponsable}
                   placeholder="Nombre y apellido"
-                  placeholderTextColor="#64748B"
-                  style={[s.input, { backgroundColor: "#F1F5F9" }]}
+                  placeholderTextColor={COLORS.muted}
+                  style={[s.input, { backgroundColor: COLORS.card, borderColor: COLORS.border }]}
                 />
               </View>
 

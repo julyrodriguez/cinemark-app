@@ -866,12 +866,12 @@ export default function AdminCinesScreen() {
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[s.btnSecondary, { marginTop: 12, backgroundColor: "#fef3c7", borderColor: "#f59e0b" }]}
+                style={[s.btnSecondary, { marginTop: 12, backgroundColor: COLORS.warningBg, borderColor: COLORS.warningBorder }]}
                 onPress={() => handleSetOficinasRole(selectedCine.cineId)}
                 activeOpacity={0.8}
               >
-                <MaterialCommunityIcons name="office-building" size={18} color="#f59e0b" />
-                <Text style={[s.btnSecondaryText, { color: "#f59e0b" }]}>Convertir a Rol Oficinas</Text>
+                <MaterialCommunityIcons name="office-building" size={18} color={COLORS.warning} />
+                <Text style={[s.btnSecondaryText, { color: COLORS.warning }]}>Convertir a Rol Oficinas</Text>
               </TouchableOpacity>
             </SectionCard>
           </>
@@ -1242,20 +1242,20 @@ const s = StyleSheet.create({
     borderRadius: 12,
   },
   statusActive: {
-    backgroundColor: "#d1fae5",
+    backgroundColor: COLORS.successBg,
   },
   statusInactive: {
-    backgroundColor: "#fee2e2",
+    backgroundColor: COLORS.dangerSoft,
   },
   statusText: {
     fontSize: 12,
     fontWeight: "700",
   },
   statusTextActive: {
-    color: "#15803d",
+    color: COLORS.success,
   },
   statusTextInactive: {
-    color: "#b91c1c",
+    color: COLORS.danger,
   },
   cineActions: {
     flexDirection: "row",
@@ -1267,7 +1267,7 @@ const s = StyleSheet.create({
     borderRadius: 20,
     backgroundColor: COLORS.primarySoft,
     borderWidth: 1,
-    borderColor: "#f1caca",
+    borderColor: COLORS.border,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1275,9 +1275,9 @@ const s = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: "#fee2e2",
+    backgroundColor: COLORS.dangerSoft,
     borderWidth: 1,
-    borderColor: "#fecaca",
+    borderColor: COLORS.danger,
     alignItems: "center",
     justifyContent: "center",
   },

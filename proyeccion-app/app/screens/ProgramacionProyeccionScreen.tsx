@@ -2430,15 +2430,15 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                 disabled={!show.isSimulated}
                 style={[
                   styles.listButton,
-                  is3D && !hasEntered && { backgroundColor: "#FFFFFF" },
-                  hasEntered && { backgroundColor: "#E2E8F0" },
+                  is3D && !hasEntered && { backgroundColor: COLORS.card },
+                  hasEntered && { backgroundColor: COLORS.bgMobile },
                   !show.isSimulated && { opacity: 0.4 }
                 ]}
               >
                 <Text style={[
                   styles.listButtonText,
                   is3D && show.isSimulated && !hasEntered ? { color: movieAccentColor } : null,
-                  hasEntered && { color: "#64748B" }
+                  hasEntered && { color: COLORS.muted }
                 ]}>
                   {show.isSimulated ? "Ver Asientos" : "Sin Mapa"}
                 </Text>
@@ -3830,7 +3830,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: Platform.OS === "web" ? "var(--card, #1E293B)" : "#1E293B",
+    backgroundColor: COLORS.card,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
     paddingHorizontal: 16,
@@ -3850,7 +3850,7 @@ const styles = StyleSheet.create({
   adjustmentToggle: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #334155)" : "#334155",
+    backgroundColor: COLORS.bgMobile,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 6,
@@ -4342,7 +4342,7 @@ const styles = StyleSheet.create({
   apiToggleButton: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: Platform.OS === "web" ? "var(--card, #1E293B)" : "#1E293B",
+    backgroundColor: COLORS.card,
     borderColor: COLORS.border,
     borderWidth: 1,
     paddingHorizontal: 12,
@@ -4405,7 +4405,7 @@ const styles = StyleSheet.create({
   weekSelectorContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: Platform.OS === "web" ? "var(--card, #1E293B)" : "#1E293B",
+    backgroundColor: COLORS.card,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
     paddingHorizontal: THEME.spacing.md,
@@ -4476,7 +4476,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: Platform.OS === "web" ? "var(--card, #1E293B)" : "#1E293B",
+    backgroundColor: COLORS.card,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
     paddingHorizontal: THEME.spacing.md,
@@ -5196,7 +5196,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: Platform.OS === "web" ? "var(--card, #1E293B)" : "#1E293B",
+    backgroundColor: COLORS.card,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: COLORS.border,

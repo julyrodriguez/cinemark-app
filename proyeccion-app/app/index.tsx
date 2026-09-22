@@ -29,7 +29,7 @@ import {
   checkServerHealth
 } from "@/lib/dbService";
 import { authorizeCurrentIp, checkIpAccess } from "../lib/ipAccess";
-import { COLORS, THEME } from "../lib/theme";
+import { COLORS, THEME, applyTheme, getSavedTheme, saveTheme } from "../lib/theme";
 import { useAppLayout } from "../lib/useAppLayout";
 import { useAuthUser } from "../lib/useAuthUser";
 
@@ -104,74 +104,6 @@ const SUB_TABS = {
   ],
 } as const;
 
-function applyTheme(mode: "light" | "dark") {
-  if (Platform.OS !== "web") return;
-  const root = document.documentElement;
-  if (mode === "dark") {
-    root.style.setProperty("--bg", "#0F172A");
-    root.style.setProperty("--bg-mobile", "#0B0F19");
-    root.style.setProperty("--primary", "#E11D48");
-    root.style.setProperty("--primary-dark", "#9F1239");
-    root.style.setProperty("--primary-soft", "#311018");
-    root.style.setProperty("--text", "#F8FAFC");
-    root.style.setProperty("--muted", "#94A3B8");
-    root.style.setProperty("--text-soft", "#94A3B8");
-    root.style.setProperty("--card", "#1E293B");
-    root.style.setProperty("--border", "#334155");
-    root.style.setProperty("--success-bg", "#064E3B");
-    root.style.setProperty("--success", "#10B981");
-    root.style.setProperty("--success-border", "#047857");
-    root.style.setProperty("--danger", "#EF4444");
-    root.style.setProperty("--danger-soft", "#450A0A");
-    root.style.setProperty("--warning", "#F59E0B");
-    root.style.setProperty("--warning-bg", "#381A04");
-    root.style.setProperty("--warning-border", "#78350F");
-    root.style.setProperty("--info", "#3B82F6");
-    root.style.setProperty("--info-bg", "#172554");
-    root.style.setProperty("--info-border", "#1E3A8A");
-    root.style.setProperty("--beta-bg", "#25183E");
-    root.style.setProperty("--beta-border", "#7C3AED");
-    root.style.setProperty("--beta-text", "#A78BFA");
-    root.style.setProperty("--beta-text-soft", "#C084FC");
-    root.style.setProperty("--beta-badge-bg", "#4C1D95");
-    root.style.setProperty("--beta-file-picker-bg", "#1E1530");
-    root.style.setProperty("--beta-file-picker-text", "#DDD6FE");
-    root.style.setProperty("--beta-divider", "#4C1D95");
-    root.style.setProperty("--beta-btn-disabled", "#581C87");
-  } else {
-    root.style.setProperty("--bg", "#F8FAFC");
-    root.style.setProperty("--bg-mobile", "#F1F5F9");
-    root.style.setProperty("--primary", "#890404");
-    root.style.setProperty("--primary-dark", "#6f0303");
-    root.style.setProperty("--primary-soft", "#FBEAEA");
-    root.style.setProperty("--text", "#0F172A");
-    root.style.setProperty("--muted", "#64748B");
-    root.style.setProperty("--text-soft", "#64748B");
-    root.style.setProperty("--card", "#FFFFFF");
-    root.style.setProperty("--border", "#E2E8F0");
-    root.style.setProperty("--success-bg", "#D1FAE5");
-    root.style.setProperty("--success", "#047857");
-    root.style.setProperty("--success-border", "#BBF7D0");
-    root.style.setProperty("--danger", "#DC2626");
-    root.style.setProperty("--danger-soft", "#FEE2E2");
-    root.style.setProperty("--warning", "#8a5a00");
-    root.style.setProperty("--warning-bg", "#fff4d6");
-    root.style.setProperty("--warning-border", "#ead9a5");
-    root.style.setProperty("--info", "#1E40AF");
-    root.style.setProperty("--info-bg", "#F0F7FF");
-    root.style.setProperty("--info-border", "#b8d4f0");
-    root.style.setProperty("--beta-bg", "#F5F3FF");
-    root.style.setProperty("--beta-border", "#8B5CF6");
-    root.style.setProperty("--beta-text", "#7C3AED");
-    root.style.setProperty("--beta-text-soft", "#6D28D9");
-    root.style.setProperty("--beta-badge-bg", "#EDE9FE");
-    root.style.setProperty("--beta-file-picker-bg", "#F3E8FF");
-    root.style.setProperty("--beta-file-picker-text", "#4C1D95");
-    root.style.setProperty("--beta-divider", "#DDD6FE");
-    root.style.setProperty("--beta-btn-disabled", "#C084FC");
-  }
-}
-
 export default function Home() {
   const layout = useAppLayout();
   const { isWeb, isMobile, isTablet, pagePadding, contentMaxWidth } = layout;
@@ -219,21 +151,13 @@ export default function Home() {
     const nextMode = themeMode === "light" ? "dark" : "light";
     setThemeMode(nextMode);
     applyTheme(nextMode);
-    if (Platform.OS === "web") {
-      localStorage.setItem("theme_mode", nextMode);
-    }
+    saveTheme(nextMode);
   };
 
   useEffect(() => {
-    if (Platform.OS === "web") {
-      const saved = localStorage.getItem("theme_mode") as "light" | "dark";
-      if (saved === "dark" || saved === "light") {
-        setThemeMode(saved);
-        applyTheme(saved);
-      } else {
-        applyTheme("light");
-      }
-    }
+    const saved = getSavedTheme();
+    setThemeMode(saved);
+    applyTheme(saved);
   }, []);
 
   const {
@@ -1726,7 +1650,7 @@ const styles = StyleSheet.create({
     height: 36,
   },
   submenuBtnActive: {
-    backgroundColor: "#F8FAFC",
+    backgroundColor: COLORS.bgMobile,
   },
   submenuBtnIcon: {
     marginRight: 10,
@@ -1773,12 +1697,12 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
   },
   lockBannerLocked: {
-    backgroundColor: "#fef2f2",
-    borderColor: "#fca5a5",
+    backgroundColor: COLORS.dangerSoft,
+    borderColor: COLORS.danger,
   },
   lockBannerUnlocked: {
-    backgroundColor: "#f0fdf4",
-    borderColor: "#86efac",
+    backgroundColor: COLORS.successBg,
+    borderColor: COLORS.success,
   },
   lockBannerTextWrap: {
     flexDirection: "row",
@@ -1847,9 +1771,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: "#fef2f2",
+    backgroundColor: COLORS.dangerSoft,
     borderWidth: 1,
-    borderColor: "#fca5a5",
+    borderColor: COLORS.danger,
     borderRadius: 8,
     paddingVertical: 10,
     paddingHorizontal: 16,
@@ -1870,7 +1794,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "#fee2e2",
+    backgroundColor: COLORS.card,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1887,10 +1811,10 @@ const styles = StyleSheet.create({
   serverOfflineTitle: {
     fontSize: 14,
     fontWeight: "800",
-    color: "#b91c1c",
+    color: COLORS.danger,
   },
   serverOfflineTag: {
-    backgroundColor: "#fecaca",
+    backgroundColor: COLORS.card,
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
@@ -1898,24 +1822,24 @@ const styles = StyleSheet.create({
   serverOfflineTagText: {
     fontSize: 10,
     fontWeight: "700",
-    color: "#991b1b",
+    color: COLORS.danger,
   },
   serverOfflineSubtitle: {
     fontSize: 12,
-    color: "#991b1b",
+    color: COLORS.muted,
     lineHeight: 17,
   },
   serverOfflineRetryBtn: {
     paddingVertical: 6,
     paddingHorizontal: 12,
     borderRadius: 6,
-    backgroundColor: "#fee2e2",
+    backgroundColor: COLORS.card,
     borderWidth: 1,
-    borderColor: "#fca5a5",
+    borderColor: COLORS.danger,
   },
   serverOfflineRetryText: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#b91c1c",
+    color: COLORS.danger,
   },
 });

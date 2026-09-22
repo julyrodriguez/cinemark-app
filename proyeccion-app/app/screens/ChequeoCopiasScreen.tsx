@@ -2170,7 +2170,7 @@ const s = StyleSheet.create({
   },
   printBtn: {
     height: 48,
-    backgroundColor: "#1F497D", // Cinemark dark blue theme color for checklist
+    backgroundColor: COLORS.primary,
     borderRadius: THEME.radius.md,
     justifyContent: "center",
     alignItems: "center",

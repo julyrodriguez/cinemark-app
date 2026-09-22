@@ -164,7 +164,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     alignSelf: "flex-start",
-    backgroundColor: "rgba(30, 64, 175, 0.08)",
+    backgroundColor: THEME.colors.infoBg,
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 999,

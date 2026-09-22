@@ -847,5 +847,6 @@ export function httpsCallable<RequestData = any, ResponseData = any>(
 export {
   DocumentData,
   QueryDocumentSnapshot,
-  Timestamp
+  Timestamp,
+  runTransaction
 } from "firebase/firestore";

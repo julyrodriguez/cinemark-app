@@ -797,7 +797,7 @@ diaScrollContent: {
     paddingBottom: THEME.spacing.md,
     marginBottom: THEME.spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: "#e2e8f0",
+    borderBottomColor: COLORS.border,
   },
   diaHeaderHoy: {
     borderBottomColor: COLORS.primary,
@@ -825,7 +825,7 @@ diaScrollContent: {
     height: 38,
     paddingHorizontal: 10,
     borderRadius: 999,
-    backgroundColor: "#eef2f7",
+    backgroundColor: COLORS.bgMobile,
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
@@ -851,10 +851,10 @@ diaScrollContent: {
 
   eventoCard: {
     padding: 16,
-    backgroundColor: "#ffffff",
+    backgroundColor: COLORS.card,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#e5e7eb",
+    borderColor: COLORS.border,
     shadowColor: "#000",
     shadowOpacity: 0.04,
     shadowRadius: 8,
@@ -882,9 +882,9 @@ diaScrollContent: {
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 999,
-    backgroundColor: "#f8fafc",
+    backgroundColor: COLORS.bgMobile,
     borderWidth: 1,
-    borderColor: "#e2e8f0",
+    borderColor: COLORS.border,
   },
   salaPillText: {
     fontSize: 11,
@@ -922,36 +922,36 @@ diaScrollContent: {
     borderWidth: 1,
   },
   badgeOk: {
-    backgroundColor: "#ecfdf5",
-    borderColor: "#a7f3d0",
+    backgroundColor: COLORS.successBg,
+    borderColor: COLORS.successBorder,
   },
   badgeDanger: {
-    backgroundColor: "#fef2f2",
-    borderColor: "#fecaca",
+    backgroundColor: COLORS.dangerSoft,
+    borderColor: COLORS.danger,
   },
   badgeNeutral: {
-    backgroundColor: "#eff6ff",
-    borderColor: "#bfdbfe",
+    backgroundColor: COLORS.infoBg,
+    borderColor: COLORS.infoBorder,
   },
   badgeInfo: {
-    backgroundColor: "#faf5ff",
-    borderColor: "#e9d5ff",
+    backgroundColor: COLORS.betaBg,
+    borderColor: COLORS.betaBorder,
   },
   badgeText: {
     fontSize: 11,
     fontWeight: "800",
   },
   badgeTextOk: {
-    color: "#047857",
+    color: COLORS.success,
   },
   badgeTextDanger: {
-    color: "#b91c1c",
+    color: COLORS.danger,
   },
   badgeTextNeutral: {
-    color: "#1d4ed8",
+    color: COLORS.info,
   },
   badgeTextInfo: {
-    color: "#7c3aed",
+    color: COLORS.betaText,
   },
 
   emptyBox: {
@@ -984,7 +984,7 @@ diaScrollContent: {
     paddingBottom: THEME.spacing.sm,
     marginBottom: THEME.spacing.sm,
     borderBottomWidth: 1,
-    borderBottomColor: "#e2e8f0",
+    borderBottomColor: COLORS.border,
   },
   diaNombreMensual: {
     fontSize: THEME.fontSize.md,

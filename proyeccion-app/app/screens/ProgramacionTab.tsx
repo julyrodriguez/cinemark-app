@@ -1334,8 +1334,8 @@ export default function ProgramacionTab() {
             marginTop: 12,
             paddingVertical: 12,
             paddingHorizontal: 16,
-            backgroundColor: includeCreditos ? "#FFFBEB" : COLORS.card,
-            borderColor: includeCreditos ? "#F59E0B" : COLORS.border,
+            backgroundColor: includeCreditos ? COLORS.warningBg : COLORS.card,
+            borderColor: includeCreditos ? COLORS.warningBorder : COLORS.border,
             borderWidth: 1,
             borderRadius: 12,
           },
@@ -1348,7 +1348,7 @@ export default function ProgramacionTab() {
                 width: 36,
                 height: 36,
                 borderRadius: 18,
-                backgroundColor: includeCreditos ? "#FDE68A" : "#F3F4F6",
+                backgroundColor: includeCreditos ? COLORS.warningBorder : COLORS.bgMobile,
                 alignItems: "center",
                 justifyContent: "center",
                 marginRight: 12,
@@ -1357,7 +1357,7 @@ export default function ProgramacionTab() {
               <MaterialCommunityIcons
                 name="movie-open-star-outline"
                 size={20}
-                color={includeCreditos ? "#B45309" : COLORS.muted}
+                color={includeCreditos ? COLORS.warning : COLORS.muted}
               />
             </View>
             <View style={{ flex: 1 }}>
@@ -1372,7 +1372,7 @@ export default function ProgramacionTab() {
           <Switch
             value={includeCreditos}
             onValueChange={setIncludeCreditos}
-            trackColor={{ false: COLORS.border, true: "#F59E0B" }}
+            trackColor={{ false: COLORS.border, true: COLORS.warning }}
             thumbColor="#fff"
           />
         </View>
@@ -1383,11 +1383,11 @@ export default function ProgramacionTab() {
               marginTop: 12,
               paddingTop: 10,
               borderTopWidth: 1,
-              borderTopColor: "#FDE68A",
+              borderTopColor: COLORS.warningBorder,
               flexDirection: "row",
               alignItems: "flex-start",
               gap: 8,
-              backgroundColor: "rgba(245, 158, 11, 0.08)",
+              backgroundColor: COLORS.warningBg,
               padding: 10,
               borderRadius: 8,
             }}
@@ -1395,14 +1395,14 @@ export default function ProgramacionTab() {
             <MaterialCommunityIcons
               name="information"
               size={18}
-              color="#D97706"
+              color={COLORS.warning}
               style={{ marginTop: 1 }}
             />
             <Text
               style={{
                 flex: 1,
                 fontSize: 11.5,
-                color: "#92400E",
+                color: COLORS.warning,
                 lineHeight: 16,
               }}
             >

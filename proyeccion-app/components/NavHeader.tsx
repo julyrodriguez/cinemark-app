@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 
-import { COLORS, THEME } from "@/lib/theme";
+import { COLORS, THEME, applyTheme, getSavedTheme, saveTheme } from "@/lib/theme";
 import { useAppLayout } from "@/lib/useAppLayout";
 
 export type NewsItem = {
@@ -189,11 +189,30 @@ export default function NavHeader({
   subtitle,
   onPressSettings,
   onPressMenu,
-  themeMode = "light",
+  themeMode: themeModeProp,
   onToggleTheme,
   newsItems,
 }: Props) {
   const { isWeb, isMobile } = useAppLayout();
+  const [internalTheme, setInternalTheme] = useState<"light" | "dark">("light");
+
+  useEffect(() => {
+    setInternalTheme(getSavedTheme());
+  }, []);
+
+  const activeTheme = themeModeProp ?? internalTheme;
+  const isDark = activeTheme === "dark";
+
+  const handleToggleTheme = useCallback(() => {
+    if (onToggleTheme) {
+      onToggleTheme();
+    } else {
+      const next = activeTheme === "light" ? "dark" : "light";
+      setInternalTheme(next);
+      applyTheme(next);
+      saveTheme(next);
+    }
+  }, [onToggleTheme, activeTheme]);
 
   const news = newsItems && newsItems.length > 0 ? newsItems : DEFAULT_NEWS;
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -247,8 +266,6 @@ export default function NavHeader({
     const prev = (currentIndex - 1 + news.length) % news.length;
     changeNews(prev);
   }, [currentIndex, news.length, changeNews]);
-
-  const isDark = themeMode === "dark";
 
   return (
     <View
@@ -407,11 +424,11 @@ export default function NavHeader({
         <View style={s.sideRightWrap}>
           <TouchableOpacity
             style={s.iconBtn}
-            onPress={onToggleTheme}
+            onPress={handleToggleTheme}
             activeOpacity={0.85}
           >
             <MaterialCommunityIcons
-              name={themeMode === "dark" ? "weather-sunny" : "weather-night"}
+              name={activeTheme === "dark" ? "weather-sunny" : "weather-night"}
               size={isMobile ? 22 : 24}
               color={COLORS.text}
             />
@@ -582,7 +599,7 @@ const s = StyleSheet.create({
   brokerCardLight: {
     backgroundColor: "#F8FAFC",
     borderColor: "#E2E8F0",
-    shadowColor: "#0F172A",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 5,
@@ -590,12 +607,12 @@ const s = StyleSheet.create({
   },
 
   brokerCardDark: {
-    backgroundColor: "rgba(30, 41, 59, 0.8)",
-    borderColor: "rgba(71, 85, 105, 0.5)",
+    backgroundColor: "rgba(24, 24, 27, 0.85)",
+    borderColor: "rgba(63, 63, 70, 0.6)",
   },
 
   brokerCardHover: {
-    borderColor: "#94A3B8",
+    borderColor: "#71717A",
   },
 
   badgeContainer: {
@@ -652,7 +669,7 @@ const s = StyleSheet.create({
   },
 
   tickerMessageDark: {
-    color: "#F8FAFC",
+    color: "#F4F4F5",
   },
 
   tickerMetricWrap: {
@@ -676,7 +693,7 @@ const s = StyleSheet.create({
     gap: 3,
     paddingLeft: 6,
     borderLeftWidth: 1,
-    borderLeftColor: "rgba(148, 163, 184, 0.25)",
+    borderLeftColor: "rgba(161, 161, 170, 0.25)",
     flexShrink: 0,
   },
 

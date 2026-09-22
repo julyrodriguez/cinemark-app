@@ -349,7 +349,7 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 13,
     fontWeight: "700",
-    color: "#334155",
+    color: COLORS.text,
     marginBottom: 7,
   },
 
@@ -367,7 +367,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     borderRadius: 16,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: COLORS.card,
     paddingLeft: 44,
     paddingRight: 12,
   },

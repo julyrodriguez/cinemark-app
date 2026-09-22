@@ -101,7 +101,7 @@ const st = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderColor: COLORS.border,
-    backgroundColor: "#fff",
+    backgroundColor: COLORS.card,
     alignItems: "center",
     justifyContent: "center",
   },

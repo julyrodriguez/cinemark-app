@@ -3409,8 +3409,8 @@ const s = StyleSheet.create({
     ...THEME.shadow.soft,
   },
   mobileWarningBanner: {
-    backgroundColor: "#fff3cd",
-    borderColor: "#ffeeba",
+    backgroundColor: COLORS.warningBg,
+    borderColor: COLORS.warningBorder,
     borderWidth: 1,
     padding: 10,
     flexDirection: "row",
@@ -3419,7 +3419,7 @@ const s = StyleSheet.create({
     gap: 8,
   },
   mobileWarningText: {
-    color: "#856404",
+    color: COLORS.warning,
     fontSize: 12,
     fontWeight: "bold",
     textAlign: "center",

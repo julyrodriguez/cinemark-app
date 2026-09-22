@@ -323,13 +323,13 @@ export default function CineProfileModal({
                 <MaterialCommunityIcons
                   name={isServerOnline ? "server-network" : "server-network-off"}
                   size={18}
-                  color={isServerOnline ? "#15803d" : "#b91c1c"}
+                  color={isServerOnline ? COLORS.success : COLORS.danger}
                   style={{ marginRight: 6 }}
                 />
                 <Text
                   style={[
                     s.serverBannerTitle,
-                    { color: isServerOnline ? "#15803d" : "#b91c1c" },
+                    { color: isServerOnline ? COLORS.success : COLORS.danger },
                   ]}
                 >
                   {isServerOnline
@@ -352,20 +352,20 @@ export default function CineProfileModal({
                 {isCheckingServer ? (
                   <ActivityIndicator
                     size="small"
-                    color={isServerOnline ? "#15803d" : "#b91c1c"}
+                    color={isServerOnline ? COLORS.success : COLORS.danger}
                   />
                 ) : (
                   <View style={{ flexDirection: "row", alignItems: "center" }}>
                     <MaterialCommunityIcons
                       name="reload"
                       size={14}
-                      color={isServerOnline ? "#15803d" : "#b91c1c"}
+                      color={isServerOnline ? COLORS.success : COLORS.danger}
                       style={{ marginRight: 4 }}
                     />
                     <Text
                       style={[
                         s.serverRecheckBtnText,
-                        { color: isServerOnline ? "#15803d" : "#b91c1c" },
+                        { color: isServerOnline ? COLORS.success : COLORS.danger },
                       ]}
                     >
                       Comprobar
@@ -378,7 +378,7 @@ export default function CineProfileModal({
             <Text
               style={[
                 s.serverBannerDesc,
-                { color: isServerOnline ? "#166534" : "#991b1b" },
+                { color: isServerOnline ? COLORS.success : COLORS.danger },
               ]}
             >
               {isServerOnline
@@ -774,12 +774,12 @@ const s = StyleSheet.create({
     marginBottom: THEME.spacing.md,
   },
   serverBannerOnline: {
-    backgroundColor: "#f0fdf4",
-    borderColor: "#86efac",
+    backgroundColor: COLORS.successBg,
+    borderColor: COLORS.successBorder,
   },
   serverBannerOffline: {
-    backgroundColor: "#fef2f2",
-    borderColor: "#fca5a5",
+    backgroundColor: COLORS.dangerSoft,
+    borderColor: COLORS.danger,
   },
   serverBannerHeader: {
     flexDirection: "row",
@@ -800,10 +800,10 @@ const s = StyleSheet.create({
     marginRight: 6,
   },
   serverDotOnline: {
-    backgroundColor: "#22c55e",
+    backgroundColor: COLORS.success,
   },
   serverDotOffline: {
-    backgroundColor: "#ef4444",
+    backgroundColor: COLORS.danger,
   },
   serverBannerTitle: {
     fontSize: THEME.fontSize.sm,
@@ -821,12 +821,12 @@ const s = StyleSheet.create({
     borderWidth: 1,
   },
   serverRecheckBtnOnline: {
-    borderColor: "#86efac",
-    backgroundColor: "#dcfce7",
+    borderColor: COLORS.successBorder,
+    backgroundColor: COLORS.successBg,
   },
   serverRecheckBtnOffline: {
-    borderColor: "#fca5a5",
-    backgroundColor: "#fee2e2",
+    borderColor: COLORS.danger,
+    backgroundColor: COLORS.dangerSoft,
   },
   serverRecheckBtnText: {
     fontSize: 12,

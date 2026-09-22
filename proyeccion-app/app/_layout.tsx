@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Platform, View, ActivityIndicator } from "react-native";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebaseConfig";
+import { applyTheme, getSavedTheme } from "@/lib/theme";
 
 export default function Layout() {
   const router = useRouter();
@@ -12,6 +13,10 @@ export default function Layout() {
 
   useEffect(() => {
     if (Platform.OS === "web") {
+      // Aplicar tema guardado inmediatamente a todas las rutas
+      const currentTheme = getSavedTheme();
+      applyTheme(currentTheme);
+
       if (!document.title) {
         document.title = "Cines - Gestión de Proyección";
       }
@@ -37,7 +42,7 @@ export default function Layout() {
           .catch((err) => console.error("Error al remover Service Worker:", err));
       }
 
-      // Inyectar estilo global para ocultar barras de scroll
+      // Inyectar estilo global para ocultar barras de scroll y fondo del body
       const style = document.createElement("style");
       style.textContent = `
         ::-webkit-scrollbar {
@@ -46,6 +51,10 @@ export default function Layout() {
         * {
           -ms-overflow-style: none !important;
           scrollbar-width: none !important;
+        }
+        html, body {
+          background-color: var(--bg, #F8FAFC);
+          color: var(--text, #0F172A);
         }
       `;
       document.head.appendChild(style);
@@ -81,8 +90,8 @@ export default function Layout() {
   // Mostrar pantalla de carga mientras se verifica la autenticación
   if (initializing) {
     return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#0A0F1D" }}>
-        <ActivityIndicator size="large" color="#38BDF8" />
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#121214" }}>
+        <ActivityIndicator size="large" color="#E11D48" />
       </View>
     );
   }
@@ -92,7 +101,7 @@ export default function Layout() {
       <Head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
-        <meta name="theme-color" content="#0A0F1D" />
+        <meta name="theme-color" content="#121214" />
         <link rel="icon" type="image/png" href="/logo192.png" />
       </Head>
       <View

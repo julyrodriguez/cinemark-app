@@ -9,7 +9,7 @@ import {
 import { useRouter } from "expo-router";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import SEOHead from "@/components/SEOHead";
-import { THEME } from "@/lib/theme";
+import { COLORS, THEME } from "@/lib/theme";
 
 export default function NotFoundScreen() {
   const router = useRouter();
@@ -104,7 +104,7 @@ export default function NotFoundScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#0A0F1D",
+    backgroundColor: COLORS.bg,
     justifyContent: "center",
     alignItems: "center",
     padding: 20,
@@ -113,13 +113,13 @@ const styles = StyleSheet.create({
   card: {
     width: "100%",
     maxWidth: 520,
-    backgroundColor: "#131C31",
+    backgroundColor: COLORS.card,
     borderRadius: 20,
     paddingVertical: 36,
     paddingHorizontal: 28,
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.08)",
+    borderColor: COLORS.border,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.35,
@@ -130,9 +130,9 @@ const styles = StyleSheet.create({
     width: 88,
     height: 88,
     borderRadius: 44,
-    backgroundColor: "rgba(245, 158, 11, 0.12)",
+    backgroundColor: COLORS.warningBg,
     borderWidth: 1.5,
-    borderColor: "rgba(245, 158, 11, 0.3)",
+    borderColor: COLORS.warningBorder,
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 16,
@@ -140,21 +140,21 @@ const styles = StyleSheet.create({
   codeText: {
     fontSize: 52,
     fontWeight: "900",
-    color: "#F8FAFC",
+    color: COLORS.text,
     letterSpacing: 2,
     lineHeight: 56,
   },
   titleText: {
     fontSize: 22,
     fontWeight: "800",
-    color: "#E2E8F0",
+    color: COLORS.text,
     marginTop: 4,
     marginBottom: 10,
     textAlign: "center",
   },
   descText: {
     fontSize: 14.5,
-    color: "#94A3B8",
+    color: COLORS.muted,
     textAlign: "center",
     lineHeight: 22,
     marginBottom: 20,
@@ -162,9 +162,9 @@ const styles = StyleSheet.create({
   authNoticeBox: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(56, 189, 248, 0.08)",
+    backgroundColor: COLORS.infoBg,
     borderWidth: 1,
-    borderColor: "rgba(56, 189, 248, 0.25)",
+    borderColor: COLORS.infoBorder,
     borderRadius: 12,
     padding: 14,
     marginBottom: 26,
@@ -172,7 +172,7 @@ const styles = StyleSheet.create({
   authNoticeText: {
     flex: 1,
     fontSize: 13,
-    color: "#BAE6FD",
+    color: COLORS.text,
     lineHeight: 19,
   },
   buttonRow: {
@@ -192,7 +192,7 @@ const styles = StyleSheet.create({
     minWidth: 160,
   },
   btnLogin: {
-    backgroundColor: "#2563EB",
+    backgroundColor: COLORS.primary,
   },
   btnLoginText: {
     color: "#FFFFFF",
@@ -200,12 +200,12 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   btnHome: {
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    backgroundColor: COLORS.bgMobile,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.15)",
+    borderColor: COLORS.border,
   },
   btnHomeText: {
-    color: "#E2E8F0",
+    color: COLORS.text,
     fontSize: 15,
     fontWeight: "600",
   },
