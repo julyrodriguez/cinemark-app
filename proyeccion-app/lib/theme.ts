@@ -96,7 +96,7 @@ export function applyTheme(mode: "light" | "dark") {
     root.style.setProperty("--bg-mobile", "#0C0C0E");
     root.style.setProperty("--card", "#18181B");
     root.style.setProperty("--border", "#27272A");
-    root.style.setProperty("--text", "#F4F4F5");
+    root.style.setProperty("--text", "#E4E4E7");
     root.style.setProperty("--muted", "#A1A1AA");
     root.style.setProperty("--text-soft", "#A1A1AA");
 

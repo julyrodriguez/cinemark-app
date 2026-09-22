@@ -669,7 +669,7 @@ const s = StyleSheet.create({
   },
 
   tickerMessageDark: {
-    color: "#F4F4F5",
+    color: "#E4E4E7",
   },
 
   tickerMetricWrap: {
