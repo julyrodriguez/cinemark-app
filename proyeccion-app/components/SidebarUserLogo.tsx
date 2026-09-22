@@ -101,7 +101,7 @@ export default function SidebarUserLogo({
       radarLoop.stop();
       tiltLoop.stop();
     };
-  }, [pulseAnim, sparkleAnim, radarAnim, tiltAnim]);
+  }, [pulseAnim, radarAnim, tiltAnim]);
 
   // Manejo de hover
   const handleMouseEnter = () => {
@@ -145,8 +145,12 @@ export default function SidebarUserLogo({
     <TouchableOpacity
       activeOpacity={0.82}
       onPress={onPress}
-      onMouseEnter={Platform.OS === "web" ? handleMouseEnter : undefined}
-      onMouseLeave={Platform.OS === "web" ? handleMouseLeave : undefined}
+      {...(Platform.OS === "web"
+        ? ({
+            onMouseEnter: handleMouseEnter,
+            onMouseLeave: handleMouseLeave,
+          } as any)
+        : {})}
       style={[
         s.container,
         isExpanded ? s.containerExpanded : s.containerCollapsed,
