@@ -291,134 +291,147 @@ export default function NavHeader({
           ) : null}
         </View>
 
-        {/* Centro: Comunicador de novedades amplio estilo broker / ticker */}
-        <View style={s.centerBlock}>
-          <TouchableOpacity
-            style={[
-              s.brokerCard,
-              isDark ? s.brokerCardDark : s.brokerCardLight,
-              isHovered && s.brokerCardHover,
-              !isMobile && s.brokerCardDesktop,
-            ]}
-            onPress={() => setModalVisible(true)}
-            activeOpacity={0.85}
-            {...({
-              onMouseEnter: () => setIsHovered(true),
-              onMouseLeave: () => setIsHovered(false),
-            } as any)}
-          >
-            {/* Tag / Badge estilo broker stock */}
-            <View
-              style={[
-                s.badgeContainer,
-                {
-                  backgroundColor: currentNews.badgeBg,
-                  borderColor: currentNews.badgeColor,
-                },
-              ]}
-            >
-              <View
-                style={[
-                  s.badgeLiveDot,
-                  { backgroundColor: currentNews.badgeColor },
-                ]}
-              />
-              <MaterialCommunityIcons
-                name={currentNews.icon}
-                size={14}
-                color={currentNews.badgeColor}
-                style={{ marginRight: 5 }}
-              />
-              <Text
-                style={[
-                  s.badgeText,
-                  { color: currentNews.badgeColor },
-                ]}
-              >
-                {currentNews.tag}
+        {/* Centro: en móvil mostramos título limpio; en escritorio el ticker de novedades amplio */}
+        {isMobile ? (
+          <View style={s.mobileCenterBlock}>
+            <Text style={s.mobileTitle} numberOfLines={1}>
+              {title || "Cines"}
+            </Text>
+            {subtitle ? (
+              <Text style={s.mobileSubtitle} numberOfLines={1}>
+                {subtitle}
               </Text>
-            </View>
-
-            {/* Mensaje con animación vertical al cambiar y desplazamiento horizontal si desborda */}
-            <Animated.View
+            ) : null}
+          </View>
+        ) : (
+          <View style={s.centerBlock}>
+            <TouchableOpacity
               style={[
-                s.tickerContent,
-                {
-                  opacity: fadeAnim,
-                  transform: [{ translateY: slideAnim }],
-                },
+                s.brokerCard,
+                isDark ? s.brokerCardDark : s.brokerCardLight,
+                isHovered && s.brokerCardHover,
+                !isMobile && s.brokerCardDesktop,
               ]}
+              onPress={() => setModalVisible(true)}
+              activeOpacity={0.85}
+              {...({
+                onMouseEnter: () => setIsHovered(true),
+                onMouseLeave: () => setIsHovered(false),
+              } as any)}
             >
-              <MarqueeText
-                text={currentNews.message}
-                isDark={isDark}
-                isHovered={isHovered}
-                onComplete={news.length > 1 ? handleNext : undefined}
-              />
-            </Animated.View>
-
-            {/* Métrica / Ticker Code bursátil (en escritorio) */}
-            {isWeb && !isMobile && (
+              {/* Tag / Badge estilo broker stock */}
               <View
                 style={[
-                  s.tickerMetricWrap,
+                  s.badgeContainer,
                   {
                     backgroundColor: currentNews.badgeBg,
                     borderColor: currentNews.badgeColor,
                   },
                 ]}
               >
+                <View
+                  style={[
+                    s.badgeLiveDot,
+                    { backgroundColor: currentNews.badgeColor },
+                  ]}
+                />
+                <MaterialCommunityIcons
+                  name={currentNews.icon}
+                  size={14}
+                  color={currentNews.badgeColor}
+                  style={{ marginRight: 5 }}
+                />
                 <Text
                   style={[
-                    s.tickerMetricText,
+                    s.badgeText,
                     { color: currentNews.badgeColor },
                   ]}
                 >
-                  {currentNews.ticker}
+                  {currentNews.tag}
                 </Text>
               </View>
-            )}
 
-            {/* Controles de navegación del ticker */}
-            <View style={s.tickerNavWrap}>
-              <TouchableOpacity
-                onPress={(e) => {
-                  e.stopPropagation?.();
-                  handlePrev();
-                }}
-                hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
-                style={s.navArrow}
-                activeOpacity={0.7}
+              {/* Mensaje con animación vertical al cambiar y desplazamiento horizontal si desborda */}
+              <Animated.View
+                style={[
+                  s.tickerContent,
+                  {
+                    opacity: fadeAnim,
+                    transform: [{ translateY: slideAnim }],
+                  },
+                ]}
               >
-                <MaterialCommunityIcons
-                  name="chevron-left"
-                  size={16}
-                  color={COLORS.muted}
+                <MarqueeText
+                  text={currentNews.message}
+                  isDark={isDark}
+                  isHovered={isHovered}
+                  onComplete={news.length > 1 ? handleNext : undefined}
                 />
-              </TouchableOpacity>
+              </Animated.View>
 
-              <Text style={s.navCounter}>
-                {currentIndex + 1}/{news.length}
-              </Text>
+              {/* Métrica / Ticker Code bursátil (en escritorio) */}
+              {isWeb && !isMobile && (
+                <View
+                  style={[
+                    s.tickerMetricWrap,
+                    {
+                      backgroundColor: currentNews.badgeBg,
+                      borderColor: currentNews.badgeColor,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      s.tickerMetricText,
+                      { color: currentNews.badgeColor },
+                    ]}
+                  >
+                    {currentNews.ticker}
+                  </Text>
+                </View>
+              )}
 
-              <TouchableOpacity
-                onPress={(e) => {
-                  e.stopPropagation?.();
-                  handleNext();
-                }}
-                hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
-                style={s.navArrow}
-                activeOpacity={0.7}
-              >
-                <MaterialCommunityIcons
-                  name="chevron-right"
-                  size={16}
-                  color={COLORS.muted}
-                />
-              </TouchableOpacity>
-            </View>
-          </TouchableOpacity>
-        </View>
+              {/* Controles de navegación del ticker */}
+              <View style={s.tickerNavWrap}>
+                <TouchableOpacity
+                  onPress={(e) => {
+                    e.stopPropagation?.();
+                    handlePrev();
+                  }}
+                  hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+                  style={s.navArrow}
+                  activeOpacity={0.7}
+                >
+                  <MaterialCommunityIcons
+                    name="chevron-left"
+                    size={16}
+                    color={COLORS.muted}
+                  />
+                </TouchableOpacity>
+
+                <Text style={s.navCounter}>
+                  {currentIndex + 1}/{news.length}
+                </Text>
+
+                <TouchableOpacity
+                  onPress={(e) => {
+                    e.stopPropagation?.();
+                    handleNext();
+                  }}
+                  hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+                  style={s.navArrow}
+                  activeOpacity={0.7}
+                >
+                  <MaterialCommunityIcons
+                    name="chevron-right"
+                    size={16}
+                    color={COLORS.muted}
+                  />
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Lado derecho: botón de cambio de tema */}
         <View style={s.sideRightWrap}>
@@ -546,9 +559,9 @@ const s = StyleSheet.create({
   },
 
   wrapMobile: {
-    paddingTop: 48,
-    paddingBottom: THEME.spacing.md,
-    paddingHorizontal: THEME.spacing.md,
+    paddingTop: Platform.OS === "web" ? 14 : 48,
+    paddingBottom: 14,
+    paddingHorizontal: 16,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
@@ -566,6 +579,30 @@ const s = StyleSheet.create({
     width: 44,
     alignItems: "flex-start",
     justifyContent: "center",
+  },
+
+  mobileCenterBlock: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 8,
+  },
+
+  mobileTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: COLORS.text,
+    letterSpacing: -0.3,
+    textAlign: "center",
+  },
+
+  mobileSubtitle: {
+    fontSize: 11,
+    color: COLORS.muted,
+    fontWeight: "500",
+    marginTop: 1,
+    textAlign: "center",
   },
 
   centerBlock: {
