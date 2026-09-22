@@ -18,6 +18,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 
 import NavHeader from "@/components/NavHeader";
 import CineProfileModal from "@/components/cineProfileModal";
+import SidebarUserLogo from "@/components/SidebarUserLogo";
 import { IpAccessGate } from "@/components/IpAccessGate";
 import SEOHead from "@/components/SEOHead";
 import { auth, db, CINES_COLLECTION } from "../lib/firebaseConfig";
@@ -635,49 +636,16 @@ export default function Home() {
 
     return (
       <View style={styles.sidebarInner}>
-        {/* Logo/Cabecera */}
-        <View style={styles.sidebarHeader}>
-          <View style={styles.sidebarLogoCircle}>
-            <MaterialCommunityIcons
-              name="movie-open-outline"
-              size={22}
-              color={COLORS.primary}
-            />
-            {!isExpanded && (
-              <View
-                style={[
-                  styles.sidebarLogoMiniDot,
-                  { backgroundColor: isServerOnline ? "#22c55e" : "#ef4444" }
-                ]}
-              />
-            )}
-          </View>
-          {isExpanded && (
-            <View style={styles.sidebarHeaderTitles}>
-              <Text style={styles.sidebarTitle} numberOfLines={1}>
-                {cineLabel}
-              </Text>
-              {/* Cartel / Indicador del estado del servidor debajo de perfil del cine */}
-              <View style={styles.sidebarServerBadge}>
-                <View
-                  style={[
-                    styles.sidebarServerDot,
-                    { backgroundColor: isServerOnline ? "#22c55e" : "#ef4444" }
-                  ]}
-                />
-                <Text
-                  style={[
-                    styles.sidebarServerText,
-                    { color: isServerOnline ? "#15803d" : "#b91c1c" }
-                  ]}
-                  numberOfLines={1}
-                >
-                  {isServerOnline ? "Servidor en línea" : "Servidor desconectado"}
-                </Text>
-              </View>
-            </View>
-          )}
-        </View>
+        {/* Logo/Cabecera animada del usuario/complejo */}
+        <SidebarUserLogo
+          cineLabel={cineLabel}
+          isExpanded={isExpanded}
+          isServerOnline={isServerOnline}
+          onPress={() => {
+            setProfileVisible(true);
+            if (isDrawer) setIsDrawerOpen(false);
+          }}
+        />
 
         <View style={styles.sidebarDivider} />
 
