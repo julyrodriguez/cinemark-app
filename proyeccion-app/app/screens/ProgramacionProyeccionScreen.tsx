@@ -2298,7 +2298,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
         {sortedShows.map((show, idx) => {
           const isEvent = show.isEvent;
           const is3D = !isEvent && (/3d/i.test(show.pelicula) || /3d/i.test(show.sessionFormat || ""));
-          const movieAccentColor = isEvent ? "#8B5CF6" : getMovieColor(show.pelicula);
+          const movieAccentColor = isEvent ? COLORS.betaBorder : getMovieColor(show.pelicula);
           const status = getShowStatus(show);
           const hasEntered = status === "PAST" || status === "PLAYING";
           
@@ -2312,7 +2312,7 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                 styles.listCard,
                 { borderLeftColor: movieAccentColor },
                 is3D ? { backgroundColor: movieAccentColor } : null,
-                isEvent ? { backgroundColor: "#EDE9FE", borderLeftColor: "#8B5CF6" } : null,
+                isEvent ? { backgroundColor: COLORS.betaBg, borderLeftColor: COLORS.betaBorder } : null,
                 hasEntered && {
                   backgroundColor: Platform.OS === "web" ? "var(--bg-mobile, #F1F5F9)" : "#F1F5F9",
                   borderLeftColor: "#94A3B8",
@@ -2324,17 +2324,20 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
               <View style={[
                 styles.listRoomBadge, 
                 is3D && !hasEntered && { backgroundColor: "rgba(255, 255, 255, 0.25)" },
-                hasEntered && { backgroundColor: "#E2E8F0" }
+                isEvent && !hasEntered && { backgroundColor: COLORS.betaBadgeBg },
+                hasEntered && { backgroundColor: COLORS.border }
               ]}>
                 <Text style={[
                   styles.listRoomBadgeText, 
                   is3D && !hasEntered && { color: "#FFFFFF" },
-                  hasEntered && { color: "#64748B" }
+                  isEvent && !hasEntered && { color: COLORS.betaText },
+                  hasEntered && { color: COLORS.textSoft }
                 ]}>SALA</Text>
                 <Text style={[
                   styles.listRoomNumberText, 
                   is3D && !hasEntered && { color: "#FFFFFF" },
-                  hasEntered && { color: "#64748B" }
+                  isEvent && !hasEntered && { color: COLORS.betaText },
+                  hasEntered && { color: COLORS.textSoft }
                 ]}>{show.sala}</Text>
               </View>
 
@@ -2343,7 +2346,8 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                 <Text style={[
                   styles.listMovieTitle, 
                   is3D && !hasEntered && { color: "#FFFFFF" },
-                  hasEntered && { color: "#64748B" }
+                  isEvent && !hasEntered && { color: COLORS.text },
+                  hasEntered && { color: COLORS.textSoft }
                 ]} numberOfLines={2}>
                   {show.pelicula}{is3D && !/3d/i.test(show.pelicula) ? " (3D)" : ""}
                 </Text>
@@ -2351,7 +2355,8 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                 <Text style={[
                   styles.listMovieTime, 
                   is3D && !hasEntered && { color: "rgba(255, 255, 255, 0.85)" },
-                  hasEntered && { color: "#94A3B8" }
+                  isEvent && !hasEntered && { color: COLORS.textSoft },
+                  hasEntered && { color: COLORS.muted }
                 ]}>
                   ⏰ {show.inicio} - {show.fin} hs
                 </Text>
@@ -2376,13 +2381,13 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                 {show.isEvent && (
                   <View style={{ flexDirection: "row", gap: 6, marginTop: 4 }}>
                     {show.desayuno && (
-                      <View style={{ backgroundColor: "#D1FAE5", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                        <Text style={{ fontSize: 10, color: "#065F46", fontWeight: "700" }}>☕ Desayuno</Text>
+                      <View style={{ backgroundColor: COLORS.successBg, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                        <Text style={{ fontSize: 10, color: COLORS.success, fontWeight: "700" }}>☕ Desayuno</Text>
                       </View>
                     )}
                     {show.combo && (
-                      <View style={{ backgroundColor: "#FEF3C7", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                        <Text style={{ fontSize: 10, color: "#92400E", fontWeight: "700" }}>🍿 Combo</Text>
+                      <View style={{ backgroundColor: COLORS.warningBg, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                        <Text style={{ fontSize: 10, color: COLORS.warning, fontWeight: "700" }}>🍿 Combo</Text>
                       </View>
                     )}
                   </View>
@@ -3357,9 +3362,9 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                         {showsInSala.map((show, showIdx) => {
                           const { left, width } = getPositionAndWidth(show);
                           const isEvent = show.isEvent;
-                          const movieAccentColor = isEvent ? "#8B5CF6" : getMovieColor(show.pelicula);
+                          const movieAccentColor = isEvent ? COLORS.betaBorder : getMovieColor(show.pelicula);
                           const is3D = !isEvent && (/3d/i.test(show.pelicula) || /3d/i.test(show.sessionFormat || ""));
-                          const showAds = width > 50; // show ads prefix block if card is wide enough
+                          const showAds = !isEvent && width > 50; // show ads prefix block if card is wide enough and not an event
 
                           const status = getShowStatus(show);
                           const isPast = status === "PAST";
@@ -3401,8 +3406,8 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                                     }
                                   : isEvent
                                   ? {
-                                      backgroundColor: "#EDE9FE",
-                                      borderColor: "#8B5CF6",
+                                      backgroundColor: COLORS.betaBg,
+                                      borderColor: COLORS.betaBorder,
                                       borderWidth: 1,
                                     }
                                   : {
@@ -3451,7 +3456,11 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                                 <View style={styles.movieCardHeaderRow}>
                                   {isPlaying && <View style={styles.playingDot} />}
                                   <Text
-                                    style={[styles.movieCardTitle, is3D && { color: "#FFFFFF" }]}
+                                    style={[
+                                      styles.movieCardTitle, 
+                                      is3D && { color: "#FFFFFF" },
+                                      isEvent && { color: COLORS.text }
+                                    ]}
                                     numberOfLines={1}
                                   >
                                     {show.pelicula}{is3D && !/3d/i.test(show.pelicula) ? " (3D)" : ""}
@@ -3459,7 +3468,11 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                                 </View>
                                 <View style={styles.movieCardFooter}>
                                   <Text
-                                    style={[styles.movieCardTime, is3D && { color: "#FFFFFF" }]}
+                                    style={[
+                                      styles.movieCardTime, 
+                                      is3D && { color: "#FFFFFF" },
+                                      isEvent && { color: COLORS.textSoft }
+                                    ]}
                                     numberOfLines={1}
                                   >
                                     {show.inicio} - {show.fin}
@@ -3634,6 +3647,11 @@ export default function ProgramacionProyeccionScreen({ readOnly }: { readOnly: b
                           <View style={{ backgroundColor: COLORS.primarySoft, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
                             <Text style={{ color: COLORS.primary, fontWeight: "bold", fontSize: 12 }}>Sala {selectedShow.sala}</Text>
                           </View>
+                          {selectedShow.isEvent && (
+                            <View style={{ backgroundColor: COLORS.betaBadgeBg, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
+                              <Text style={{ color: COLORS.betaText, fontWeight: "bold", fontSize: 12 }}>Evento Especial</Text>
+                            </View>
+                          )}
                           {selectedShow.sessionFormat && (
                             <View style={{ backgroundColor: COLORS.border, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
                               <Text style={{ color: COLORS.textSoft, fontSize: 11, fontWeight: "600" }}>{selectedShow.sessionFormat}</Text>
