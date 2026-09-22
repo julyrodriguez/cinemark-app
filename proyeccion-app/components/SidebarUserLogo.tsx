@@ -29,13 +29,11 @@ export default function SidebarUserLogo({
   // ─── Animaciones ────────────────────────────────────────────────────────────
   // 1. Pulso de aura / respiración suave del badge
   const pulseAnim = useRef(new Animated.Value(1)).current;
-  // 2. Destello y rotación de la estrella mágica de cine
-  const sparkleAnim = useRef(new Animated.Value(0)).current;
-  // 3. Onda de radar continua del estado del servidor
+  // 2. Onda de radar continua del estado del servidor
   const radarAnim = useRef(new Animated.Value(0)).current;
-  // 4. Escala reactiva al interactuar (hover / press)
+  // 3. Escala reactiva al interactuar (hover / press)
   const interactiveScale = useRef(new Animated.Value(1)).current;
-  // 5. Inclinación sutil del icono
+  // 4. Inclinación sutil del icono
   const tiltAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -60,25 +58,7 @@ export default function SidebarUserLogo({
       ])
     );
 
-    // Bucle 2: Destello de la estrella dorada (rotación y escala)
-    const sparkleLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(sparkleAnim, {
-          toValue: 1,
-          duration: 1400,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: nativeDriver,
-        }),
-        Animated.timing(sparkleAnim, {
-          toValue: 0,
-          duration: 1400,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: nativeDriver,
-        }),
-      ])
-    );
-
-    // Bucle 3: Onda de radar del servidor (expansión y desvanecimiento)
+    // Bucle 2: Onda de radar del servidor (expansión y desvanecimiento)
     const radarLoop = Animated.loop(
       Animated.timing(radarAnim, {
         toValue: 1,
@@ -88,7 +68,7 @@ export default function SidebarUserLogo({
       })
     );
 
-    // Bucle 4: Inclinación continua y juguetona del ícono principal
+    // Bucle 3: Inclinación continua y juguetona del ícono principal
     const tiltLoop = Animated.loop(
       Animated.sequence([
         Animated.timing(tiltAnim, {
@@ -113,13 +93,11 @@ export default function SidebarUserLogo({
     );
 
     pulseLoop.start();
-    sparkleLoop.start();
     radarLoop.start();
     tiltLoop.start();
 
     return () => {
       pulseLoop.stop();
-      sparkleLoop.stop();
       radarLoop.stop();
       tiltLoop.stop();
     };
@@ -145,22 +123,6 @@ export default function SidebarUserLogo({
       useNativeDriver: Platform.OS !== "web",
     }).start();
   };
-
-  // Interpolaciones de animación
-  const sparkleRotation = sparkleAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ["0deg", "70deg"],
-  });
-
-  const sparkleScale = sparkleAnim.interpolate({
-    inputRange: [0, 0.5, 1],
-    outputRange: [0.75, 1.25, 0.85],
-  });
-
-  const sparkleOpacity = sparkleAnim.interpolate({
-    inputRange: [0, 0.5, 1],
-    outputRange: [0.35, 1, 0.5],
-  });
 
   const iconRotation = tiltAnim.interpolate({
     inputRange: [-1, 0, 1],
@@ -229,26 +191,6 @@ export default function SidebarUserLogo({
               name="movie-open-star"
               size={23}
               color="#F43F5E"
-            />
-          </Animated.View>
-
-          {/* Estrella mágica dorada centelleante en la esquina */}
-          <Animated.View
-            style={[
-              s.sparkleBadge,
-              {
-                opacity: sparkleOpacity,
-                transform: [
-                  { rotate: sparkleRotation },
-                  { scale: sparkleScale },
-                ],
-              },
-            ]}
-          >
-            <MaterialCommunityIcons
-              name="star-four-points"
-              size={12}
-              color="#FBBF24"
             />
           </Animated.View>
         </Animated.View>
@@ -400,14 +342,6 @@ const s = StyleSheet.create({
     backgroundColor: "rgba(255, 255, 255, 0.12)",
     borderTopLeftRadius: 19,
     borderTopRightRadius: 19,
-  },
-
-  // Estrella mágica dorada
-  sparkleBadge: {
-    position: "absolute",
-    top: 2,
-    right: 2,
-    zIndex: 10,
   },
 
   // Ancla para el radar de estado (esquina inferior derecha)
