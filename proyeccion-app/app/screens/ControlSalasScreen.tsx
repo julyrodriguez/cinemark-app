@@ -712,9 +712,12 @@ export default function ControlSalasScreen() {
     if (!report?.issues?.[salaKey]?.[seatKey]) return;
 
     const newReportIssues = { ...report?.issues };
-    delete newReportIssues[salaKey][seatKey];
-    if (Object.keys(newReportIssues[salaKey]).length === 0) {
-      delete newReportIssues[salaKey];
+    if (newReportIssues[salaKey]) {
+      newReportIssues[salaKey] = { ...newReportIssues[salaKey] };
+      delete newReportIssues[salaKey][seatKey];
+      if (Object.keys(newReportIssues[salaKey]).length === 0) {
+        delete newReportIssues[salaKey];
+      }
     }
     await saveReportToFirebase(newReportIssues);
   };
@@ -724,6 +727,13 @@ export default function ControlSalasScreen() {
     const executeClear = async () => {
       if (!cineId) return;
       setSaving(true);
+      // Immediate optimistic local update
+      setReport({
+        updatedAt: new Date().toISOString(),
+        updatedBy: userEmail,
+        issues: {},
+        generalIssues: {},
+      });
       try {
         const docRef = doc(db, CINES_COLLECTION, cineId, "control_salas", "active");
         const payload: ActiveReport = {
