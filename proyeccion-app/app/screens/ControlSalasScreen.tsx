@@ -522,6 +522,23 @@ export default function ControlSalasScreen() {
     };
   };
 
+  // Helper to calculate total physical seat capacity for a sala (ignoring empty aisles/slots)
+  const getSalaCapacity = (salaId: number): number => {
+    try {
+      const layout = getActiveSalaLayout(salaId);
+      if (layout?.rows && layout?.seats) {
+        const count = layout.rows.reduce((acc, row) => {
+          return acc + (layout.seats[row]?.filter((s) => s.type === "seat").length || 0);
+        }, 0);
+        if (count > 0) return count;
+      }
+    } catch (e) {
+      console.warn("Error calculating sala capacity:", e);
+    }
+    const staticInfo = SALAS_INFO.find((s) => s.id === salaId);
+    return staticInfo?.capacity || 200;
+  };
+
   // Save report updates to Firestore helper
   const saveReportToFirebase = async (updatedIssues: { [salaId: string]: RoomIssues }) => {
     if (!cineId) return;
@@ -936,8 +953,14 @@ export default function ControlSalasScreen() {
     let countMedio = 0;
     let countGrave = 0;
 
+    const totalCinemaCapacity = salasInfoList.reduce((acc, s) => acc + getSalaCapacity(s.id), 0);
+
     const salaReportsList: { 
-      salaName: string; 
+      salaId: number;
+      salaName: string;
+      capacity: number;
+      damagedCount: number;
+      damagedPercentage: string;
       issues: { row: string; num: number; seat: string; urgencia: UrgencyLevel; desc: string; details: string; isDbox?: boolean }[];
       generalDetails: GeneralIssueItem[];
     }[] = [];
@@ -1017,8 +1040,17 @@ export default function ControlSalasScreen() {
           totalDamagedSeats += issuesSorted.length;
         }
 
+        const roomCapacity = getSalaCapacity(sInfo.id);
+        const damagedCount = issuesSorted.length;
+        const damagedPercentage =
+          roomCapacity > 0 ? ((damagedCount / roomCapacity) * 100).toFixed(1) : "0.0";
+
         salaReportsList.push({
+          salaId: sInfo.id,
           salaName: sInfo.name,
+          capacity: roomCapacity,
+          damagedCount,
+          damagedPercentage,
           issues: issuesSorted,
           generalDetails: generalItems,
         });
@@ -1039,11 +1071,21 @@ export default function ControlSalasScreen() {
         minute: "2-digit",
       });
 
+      const totalDamagedPercentage =
+        totalCinemaCapacity > 0
+          ? ((totalDamagedSeats / totalCinemaCapacity) * 100).toFixed(1)
+          : "0.0";
+
       let roomsTablesHtml = `<div class="rooms-grid">`;
       salaReportsList.forEach((salaRep) => {
         roomsTablesHtml += `
           <div class="room-section">
-            <h2>${salaRep.salaName}</h2>
+            <div class="room-section-header">
+              <h2>${salaRep.salaName}</h2>
+              <div class="room-stat-badge ${salaRep.damagedCount > 0 ? "badge-danger" : "badge-ok"}">
+                ${salaRep.damagedCount} de ${salaRep.capacity} rotas (${salaRep.damagedPercentage}%)
+              </div>
+            </div>
             
             ${salaRep.generalDetails.length > 0 ? `
               <div class="general-details-box">
@@ -1202,6 +1244,99 @@ export default function ControlSalasScreen() {
               break-inside: avoid;
               page-break-inside: avoid;
             }
+            .room-section-header {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              border-bottom: 1px solid #cbd5e1;
+              padding-bottom: 2px;
+              margin-bottom: 6px;
+            }
+            .room-section-header h2 {
+              font-size: 11px;
+              margin: 0;
+              color: #1e293b;
+              border-bottom: none;
+              padding-bottom: 0;
+            }
+            .room-stat-badge {
+              font-size: 8px;
+              font-weight: 700;
+              padding: 1px 5px;
+              border-radius: 3px;
+              white-space: nowrap;
+            }
+            .room-stat-badge.badge-danger {
+              background-color: #fee2e2;
+              color: #991b1b;
+              border: 1px solid #fca5a5;
+            }
+            .room-stat-badge.badge-ok {
+              background-color: #dcfce7;
+              color: #166534;
+              border: 1px solid #86efac;
+            }
+            .overview-section {
+              background-color: #f8fafc;
+              border: 1px solid #cbd5e1;
+              border-radius: 6px;
+              padding: 6px 8px;
+              margin-bottom: 10px;
+            }
+            .overview-title {
+              font-size: 8.5px;
+              font-weight: bold;
+              color: #475569;
+              text-transform: uppercase;
+              margin-bottom: 5px;
+              letter-spacing: 0.5px;
+            }
+            .overview-grid {
+              display: flex;
+              flex-wrap: wrap;
+              gap: 4px;
+            }
+            .overview-item {
+              flex: 1 0 calc(16.66% - 4px);
+              min-width: 60px;
+              box-sizing: border-box;
+              border-radius: 4px;
+              padding: 3px 4px;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              border: 1px solid #e2e8f0;
+              background-color: #ffffff;
+            }
+            .overview-item.ov-danger {
+              border-color: #fca5a5;
+              background-color: #fef2f2;
+            }
+            .overview-item.ov-ok {
+              border-color: #e2e8f0;
+              background-color: #ffffff;
+            }
+            .ov-name {
+              font-size: 8px;
+              font-weight: bold;
+              color: #1e293b;
+            }
+            .ov-counts {
+              font-size: 7.5px;
+              color: #64748b;
+              margin: 1px 0;
+            }
+            .ov-pct {
+              font-size: 8.5px;
+              font-weight: 800;
+            }
+            .ov-danger .ov-pct {
+              color: #b91c1c;
+            }
+            .ov-ok .ov-pct {
+              color: #166534;
+            }
             .room-section h2 {
               font-size: 11px;
               margin: 0 0 6px 0;
@@ -1346,7 +1481,11 @@ export default function ControlSalasScreen() {
             </div>
             <div class="summary-item">
               <span>Total Butacas Dañadas</span>
-              <strong>${totalDamagedSeats}</strong>
+              <strong>${totalDamagedSeats} <small style="font-size: 9px; font-weight: normal; color: #64748b;">(${totalDamagedPercentage}%)</small></strong>
+            </div>
+            <div class="summary-item">
+              <span>Capacidad Complejo</span>
+              <strong>${totalCinemaCapacity} butacas</strong>
             </div>
             <div class="summary-item">
               <span>Desglose de Urgencia</span>
@@ -1355,6 +1494,24 @@ export default function ControlSalasScreen() {
                 <span class="badge-urgency badge-medio">Medio: ${countMedio}</span>
                 <span class="badge-urgency badge-leve">Leve: ${countLeve}</span>
               </div>
+            </div>
+          </div>
+
+          <div class="overview-section">
+            <div class="overview-title">% Butacas Rotas por Sala (sobre capacidad total de cada sala):</div>
+            <div class="overview-grid">
+              ${salasInfoList.map((s) => {
+                const sCap = getSalaCapacity(s.id);
+                const sDamaged = Object.keys(report?.issues?.[String(s.id)] || {}).length;
+                const sPct = sCap > 0 ? ((sDamaged / sCap) * 100).toFixed(1) : "0.0";
+                return `
+                  <div class="overview-item ${sDamaged > 0 ? "ov-danger" : "ov-ok"}">
+                    <span class="ov-name">${s.name}</span>
+                    <span class="ov-counts">${sDamaged}/${sCap}</span>
+                    <span class="ov-pct">${sPct}%</span>
+                  </div>
+                `;
+              }).join("")}
             </div>
           </div>
 
@@ -1461,9 +1618,11 @@ export default function ControlSalasScreen() {
 
   const selectedSalaIssues = getSelectedSalaIssues();
   const activeLayout = getActiveSalaLayout(selectedSala);
-  const selectedSalaCapacity = activeLayout.rows.reduce((acc, row) => {
-    return acc + activeLayout.seats[row].filter((s) => s.type === "seat").length;
-  }, 0);
+  const selectedSalaCapacity = getSalaCapacity(selectedSala);
+  const selectedSalaDamagedPct =
+    selectedSalaCapacity > 0
+      ? ((selectedSalaIssues.length / selectedSalaCapacity) * 100).toFixed(1)
+      : "0.0";
 
   // Seating grid rendering logic for active Sala (WYSIWYG layout compatible)
   const renderSeatingGrid = () => {
@@ -1905,6 +2064,9 @@ export default function ControlSalasScreen() {
               ? generalRaw.filter(Boolean).length
               : (generalRaw ? 1 : 0);
             const totalIncidents = damagedCount + generalCount;
+            const salaCapacity = getSalaCapacity(sala.id);
+            const damagedPct = salaCapacity > 0 ? (damagedCount / salaCapacity) * 100 : 0;
+            const formattedPct = damagedPct.toFixed(1);
 
             return (
               <TouchableOpacity
@@ -1916,14 +2078,31 @@ export default function ControlSalasScreen() {
                 }}
                 activeOpacity={0.7}
               >
-                <Text style={[styles.salaTabText, isSel && styles.salaTabTextActive]}>
-                  {sala.name}
-                </Text>
-                {totalIncidents > 0 && (
-                  <View style={styles.badgeContainer}>
-                    <Text style={styles.badgeText}>{totalIncidents}</Text>
+                <View style={styles.salaTabContent}>
+                  <View style={styles.salaTabTopRow}>
+                    <Text style={[styles.salaTabText, isSel && styles.salaTabTextActive]}>
+                      {sala.name}
+                    </Text>
+                    {totalIncidents > 0 && (
+                      <View style={styles.badgeContainer}>
+                        <Text style={styles.badgeText}>{totalIncidents}</Text>
+                      </View>
+                    )}
                   </View>
-                )}
+                  <View style={styles.salaTabSubRow}>
+                    <Text
+                      style={[
+                        styles.salaTabPctText,
+                        damagedCount > 0 ? styles.salaTabPctTextDanger : (isSel ? styles.salaTabPctTextActive : styles.salaTabPctTextNormal),
+                      ]}
+                    >
+                      {formattedPct}% rotas
+                    </Text>
+                    <Text style={[styles.salaTabCapText, isSel && styles.salaTabCapTextActive]}>
+                      ({damagedCount}/{salaCapacity})
+                    </Text>
+                  </View>
+                </View>
               </TouchableOpacity>
             );
           })}
@@ -1952,6 +2131,13 @@ export default function ControlSalasScreen() {
               <Text style={styles.statusLabel}>BUTACAS DAÑADAS</Text>
               <Text style={[styles.statusValue, selectedSalaIssues.length > 0 && { color: COLORS.danger }]}>
                 {selectedSalaIssues.length}
+                <Text style={{ fontSize: 11, fontWeight: "600", color: COLORS.muted }}> / {selectedSalaCapacity}</Text>
+              </Text>
+            </View>
+            <View style={styles.roomStatusCard}>
+              <Text style={styles.statusLabel}>% BUTACAS ROTAS</Text>
+              <Text style={[styles.statusValue, selectedSalaIssues.length > 0 && { color: COLORS.danger }]}>
+                {selectedSalaDamagedPct}%
               </Text>
             </View>
             <View style={styles.roomStatusCard}>
@@ -2158,7 +2344,7 @@ export default function ControlSalasScreen() {
           {/* List of reported issues in current room */}
           <View style={styles.listCard}>
             <Text style={styles.listCardTitle}>
-              Registro de Daños en Sala {selectedSala} ({selectedSalaIssues.length})
+              Registro de Daños en Sala {selectedSala} ({selectedSalaIssues.length} butacas - {selectedSalaDamagedPct}% del total)
             </Text>
 
             {selectedSalaIssues.length === 0 ? (
@@ -2606,19 +2792,34 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   salaTabBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: THEME.radius.md,
     borderWidth: 1,
     borderColor: COLORS.border,
     backgroundColor: COLORS.card,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
+    minWidth: 110,
+    justifyContent: "center",
   },
   salaTabBtnActive: {
     backgroundColor: COLORS.primarySoft,
     borderColor: COLORS.primary,
+  },
+  salaTabContent: {
+    width: "100%",
+    gap: 3,
+  },
+  salaTabTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 6,
+  },
+  salaTabSubRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 4,
   },
   salaTabText: {
     fontSize: 13,
@@ -2627,6 +2828,27 @@ const styles = StyleSheet.create({
   },
   salaTabTextActive: {
     color: COLORS.primary,
+  },
+  salaTabPctText: {
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  salaTabPctTextDanger: {
+    color: COLORS.danger,
+  },
+  salaTabPctTextNormal: {
+    color: COLORS.muted,
+  },
+  salaTabPctTextActive: {
+    color: COLORS.primary,
+  },
+  salaTabCapText: {
+    fontSize: 10,
+    fontWeight: "500",
+    color: COLORS.muted,
+  },
+  salaTabCapTextActive: {
+    color: COLORS.text,
   },
   badgeContainer: {
     backgroundColor: COLORS.danger,
