@@ -1,4 +1,5 @@
 {
+  "installCommand": "cd proyeccion-app && npm install",
   "buildCommand": "cd proyeccion-app && npm install && npm run build:web && node vercel-postbuild.js",
   "outputDirectory": "proyeccion-app/dist",
   "cleanUrls": true,

@@ -1,0 +1,8 @@
+{
+  "name": "cinemark-app",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "cd proyeccion-app && npm run build:web && node vercel-postbuild.js"
+  }
+}

@@ -18,17 +18,14 @@ import {
   addDoc,
   updateDoc,
   getDocs,
-  onSnapshot,
-  query,
-  orderBy,
   serverTimestamp,
-} from "@/lib/dbService";
+} from "../../lib/dbService";
 import { useAuthUser } from "../../lib/useAuthUser";
 import { COLORS, THEME } from "../../lib/theme";
 import { db } from "../../lib/firebaseConfig";
 
 // Tipos de datos
-export interface FeedbackRespuesta {
+interface FeedbackRespuesta {
   id: string;
   texto: string;
   autor: string;
@@ -270,7 +267,8 @@ export default function FeedbackScreen() {
     };
 
     if (Platform.OS === "web") {
-      if (window.confirm("¿Estás seguro de eliminar este mensaje?")) {
+      const confirmed = typeof window !== "undefined" ? window.confirm("¿Estás seguro de eliminar este mensaje?") : true;
+      if (confirmed) {
         await doDelete();
       }
     } else {
@@ -625,7 +623,7 @@ export default function FeedbackScreen() {
                           <Text style={[s.replyFormTitle, isAbastoUser && { color: "#FBBF24" }]}>
                             {isAbastoUser ? "🛠️ Repreguntar / Responder desde Abasto:" : "💬 Escribir respuesta:"}
                           </Text>
-                          <TouchableOpacity onPress={() => setReplyingToId(null)}>
+                          <TouchableOpacity onPress={() => { setReplyingToId(null); setReplyText(""); }}>
                             <MaterialCommunityIcons name="close" size={18} color={COLORS.muted} />
                           </TouchableOpacity>
                         </View>
@@ -1033,7 +1031,6 @@ const s = StyleSheet.create({
 
   // Formulario de Respuesta / Repregunta
   replyForm: {
-    borderTopWidth: 1,
     borderColor: COLORS.border,
     paddingTop: 10,
     marginTop: 6,
