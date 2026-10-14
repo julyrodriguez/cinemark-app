@@ -11,6 +11,7 @@ export interface Evento {
   dcp?: boolean;
   desayuno?: boolean;
   combo?: boolean;
+  duracion?: number;
   createdAt?: any;
   timestamp?: number;
   cineId?: string;
@@ -25,6 +26,7 @@ export interface EventoFormData {
   dcp: boolean;
   desayuno: boolean;
   combo: boolean;
+  duracion?: number;
 }
 
 export const DEFAULT_EVENTO: EventoFormData = {

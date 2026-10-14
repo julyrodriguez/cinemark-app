@@ -36,7 +36,9 @@ class EventosService {
   ): Promise<void> {
     const updates: any = {};
 
+    if (data.pelicula !== undefined) updates.pelicula = data.pelicula.trim();
     if (data.sala !== undefined) updates.sala = data.sala.trim();
+    if (data.duracion !== undefined) updates.duracion = data.duracion;
     if (data.kdm !== undefined) updates.kdm = data.kdm;
     if (data.dcp !== undefined) updates.dcp = data.dcp;
     if (data.desayuno !== undefined) updates.desayuno = data.desayuno;

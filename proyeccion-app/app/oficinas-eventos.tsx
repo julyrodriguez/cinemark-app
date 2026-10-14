@@ -107,6 +107,7 @@ export default function OficinasEventosScreen() {
 
   const [eDesayuno, setEDesayuno] = useState(false);
   const [eCombo, setECombo] = useState(false);
+  const [ePelicula, setEPelicula] = useState("");
   const [editLoading, setEditLoading] = useState(false);
 
   useEffect(() => {
@@ -273,6 +274,7 @@ export default function OficinasEventosScreen() {
       setEditLoading(true);
       const docRef = doc(db, CINES_COLLECTION, editItem.cineId, "eventos", editItem.id);
       await updateDoc(docRef, {
+        pelicula: ePelicula.trim() || editItem.pelicula,
         desayuno: eDesayuno,
         combo: eCombo,
       });
@@ -290,6 +292,7 @@ export default function OficinasEventosScreen() {
 
   const openEditModal = (evento: Evento) => {
     setEditItem(evento);
+    setEPelicula(evento.pelicula || "");
     setEDesayuno(!!evento.desayuno);
     setECombo(!!evento.combo);
     setEditModalVisible(true);
@@ -609,9 +612,16 @@ export default function OficinasEventosScreen() {
 
                 {editItem && (
                   <>
-                    <Text style={s.eventoPelicula}>{editItem.pelicula}</Text>
+                    <Text style={s.label}>Título / Película</Text>
+                    <TextInput
+                      style={[s.input, { marginBottom: 12 }]}
+                      value={ePelicula}
+                      onChangeText={setEPelicula}
+                      placeholder="Título del evento"
+                      placeholderTextColor={COLORS.muted}
+                      editable={!editLoading}
+                    />
                     <Text style={s.eventoDetalle}>Sala {editItem.sala}</Text>
-                    <Text style={s.infoText}>Solo podés editar Combo y Desayuno</Text>
 
                     <View style={s.checkboxRow}>
                       <TouchableOpacity

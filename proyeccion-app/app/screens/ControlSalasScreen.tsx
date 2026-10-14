@@ -1181,6 +1181,21 @@ export default function ControlSalasScreen() {
               font-size: 9px;
               color: #555;
             }
+            .header-promedio-badge {
+              display: inline-block;
+              margin-top: 5px;
+              background-color: #fee2e2;
+              border: 1px solid #fca5a5;
+              color: #991b1b;
+              padding: 2px 7px;
+              border-radius: 4px;
+              font-size: 10px;
+              font-weight: 700;
+            }
+            .header-promedio-badge strong {
+              font-size: 11px;
+              color: #b91c1c;
+            }
             .summary {
               background-color: #f8fafc;
               border: 1px solid #e2e8f0;
@@ -1193,6 +1208,21 @@ export default function ControlSalasScreen() {
             }
             .summary-item {
               flex: 1;
+            }
+            .summary-item.summary-highlight {
+              border-left: 3px solid #b91c1c;
+              background-color: #fff1f2;
+              padding: 4px 8px;
+              border-radius: 4px;
+            }
+            .summary-item.summary-highlight span {
+              color: #9f1239;
+              font-weight: 700;
+            }
+            .summary-item.summary-highlight strong {
+              font-size: 15px;
+              color: #b91c1c;
+              font-weight: 900;
             }
             .summary-item span {
               font-size: 9px;
@@ -1470,14 +1500,17 @@ export default function ControlSalasScreen() {
             </div>
             <div class="header-meta">
               <strong>Fecha:</strong> ${formattedDate}<br />
-              <strong>Cine:</strong> ${cineLabel}
+              <strong>Cine:</strong> ${cineLabel}<br />
+              <div class="header-promedio-badge">
+                Promedio General: <strong>${totalDamagedPercentage}%</strong> Dañadas
+              </div>
             </div>
           </div>
 
           <div class="summary">
-            <div class="summary-item">
-              <span>Salas con Incidencias</span>
-              <strong>${salaReportsList.length} de ${salasInfoList.length}</strong>
+            <div class="summary-item summary-highlight">
+              <span>% Promedio General</span>
+              <strong>${totalDamagedPercentage}%</strong>
             </div>
             <div class="summary-item">
               <span>Total Butacas Dañadas</span>
@@ -1486,6 +1519,10 @@ export default function ControlSalasScreen() {
             <div class="summary-item">
               <span>Capacidad Complejo</span>
               <strong>${totalCinemaCapacity} butacas</strong>
+            </div>
+            <div class="summary-item">
+              <span>Salas con Incidencias</span>
+              <strong>${salaReportsList.length} de ${salasInfoList.length}</strong>
             </div>
             <div class="summary-item">
               <span>Desglose de Urgencia</span>
@@ -1498,7 +1535,7 @@ export default function ControlSalasScreen() {
           </div>
 
           <div class="overview-section">
-            <div class="overview-title">% Butacas Rotas por Sala (sobre capacidad total de cada sala):</div>
+            <div class="overview-title">% Butacas Rotas por Sala — Promedio General Complejo: ${totalDamagedPercentage}% (${totalDamagedSeats} de ${totalCinemaCapacity} butacas):</div>
             <div class="overview-grid">
               ${salasInfoList.map((s) => {
                 const sCap = getSalaCapacity(s.id);
@@ -1623,6 +1660,20 @@ export default function ControlSalasScreen() {
     selectedSalaCapacity > 0
       ? ((selectedSalaIssues.length / selectedSalaCapacity) * 100).toFixed(1)
       : "0.0";
+
+  const complexStats = useMemo(() => {
+    const totalCap = salasInfoList.reduce((acc, s) => acc + getSalaCapacity(s.id), 0);
+    let totalDamaged = 0;
+    salasInfoList.forEach((s) => {
+      totalDamaged += Object.keys(report?.issues?.[String(s.id)] || {}).length;
+    });
+    const pct = totalCap > 0 ? ((totalDamaged / totalCap) * 100).toFixed(1) : "0.0";
+    return {
+      totalCap,
+      totalDamaged,
+      pct,
+    };
+  }, [salasInfoList, report?.issues]);
 
   // Seating grid rendering logic for active Sala (WYSIWYG layout compatible)
   const renderSeatingGrid = () => {
@@ -2040,7 +2091,18 @@ export default function ControlSalasScreen() {
       {/* Rooms Tab Selector */}
       <View style={styles.tabsCard}>
         <View style={styles.cardHeaderRow}>
-          <Text style={styles.cardHeaderTitle}>Control de Estado Físico de Salas</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <Text style={styles.cardHeaderTitle}>Control de Estado Físico de Salas</Text>
+            <View style={styles.complexStatBadge}>
+              <Text style={styles.complexStatBadgeText}>
+                Promedio General:{" "}
+                <Text style={{ color: Number(complexStats.pct) > 0 ? COLORS.danger : COLORS.success, fontWeight: "800" }}>
+                  {complexStats.pct}%
+                </Text>{" "}
+                rotas ({complexStats.totalDamaged}/{complexStats.totalCap})
+              </Text>
+            </View>
+          </View>
           
           {isLayoutEditorMode && (
             <TouchableOpacity
@@ -2770,6 +2832,19 @@ const styles = StyleSheet.create({
     fontSize: THEME.fontSize.md,
     fontWeight: "700",
     color: COLORS.text,
+  },
+  complexStatBadge: {
+    backgroundColor: COLORS.bg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  complexStatBadgeText: {
+    fontSize: 11,
+    color: COLORS.muted,
+    fontWeight: "600",
   },
   adminMigrationBtn: {
     flexDirection: "row",

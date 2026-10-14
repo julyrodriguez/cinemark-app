@@ -581,12 +581,12 @@ export default function FeedbackScreen() {
                                     <MaterialCommunityIcons
                                       name={isFromAbasto ? "shield-account" : "account"}
                                       size={14}
-                                      color={isFromAbasto ? "#60A5FA" : COLORS.muted}
+                                      color={isFromAbasto ? COLORS.info : COLORS.muted}
                                     />
                                     <Text
                                       style={[
                                         s.replyAuthor,
-                                        isFromAbasto && { color: "#93C5FD", fontWeight: "900" },
+                                        isFromAbasto && { color: COLORS.info, fontWeight: "900" },
                                       ]}
                                     >
                                       {isFromAbasto ? "ABASTO (Desarrollo)" : r.cineId.toUpperCase()}
@@ -620,7 +620,7 @@ export default function FeedbackScreen() {
                     {replyingToId === item.id ? (
                       <View style={s.replyForm}>
                         <View style={s.replyFormHeader}>
-                          <Text style={[s.replyFormTitle, isAbastoUser && { color: "#FBBF24" }]}>
+                          <Text style={[s.replyFormTitle, isAbastoUser && { color: COLORS.warning }]}>
                             {isAbastoUser ? "🛠️ Repreguntar / Responder desde Abasto:" : "💬 Escribir respuesta:"}
                           </Text>
                           <TouchableOpacity onPress={() => { setReplyingToId(null); setReplyText(""); }}>
@@ -683,7 +683,7 @@ export default function FeedbackScreen() {
                           <TouchableOpacity
                             style={[
                               s.sendReplyBtn,
-                              { backgroundColor: isAbastoUser ? COLORS.primary : COLORS.card },
+                              { backgroundColor: isAbastoUser ? COLORS.primary : COLORS.info },
                             ]}
                             onPress={() => handleAddReply(item)}
                             disabled={sendingReplyId === item.id}
@@ -718,12 +718,12 @@ export default function FeedbackScreen() {
                           <MaterialCommunityIcons
                             name="reply"
                             size={15}
-                            color={isAbastoUser ? "#FBBF24" : COLORS.muted}
+                            color={isAbastoUser ? COLORS.warning : COLORS.muted}
                           />
                           <Text
                             style={[
                               s.replyToggleBtnText,
-                              isAbastoUser && { color: "#FBBF24", fontWeight: "800" },
+                              isAbastoUser && { color: COLORS.warning, fontWeight: "800" },
                             ]}
                           >
                             {isAbastoUser ? "Repreguntar / Responder (Abasto)" : "Responder"}
@@ -741,11 +741,11 @@ export default function FeedbackScreen() {
                               <Text style={[s.adminBtnText, { color: COLORS.success }]}>Completar</Text>
                             </TouchableOpacity>
                             <TouchableOpacity
-                              style={[s.adminBtn, { backgroundColor: "#78350F30" }]}
+                              style={[s.adminBtn, { backgroundColor: COLORS.warningBg }]}
                               onPress={() => handleUpdateStatus(item, "en_progreso")}
                             >
-                              <MaterialCommunityIcons name="progress-clock" size={13} color="#FBBF24" />
-                              <Text style={[s.adminBtnText, { color: "#FBBF24" }]}>En Progreso</Text>
+                              <MaterialCommunityIcons name="progress-clock" size={13} color={COLORS.warning} />
+                              <Text style={[s.adminBtnText, { color: COLORS.warning }]}>En Progreso</Text>
                             </TouchableOpacity>
                             <TouchableOpacity
                               style={[s.adminBtn, { backgroundColor: COLORS.dangerSoft }]}
@@ -997,16 +997,18 @@ const s = StyleSheet.create({
     gap: 4,
   },
   replyBubbleAbasto: {
-    backgroundColor: "#0F172A",
+    backgroundColor: COLORS.infoBg,
     borderLeftWidth: 3,
-    borderLeftColor: "#3B82F6",
+    borderLeftColor: COLORS.info,
     borderWidth: 1,
-    borderColor: "#334155",
+    borderColor: COLORS.infoBorder,
   },
   replyBubbleUser: {
     backgroundColor: COLORS.bg,
     borderWidth: 1,
     borderColor: COLORS.border,
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.border,
   },
   replyBubbleHeader: {
     flexDirection: "row",
@@ -1035,7 +1037,7 @@ const s = StyleSheet.create({
     paddingTop: 10,
     marginTop: 6,
     gap: 8,
-    backgroundColor: COLORS.bg,
+    backgroundColor: COLORS.card,
     padding: 12,
     borderRadius: 12,
     borderWidth: 1,
@@ -1088,6 +1090,9 @@ const s = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.bg,
   },
   cancelReplyBtnText: {
     fontSize: 12,
@@ -1132,8 +1137,8 @@ const s = StyleSheet.create({
     backgroundColor: COLORS.bg,
   },
   replyToggleBtnAbasto: {
-    borderColor: "#F59E0B60",
-    backgroundColor: "#F59E0B15",
+    borderColor: COLORS.warningBorder,
+    backgroundColor: COLORS.warningBg,
   },
   replyToggleBtnText: {
     fontSize: 11,

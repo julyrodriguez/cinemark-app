@@ -30,45 +30,45 @@ export type NewsItem = {
 
 const DEFAULT_NEWS: NewsItem[] = [
   {
-    id: "creditos-print",
-    tag: "NUEVO",
+    id: "feedback-modo-claro",
+    tag: "FEEDBACK",
     badgeColor: "#10B981",
     badgeBg: "rgba(16, 185, 129, 0.14)",
-    icon: "printer-check",
-    title: "Impresión de Programación con Créditos",
+    icon: "comment-check-outline",
+    title: "Comentarios en Bugs y Sugerencias: Modo Claro",
     message:
-      "✨ Nueva función: Ahora podés imprimir y exportar las programaciones completas con los créditos de luces y post-créditos vinculados a cada función.",
+      "💬 Bugs y Sugerencias: Mejoramos el contraste y diseño de los comentarios y respuestas para que se lean perfecto en modo claro.",
     detail:
-      "Al generar la impresión o exportación a PDF de la programación semanal/diaria, podés activar el interruptor 'Imprimir con Créditos' para visualizar automáticamente los horarios de encendido/apagado de sala y post-créditos vinculados.",
-    ticker: "PRG+CRD ▲",
+      "Se corrigió la visualización del hilo de conversación en Bugs y Sugerencias bajo el tema claro: ahora los mensajes de Abasto y de los usuarios cuentan con fondos legibles, bordes nítidos y alto contraste en textos y botones de acción.",
+    ticker: "BUGS:CLARO ▲",
     date: "Hoy",
   },
   {
-    id: "control-salas-butacas",
+    id: "control-salas-promedio",
     tag: "SALAS",
     badgeColor: "#F59E0B",
     badgeBg: "rgba(245, 158, 11, 0.14)",
-    icon: "seat",
-    title: "Control de Salas: Gravedad de Butacas y Observaciones",
+    icon: "chart-donut",
+    title: "Control de Salas: Porcentaje Promedio General de Daños",
     message:
-      "💺 Control de Salas: Ahora las butacas dañadas incluyen nivel de gravedad y se incorporan observaciones generales por sala.",
+      "📊 Control de Salas: Ahora arriba de todo en el reporte figura el porcentaje promedio general de butacas rotas del complejo.",
     detail:
-      "En el módulo de Control de Salas podés clasificar la gravedad de daño de cada butaca reportada y cargar observaciones generales por sala para optimizar el mantenimiento y seguimiento.",
-    ticker: "SALAS+OBS ▲",
+      "Tanto en la vista principal como en el encabezado y resumen del reporte PDF de Control de Salas, se muestra de forma destacada el porcentaje promedio general de daños sobre la capacidad total del complejo, junto con el desglose sala por sala.",
+    ticker: "SALAS:PROM ▲",
     date: "Nuevo",
   },
   {
-    id: "eventos-proyeccion-duracion",
+    id: "eventos-editar-titulo",
     tag: "EVENTOS",
     badgeColor: "#8B5CF6",
     badgeBg: "rgba(139, 92, 246, 0.14)",
-    icon: "calendar-clock",
-    title: "Eventos de Proyección con Duración en Programación",
+    icon: "pencil-outline",
+    title: "Eventos: Edición del Nombre y Título",
     message:
-      "🗓️ Eventos de Proyección: Si se les asigna duración, se reflejan automáticamente en la programación para que el staff conozca con exactitud el horario de salida.",
+      "✏️ Eventos: Al editar un evento ahora podés modificar directamente su nombre o título además de la sala y duración.",
     detail:
-      "Al definirle duración a los eventos generados por el área de proyección, estos se visualizan directamente en la programación general, manteniendo a todo el staff informado sobre los horarios reales de finalización y salida.",
-    ticker: "EVT:PROY ▲",
+      "En el formulario de edición de Eventos se incorporó la posibilidad de renombrar o corregir el título/película del evento sin necesidad de eliminarlo y volver a cargarlo.",
+    ticker: "EVT:EDIT ▲",
     date: "Nuevo",
   },
 ];

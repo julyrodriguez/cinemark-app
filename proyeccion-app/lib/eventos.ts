@@ -96,7 +96,7 @@ export async function borrarEvento(id: string, cineId: string) {
 export async function actualizarEvento(
   id: string,
   patch: Partial<
-    Pick<Evento, "sala" | "kdm" | "dcp" | "desayuno" | "combo" | "diaHora" | "duracion">
+    Pick<Evento, "pelicula" | "sala" | "kdm" | "dcp" | "desayuno" | "combo" | "diaHora" | "duracion">
   >,
   cineId: string
 ) {
@@ -104,6 +104,7 @@ export async function actualizarEvento(
   const ref = doc(col, id);
   const data: any = {};
 
+  if (patch.pelicula !== undefined) data.pelicula = String(patch.pelicula).trim();
   if (patch.sala !== undefined) data.sala = String(patch.sala).trim();
   if (patch.kdm !== undefined) data.kdm = !!patch.kdm;
   if (patch.dcp !== undefined) data.dcp = !!patch.dcp;

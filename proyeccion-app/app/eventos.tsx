@@ -417,6 +417,7 @@ export default function EventosScreen() {
 
   const [editVisible, setEditVisible] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
+  const [editPelicula, setEditPelicula] = useState("");
   const [editSala, setEditSala] = useState("");
   const [editDuracion, setEditDuracion] = useState("");
   const [editIsMultiSelect, setEditIsMultiSelect] = useState(false);
@@ -434,6 +435,7 @@ export default function EventosScreen() {
       item.diaHora instanceof Date ? item.diaHora : toDate(item.diaHora);
 
     setEditId(item.id);
+    setEditPelicula(item.pelicula || "");
     const roomStr = String(item.sala ?? "");
     setEditSala(roomStr);
     setEditDuracion(item.duracion !== undefined && item.duracion !== null ? String(item.duracion) : "");
@@ -453,6 +455,7 @@ export default function EventosScreen() {
   const cerrarEdicion = () => {
     setEditVisible(false);
     setEditId(null);
+    setEditPelicula("");
     setEditError("");
     setSaving(false);
   };
@@ -504,6 +507,11 @@ export default function EventosScreen() {
 
     setEditError("");
 
+    if (!editPelicula.trim()) {
+      setEditError("El título o nombre del evento es obligatorio.");
+      return;
+    }
+
     if (!isSalaValida(editSala)) {
       setEditError(
         `Sala inválida. Elegí una sala entre 1 y ${salasCount} o AC.`
@@ -530,6 +538,7 @@ export default function EventosScreen() {
     setSaving(true);
     try {
       await updateDoc(doc(db, CINES_COLLECTION, cineId, "eventos", editId), {
+        pelicula: editPelicula.trim(),
         sala: editSala,
         kdm: editKdm,
         dcp: editDcp,
@@ -1027,6 +1036,15 @@ export default function EventosScreen() {
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Editar evento</Text>
+
+            <Text style={styles.label}>Película / Título *</Text>
+            <TextInput
+              value={editPelicula}
+              onChangeText={setEditPelicula}
+              placeholder="Ej: Batman o Evento Corporativo"
+              placeholderTextColor={COLORS.muted}
+              style={styles.input}
+            />
 
             <Text style={styles.label}>Duración (minutos, opcional)</Text>
             <TextInput
