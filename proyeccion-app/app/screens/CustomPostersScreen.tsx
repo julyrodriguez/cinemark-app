@@ -68,6 +68,8 @@ export default function CustomPostersScreen() {
 
   // Form states
   const [title, setTitle] = useState("");
+  const [uploadMode, setUploadMode] = useState<"file" | "url">("file");
+  const [externalUrl, setExternalUrl] = useState("");
   const [selectedFile, setSelectedFile] = useState<{
     name: string;
     base64: string;
@@ -82,10 +84,14 @@ export default function CustomPostersScreen() {
       const snap = await getDocs(colRef);
       const list: CustomPoster[] = snap.docs.map((d: any) => {
         const data = d.data();
+        const rawUrl = data.imageUrl || "";
+        const displayUrl = rawUrl.startsWith("http")
+          ? rawUrl
+          : `https://api-cinemark.jariel.com.ar/api/custom_posters/${d.id}/image`;
         return {
           id: d.id,
           title: data.title || "Sin título",
-          imageUrl: data.imageUrl || "",
+          imageUrl: displayUrl,
           createdAt: data.createdAt || "",
           createdBy: data.createdBy || "",
         };
@@ -155,26 +161,36 @@ export default function CustomPostersScreen() {
       Alert.alert("Campos incompletos", "Por favor ingresa el título de la película o evento.");
       return;
     }
-    if (!selectedFile) {
-      Alert.alert("Archivo requerido", "Por favor selecciona una imagen de póster.");
-      return;
+
+    let finalImageUrl = "";
+    if (uploadMode === "url") {
+      if (!externalUrl.trim() || !externalUrl.trim().startsWith("http")) {
+        Alert.alert("URL requerida", "Por favor ingresa una URL válida (que comience con http:// o https://).");
+        return;
+      }
+      finalImageUrl = externalUrl.trim();
+    } else {
+      if (!selectedFile) {
+        Alert.alert("Archivo requerido", "Por favor selecciona una imagen de póster.");
+        return;
+      }
+      finalImageUrl = `data:${selectedFile.mimeType};base64,${selectedFile.base64}`;
     }
 
     try {
       setSaving(true);
       const colRef = collection(db, "cines", "global", "custom_posters");
-      
-      const imageUrl = `data:${selectedFile.mimeType};base64,${selectedFile.base64}`;
 
       await addDoc(colRef, {
         title: title.trim(),
-        imageUrl,
+        imageUrl: finalImageUrl,
         createdBy: cineId || "desconocido",
         createdAt: new Date().toISOString(),
       });
 
       Alert.alert("Éxito", "Póster personalizado guardado correctamente.");
       setTitle("");
+      setExternalUrl("");
       setSelectedFile(null);
       setShowAddForm(false);
       await loadPosters();
@@ -243,10 +259,41 @@ export default function CustomPostersScreen() {
       {showAddForm && (
         <View style={s.formCard}>
           <Text style={s.formTitle}>Cargar nuevo póster</Text>
+
+          {/* Selector de Modo: Archivo local vs URL Externa */}
+          <View style={s.modeSelectorRow}>
+            <TouchableOpacity
+              style={[s.modePill, uploadMode === "file" && s.modePillActive]}
+              onPress={() => setUploadMode("file")}
+            >
+              <MaterialCommunityIcons
+                name="upload"
+                size={16}
+                color={uploadMode === "file" ? "#FFF" : COLORS.muted}
+              />
+              <Text style={[s.modePillText, uploadMode === "file" && s.modePillTextActive]}>
+                Subir Archivo
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[s.modePill, uploadMode === "url" && s.modePillActive]}
+              onPress={() => setUploadMode("url")}
+            >
+              <MaterialCommunityIcons
+                name="link-variant"
+                size={16}
+                color={uploadMode === "url" ? "#FFF" : COLORS.muted}
+              />
+              <Text style={[s.modePillText, uploadMode === "url" && s.modePillTextActive]}>
+                URL Externa (Web)
+              </Text>
+            </TouchableOpacity>
+          </View>
           
           <View style={s.formRow}>
             {/* Campo Título */}
-            <View style={[s.fieldGroup, { flex: 1 }]}>
+            <View style={[s.fieldGroup, { flex: 1, minWidth: 240 }]}>
               <Text style={s.label}>Título de la película / evento *</Text>
               <TextInput
                 value={title}
@@ -257,25 +304,53 @@ export default function CustomPostersScreen() {
               />
             </View>
 
-            {/* Selector de Imagen */}
-            <View style={s.fieldGroup}>
-              <Text style={s.label}>Archivo de póster *</Text>
-              <TouchableOpacity style={s.pickBtn} onPress={handlePickImage}>
-                <MaterialCommunityIcons name="image-plus" size={20} color={COLORS.primary} />
-                <Text style={s.pickBtnText} numberOfLines={1}>
-                  {selectedFile ? selectedFile.name : "Seleccionar imagen"}
-                </Text>
-              </TouchableOpacity>
-            </View>
+            {/* Selector de Imagen o Input de URL */}
+            {uploadMode === "file" ? (
+              <View style={[s.fieldGroup, { minWidth: 200 }]}>
+                <Text style={s.label}>Archivo de póster *</Text>
+                <TouchableOpacity style={s.pickBtn} onPress={handlePickImage}>
+                  <MaterialCommunityIcons name="image-plus" size={20} color={COLORS.primary} />
+                  <Text style={s.pickBtnText} numberOfLines={1}>
+                    {selectedFile ? selectedFile.name : "Seleccionar imagen"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={[s.fieldGroup, { flex: 1.2, minWidth: 260 }]}>
+                <Text style={s.label}>URL de la Imagen * (https://...)</Text>
+                <TextInput
+                  value={externalUrl}
+                  onChangeText={setExternalUrl}
+                  placeholder="https://ejemplo.com/poster.jpg"
+                  placeholderTextColor={COLORS.muted}
+                  style={s.input}
+                  autoCapitalize="none"
+                  keyboardType="url"
+                />
+              </View>
+            )}
           </View>
 
           {/* Previsualización */}
-          {selectedFile && (
+          {uploadMode === "file" && selectedFile && (
             <View style={s.previewContainer}>
               <Text style={s.label}>Previsualización del póster</Text>
               <View style={s.previewFrame}>
                 <Image
                   source={{ uri: `data:${selectedFile.mimeType};base64,${selectedFile.base64}` }}
+                  style={s.previewImage}
+                  resizeMode="contain"
+                />
+              </View>
+            </View>
+          )}
+
+          {uploadMode === "url" && externalUrl.trim().startsWith("http") && (
+            <View style={s.previewContainer}>
+              <Text style={s.label}>Previsualización de la URL externa</Text>
+              <View style={s.previewFrame}>
+                <Image
+                  source={{ uri: externalUrl.trim() }}
                   style={s.previewImage}
                   resizeMode="contain"
                 />
@@ -417,6 +492,34 @@ const s = StyleSheet.create({
     fontSize: 16,
     fontWeight: "800",
     color: COLORS.text,
+  },
+  modeSelectorRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 4,
+  },
+  modePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: COLORS.bg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  modePillActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  modePillText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: COLORS.muted,
+  },
+  modePillTextActive: {
+    color: "#FFF",
   },
   formRow: {
     flexDirection: "row",

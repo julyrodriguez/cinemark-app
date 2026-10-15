@@ -111,6 +111,7 @@ export default function MapaBannersScreen() {
 
   // TMDB Poster Search state
   const [searchQuery, setSearchQuery] = useState("");
+  const [directPosterUrl, setDirectPosterUrl] = useState("");
   const [searchResults, setSearchResults] = useState<TmdbResult[]>([]);
   const [searchingPoster, setSearchingPoster] = useState(false);
 
@@ -123,7 +124,7 @@ export default function MapaBannersScreen() {
     // Use onSnapshot for real-time sync
     const unsubscribe = onSnapshot(
       docRef,
-      (snapshot) => {
+      (snapshot: any) => {
           if (snapshot.exists()) {
             const data = snapshot.data() as MarketingMapsConfig;
             if (data.floors && data.floors.length > 0) {
@@ -149,7 +150,7 @@ export default function MapaBannersScreen() {
         }
         setLoading(false);
       },
-      (error) => {
+      (error: any) => {
         console.error("Error loading marketing maps:", error);
         setLoading(false);
       }
@@ -1060,10 +1061,16 @@ export default function MapaBannersScreen() {
         localResults = snap.docs
           .map((d: any) => {
             const data = d.data();
+            const rawUrl = data.imageUrl || "";
+            // Si es base64, apuntar a la URL del servidor Docker para nunca inflar el documento del mapa
+            const posterPath = rawUrl.startsWith("http")
+              ? rawUrl
+              : `https://api-cinemark.jariel.com.ar/api/custom_posters/${d.id}/image`;
+
             return {
               id: d.id,
               title: data.title,
-              poster_path: data.imageUrl,
+              poster_path: posterPath,
               isCustom: true,
             } as any;
           })
@@ -1104,17 +1111,24 @@ export default function MapaBannersScreen() {
   const assignPoster = (movieTitle: string, posterPath: string | null | undefined) => {
     if (!selectedElementId || !activeFloor) return;
 
-    const originalUrl = posterPath
-      ? posterPath.startsWith("http") || posterPath.startsWith("data:")
-        ? posterPath
-        : `https://image.tmdb.org/t/p/w500${posterPath}`
-      : "";
-
-    const posterUrl = originalUrl
-      ? originalUrl.startsWith("data:")
-        ? originalUrl
-        : `https://apivacas.jariel.com.ar/api/cinemark/poster?url=${encodeURIComponent(originalUrl)}`
-      : "";
+    let posterUrl = "";
+    if (posterPath) {
+      const cleanPath = posterPath.trim();
+      if (cleanPath.startsWith("data:")) {
+        // En caso de que se pase data URI por error, evitar inflar el mapa
+        posterUrl = cleanPath;
+      } else if (cleanPath.includes("api-cinemark.jariel.com.ar")) {
+        // URL de nuestro servidor Docker
+        posterUrl = cleanPath;
+      } else if (cleanPath.startsWith("http://") || cleanPath.startsWith("https://")) {
+        // URL externa o TMDB: envolver con proxy para asegurar compatibilidad CORS y descarga SVG/PNG
+        posterUrl = `https://apivacas.jariel.com.ar/api/cinemark/poster?url=${encodeURIComponent(cleanPath)}`;
+      } else {
+        // Path relativo de TMDB
+        const fullTmdb = `https://image.tmdb.org/t/p/w500${cleanPath}`;
+        posterUrl = `https://apivacas.jariel.com.ar/api/cinemark/poster?url=${encodeURIComponent(fullTmdb)}`;
+      }
+    }
 
     const updatedFloors = floors.map((f) => {
       if (f.id === selectedFloorId) {
@@ -1122,7 +1136,7 @@ export default function MapaBannersScreen() {
           ...f,
           elements: f.elements.map((el) =>
             el.id === selectedElementId
-              ? { ...el, movieName: movieTitle, posterUrl }
+              ? { ...el, movieName: movieTitle || el.movieName, posterUrl }
               : el
           ),
         };
@@ -1133,6 +1147,7 @@ export default function MapaBannersScreen() {
     setFloors(updatedFloors);
     setSearchResults([]);
     setSearchQuery("");
+    setDirectPosterUrl("");
     handleSaveChanges(updatedFloors);
   };
 
@@ -2610,6 +2625,33 @@ export default function MapaBannersScreen() {
                   )}
                 </Pressable>
               </View>
+
+              {/* Opción de ingreso de URL directa */}
+              <View style={{ marginTop: 10, gap: 4 }}>
+                <Text style={{ fontSize: 11, color: COLORS.muted, fontWeight: "600" }}>
+                  O pegar URL directa de imagen (externa o de tu servidor):
+                </Text>
+                <View style={s.searchFieldWrap}>
+                  <TextInput
+                    style={[s.textInputSearch, { fontSize: 12 }]}
+                    placeholder="https://ejemplo.com/poster.jpg"
+                    placeholderTextColor={COLORS.muted}
+                    value={directPosterUrl}
+                    onChangeText={setDirectPosterUrl}
+                    autoCapitalize="none"
+                    keyboardType="url"
+                  />
+                  <Pressable
+                    style={[s.searchSubmitBtn, { backgroundColor: "#10b981" }]}
+                    onPress={() => {
+                      if (!directPosterUrl.trim()) return;
+                      assignPoster(selectedElement.movieName || selectedElement.name || "Póster URL", directPosterUrl.trim());
+                    }}
+                  >
+                    <MaterialCommunityIcons name="link-plus" size={18} color="#fff" />
+                  </Pressable>
+                </View>
+              </View>
             </View>
 
             {/* SEARCH SUGGESTIONS */}
@@ -2625,7 +2667,7 @@ export default function MapaBannersScreen() {
                     {movie.poster_path ? (
                       <Image
                         source={{
-                          uri: movie.poster_path.startsWith("data:")
+                          uri: movie.poster_path.startsWith("data:") || movie.poster_path.includes("api-cinemark.jariel.com.ar")
                             ? movie.poster_path
                             : `https://apivacas.jariel.com.ar/api/cinemark/poster?url=${encodeURIComponent(
                                 movie.poster_path.startsWith("http")
