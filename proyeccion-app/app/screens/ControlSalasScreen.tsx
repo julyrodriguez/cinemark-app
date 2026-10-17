@@ -15,6 +15,7 @@ import {
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
+import * as FileSystem from "expo-file-system";
 import { doc, getDoc, onSnapshot, setDoc } from "@/lib/dbService";
 
 import { db, CINES_COLLECTION } from "../../lib/firebaseConfig";
@@ -943,6 +944,55 @@ export default function ControlSalasScreen() {
           { text: "Guardar Todo", onPress: executeMigration },
         ]
       );
+    }
+  };
+
+  const [downloadingMapping, setDownloadingMapping] = useState(false);
+
+  // Descargar el archivo .md generado con el mapeo de todas las salas de los 11 cines
+  const handleDownloadSalasMapping = async () => {
+    try {
+      setDownloadingMapping(true);
+      const apiBase = process.env.EXPO_PUBLIC_API_URL || "https://api-cinemark.jariel.com.ar/api";
+      const downloadUrl = `${apiBase}/cinemark/download-salas-mapping`;
+
+      if (Platform.OS === "web") {
+        const res = await fetch(downloadUrl);
+        if (!res.ok) {
+          throw new Error("El archivo de mapeo aún no está generado o está en proceso de creación.");
+        }
+        const text = await res.text();
+        const blob = new Blob([text], { type: "text/markdown;charset=utf-8" });
+        const blobUrl = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = blobUrl;
+        link.download = "cinemark_salas_mapeo.md";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(blobUrl);
+        const baseDir = FileSystem.documentDirectory || FileSystem.cacheDirectory || "";
+        const fileUri = `${baseDir}cinemark_salas_mapeo.md`;
+        const downloadResult = await FileSystem.downloadAsync(downloadUrl, fileUri);
+        if (downloadResult.status !== 200) {
+          throw new Error("No se pudo descargar el archivo de mapeo del servidor.");
+        }
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          await Sharing.shareAsync(downloadResult.uri, {
+            mimeType: "text/markdown",
+            dialogTitle: "Descargar Mapeo de Salas Cinemark (.md)",
+            UTI: "net.daringfireball.markdown",
+          });
+        } else {
+          Alert.alert("Descarga completa", `El archivo se guardó en:\n${downloadResult.uri}`);
+        }
+      }
+    } catch (err: any) {
+      console.error("Error al descargar mapeo de salas:", err);
+      Alert.alert("Mapeo de Salas (.md)", err.message || "No se pudo descargar el archivo.");
+    } finally {
+      setDownloadingMapping(false);
     }
   };
 
@@ -2102,6 +2152,23 @@ export default function ControlSalasScreen() {
                 rotas ({complexStats.totalDamaged}/{complexStats.totalCap})
               </Text>
             </View>
+
+            {/* Botón temporal para descargar el mapeo .md de todas las salas */}
+            <TouchableOpacity
+              style={styles.downloadMappingHeaderBtn}
+              onPress={handleDownloadSalasMapping}
+              activeOpacity={0.8}
+              disabled={downloadingMapping}
+            >
+              {downloadingMapping ? (
+                <ActivityIndicator size="small" color="#FFF" style={{ marginRight: 6 }} />
+              ) : (
+                <MaterialCommunityIcons name="file-download-outline" size={16} color="#FFF" style={{ marginRight: 6 }} />
+              )}
+              <Text style={styles.downloadMappingHeaderBtnText}>
+                {downloadingMapping ? "Descargando..." : "Descargar Mapeo (.md)"}
+              </Text>
+            </TouchableOpacity>
           </View>
           
           {isLayoutEditorMode && (
@@ -2508,6 +2575,22 @@ export default function ControlSalasScreen() {
             <TouchableOpacity style={styles.pdfBtn} onPress={handleExportPdf} activeOpacity={0.85}>
               <MaterialCommunityIcons name="file-pdf-box" size={22} color="#FFF" style={{ marginRight: 8 }} />
               <Text style={styles.pdfBtnText}>Generar Reporte PDF</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.downloadMappingFooterBtn}
+              onPress={handleDownloadSalasMapping}
+              activeOpacity={0.85}
+              disabled={downloadingMapping}
+            >
+              {downloadingMapping ? (
+                <ActivityIndicator size="small" color="#FFF" style={{ marginRight: 8 }} />
+              ) : (
+                <MaterialCommunityIcons name="file-download-outline" size={22} color="#FFF" style={{ marginRight: 8 }} />
+              )}
+              <Text style={styles.downloadMappingFooterBtnText}>
+                {downloadingMapping ? "Descargando..." : "Descargar Mapeo (.md)"}
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.clearBtn} onPress={handleClearActiveReport} activeOpacity={0.8}>
@@ -3480,6 +3563,39 @@ const styles = StyleSheet.create({
   },
   clearBtnText: {
     color: COLORS.danger,
+    fontWeight: "700",
+    fontSize: 14,
+  },
+  downloadMappingHeaderBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#059669",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.15,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  downloadMappingHeaderBtnText: {
+    color: "#FFF",
+    fontWeight: "700",
+    fontSize: 12,
+  },
+  downloadMappingFooterBtn: {
+    flex: 2,
+    backgroundColor: "#059669",
+    borderRadius: THEME.radius.md,
+    paddingVertical: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    ...THEME.shadow.soft,
+  },
+  downloadMappingFooterBtnText: {
+    color: "#FFF",
     fontWeight: "700",
     fontSize: 14,
   },
